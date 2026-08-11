@@ -4,10 +4,19 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
+const migration = require('./migration');
+
+const forcedUserData = process.env.GYM_TEST_USER_DATA;
+if (forcedUserData) {
+  fs.mkdirSync(forcedUserData, { recursive: true });
+  app.setPath('userData', forcedUserData);
+}
 
 let mainWindow;
 let realmPath;
 const isSmokeTest = process.argv.includes('--smoke-test');
+const createLegacyFixture = process.argv.includes('--create-legacy-fixture');
+const verifyLegacyMigration = process.argv.includes('--verify-legacy-migration');
 
 function tempLogPath() {
   try { return path.join(app.getPath('temp'), 'captain-mostafa-gym-startup.log'); }
@@ -18,9 +27,7 @@ function logStartup(message, error) {
   const line = `[${new Date().toISOString()}] ${message}${error ? `\n${error.stack || error.message || error}` : ''}\n`;
   try { fs.appendFileSync(tempLogPath(), line, 'utf8'); } catch {}
   try {
-    if (app.isReady()) {
-      fs.appendFileSync(path.join(app.getPath('userData'), 'startup.log'), line, 'utf8');
-    }
+    if (app.isReady()) fs.appendFileSync(path.join(app.getPath('userData'), 'startup.log'), line, 'utf8');
   } catch {}
   console.error(line);
 }
@@ -63,9 +70,7 @@ function createWindow() {
     });
   }
 
-  mainWindow.loadFile(path.join(__dirname, 'index.html')).catch(error => {
-    logStartup('FAILED TO LOAD INDEX.HTML', error);
-  });
+  mainWindow.loadFile(path.join(__dirname, 'index.html')).catch(error => logStartup('FAILED TO LOAD INDEX.HTML', error));
   return mainWindow;
 }
 
@@ -109,20 +114,53 @@ function registerIpc() {
   safeHandle('gym:open-data-folder', async () => { await shell.openPath(app.getPath('userData')); return true; });
 }
 
+function verifyMigratedFixture() {
+  const t = db.getTrainee('legacy-trainee');
+  const p = db.plans().find(x => x.id === 'bodybuilding');
+  const s = db.settings();
+  if (!t) throw new Error('Legacy trainee was not preserved');
+  if (t.notes !== '') throw new Error('Nullable trainee notes were not normalized');
+  if (!t.subscriptions?.length || t.subscriptions[0].planName !== 'كمال أجسام' || t.subscriptions[0].months !== 2) throw new Error('Legacy subscription fields were not migrated');
+  if (!t.payments?.length || t.payments[0].method !== 'نقدي' || t.payments[0].note !== '') throw new Error('Legacy payment nullable fields were not migrated');
+  if (!p || p.monthlyPrice !== 333) throw new Error('Legacy plan price was not preserved');
+  if (s.gymName !== 'جيم اختبار الهجرة' || s.reminderDays !== '3') throw new Error('Legacy settings were not preserved');
+  const marker = path.join(app.getPath('temp'), 'captain-mostafa-gym-migration-ok.txt');
+  fs.writeFileSync(marker, `OK ${new Date().toISOString()}`, 'utf8');
+  logStartup('LEGACY MIGRATION VERIFICATION PASSED');
+}
+
 async function boot() {
   try {
     logStartup(`BOOT START packaged=${app.isPackaged} smoke=${isSmokeTest} electron=${process.versions.electron}`);
     realmPath = path.join(app.getPath('userData'),'captain-mostafa-gym.realm');
+
+    if (createLegacyFixture) {
+      migration.createLegacyFixture(realmPath);
+      logStartup(`LEGACY TEST FIXTURE CREATED: ${realmPath}`);
+      app.exit(0);
+      return;
+    }
+
+    logStartup(`CHECKING REALM SCHEMA: ${realmPath}`);
+    migration.repairLegacyRealmIfNeeded(realmPath, message => logStartup(message));
+
     logStartup(`OPENING REALM: ${realmPath}`);
     db.open(realmPath);
     logStartup('REALM OPENED SUCCESSFULLY');
+
+    if (verifyLegacyMigration) {
+      verifyMigratedFixture();
+      app.exit(0);
+      return;
+    }
+
     registerIpc();
     createWindow();
     logStartup('MAIN WINDOW CREATED');
     app.on('activate',()=>{ if(BrowserWindow.getAllWindows().length===0) createWindow(); });
   } catch (error) {
     logStartup('FATAL STARTUP ERROR', error);
-    if (!isSmokeTest) {
+    if (!isSmokeTest && !createLegacyFixture && !verifyLegacyMigration) {
       try {
         dialog.showErrorBox('تعذر تشغيل برنامج الجيم', `حدث خطأ أثناء بدء البرنامج.\n\n${error?.message || error}\n\nتم حفظ التفاصيل في ملف startup.log.`);
       } catch {}
