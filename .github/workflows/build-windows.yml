@@ -35,6 +35,26 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npm run dist:win
 
+      - name: Smoke test packaged application
+        shell: pwsh
+        run: |
+          $marker = Join-Path $env:TEMP 'captain-mostafa-gym-smoke-ok.txt'
+          $startupLog = Join-Path $env:TEMP 'captain-mostafa-gym-startup.log'
+          Remove-Item $marker -Force -ErrorAction SilentlyContinue
+          Remove-Item $startupLog -Force -ErrorAction SilentlyContinue
+          $exe = Join-Path $PWD 'dist\win-unpacked\Captain Mostafa Gym.exe'
+          $p = Start-Process -FilePath $exe -ArgumentList '--smoke-test','--enable-logging' -PassThru
+          if (-not $p.WaitForExit(30000)) {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            if (Test-Path $startupLog) { Get-Content $startupLog }
+            throw 'Packaged application did not exit after smoke test.'
+          }
+          if (Test-Path $startupLog) { Get-Content $startupLog }
+          if (-not (Test-Path $marker)) {
+            throw "Packaged application failed smoke test. Exit code: $($p.ExitCode)"
+          }
+          Write-Host 'Packaged Electron + Realm startup smoke test passed.'
+
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
