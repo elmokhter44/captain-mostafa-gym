@@ -7,6 +7,26 @@ const db = require('./db');
 
 let mainWindow;
 let realmPath;
+const isSmokeTest = process.argv.includes('--smoke-test');
+
+function tempLogPath() {
+  try { return path.join(app.getPath('temp'), 'captain-mostafa-gym-startup.log'); }
+  catch { return path.join(process.env.TEMP || process.cwd(), 'captain-mostafa-gym-startup.log'); }
+}
+
+function logStartup(message, error) {
+  const line = `[${new Date().toISOString()}] ${message}${error ? `\n${error.stack || error.message || error}` : ''}\n`;
+  try { fs.appendFileSync(tempLogPath(), line, 'utf8'); } catch {}
+  try {
+    if (app.isReady()) {
+      fs.appendFileSync(path.join(app.getPath('userData'), 'startup.log'), line, 'utf8');
+    }
+  } catch {}
+  console.error(line);
+}
+
+process.on('uncaughtException', error => logStartup('UNCAUGHT EXCEPTION', error));
+process.on('unhandledRejection', error => logStartup('UNHANDLED REJECTION', error));
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -17,6 +37,7 @@ function createWindow() {
     title: 'Captain Mostafa Gym',
     backgroundColor: '#f4f8f7',
     autoHideMenuBar: true,
+    show: !isSmokeTest,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -24,7 +45,28 @@ function createWindow() {
       sandbox: false
     }
   });
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+
+  mainWindow.webContents.on('did-fail-load', (_event, code, description) => {
+    logStartup(`RENDERER FAILED TO LOAD (${code}): ${description}`);
+  });
+
+  if (isSmokeTest) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      try {
+        const marker = path.join(app.getPath('temp'), 'captain-mostafa-gym-smoke-ok.txt');
+        fs.writeFileSync(marker, `OK ${new Date().toISOString()}`, 'utf8');
+        logStartup('PACKAGED SMOKE TEST PASSED');
+      } catch (error) {
+        logStartup('FAILED TO WRITE SMOKE TEST MARKER', error);
+      }
+      setTimeout(() => app.quit(), 300);
+    });
+  }
+
+  mainWindow.loadFile(path.join(__dirname, 'index.html')).catch(error => {
+    logStartup('FAILED TO LOAD INDEX.HTML', error);
+  });
+  return mainWindow;
 }
 
 function safeHandle(channel, fn) {
@@ -67,12 +109,31 @@ function registerIpc() {
   safeHandle('gym:open-data-folder', async () => { await shell.openPath(app.getPath('userData')); return true; });
 }
 
-app.whenReady().then(() => {
-  realmPath = path.join(app.getPath('userData'),'captain-mostafa-gym.realm');
-  db.open(realmPath);
-  registerIpc();
-  createWindow();
-  app.on('activate',()=>{ if(BrowserWindow.getAllWindows().length===0) createWindow(); });
+async function boot() {
+  try {
+    logStartup(`BOOT START packaged=${app.isPackaged} smoke=${isSmokeTest} electron=${process.versions.electron}`);
+    realmPath = path.join(app.getPath('userData'),'captain-mostafa-gym.realm');
+    logStartup(`OPENING REALM: ${realmPath}`);
+    db.open(realmPath);
+    logStartup('REALM OPENED SUCCESSFULLY');
+    registerIpc();
+    createWindow();
+    logStartup('MAIN WINDOW CREATED');
+    app.on('activate',()=>{ if(BrowserWindow.getAllWindows().length===0) createWindow(); });
+  } catch (error) {
+    logStartup('FATAL STARTUP ERROR', error);
+    if (!isSmokeTest) {
+      try {
+        dialog.showErrorBox('تعذر تشغيل برنامج الجيم', `حدث خطأ أثناء بدء البرنامج.\n\n${error?.message || error}\n\nتم حفظ التفاصيل في ملف startup.log.`);
+      } catch {}
+    }
+    app.exit(1);
+  }
+}
+
+app.whenReady().then(boot).catch(error => {
+  logStartup('APP READY FAILED', error);
+  app.exit(1);
 });
 
 app.on('window-all-closed',()=>{ if(process.platform!=='darwin') app.quit(); });
