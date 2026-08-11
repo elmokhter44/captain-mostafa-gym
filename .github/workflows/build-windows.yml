@@ -25,6 +25,14 @@ jobs:
         shell: pwsh
         run: npm install --no-audit --no-fund
 
+      - name: Validate JavaScript syntax
+        shell: pwsh
+        run: |
+          node --check src/main.js
+          node --check src/preload.js
+          node --check src/db-pro.js
+          node --check src/renderer.js
+
       - name: Run logic tests
         shell: pwsh
         run: npm test
@@ -35,7 +43,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npm run dist:win
 
-      - name: Smoke test packaged application
+      - name: Smoke test packaged UI and Realm
         shell: pwsh
         run: |
           $marker = Join-Path $env:TEMP 'captain-mostafa-gym-smoke-ok.txt'
@@ -44,14 +52,29 @@ jobs:
           Remove-Item $startupLog -Force -ErrorAction SilentlyContinue
           $exe = Join-Path $PWD 'dist\win-unpacked\Captain Mostafa Gym.exe'
           $p = Start-Process -FilePath $exe -ArgumentList '--smoke-test','--enable-logging' -PassThru
-          if (-not $p.WaitForExit(30000)) {
-            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-            if (Test-Path $startupLog) { Get-Content $startupLog }
-            throw 'Packaged application did not exit after smoke test.'
-          }
+          if (-not $p.WaitForExit(30000)) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; if (Test-Path $startupLog) { Get-Content $startupLog }; throw 'Packaged UI smoke test timed out.' }
           if (Test-Path $startupLog) { Get-Content $startupLog }
-          if (-not (Test-Path $marker)) { throw "Packaged application failed smoke test. Exit code: $($p.ExitCode)" }
-          Write-Host 'Packaged Electron + Realm startup smoke test passed.'
+          if ($p.ExitCode -ne 0 -or -not (Test-Path $marker)) { throw "Packaged UI smoke test failed: $($p.ExitCode)" }
+          Get-Content $marker
+          Write-Host 'Packaged UI + Electron + Realm smoke test passed.'
+
+      - name: Test full CRUD, plans, payments, reports and CSV data
+        shell: pwsh
+        run: |
+          $featureDir = Join-Path $env:TEMP 'captain-mostafa-gym-feature-test'
+          $marker = Join-Path $env:TEMP 'captain-mostafa-gym-feature-ok.txt'
+          $startupLog = Join-Path $env:TEMP 'captain-mostafa-gym-startup.log'
+          Remove-Item $featureDir -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $marker -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $featureDir | Out-Null
+          $env:GYM_TEST_USER_DATA = $featureDir
+          $exe = Join-Path $PWD 'dist\win-unpacked\Captain Mostafa Gym.exe'
+          $p = Start-Process -FilePath $exe -ArgumentList '--feature-smoke-test' -PassThru
+          if (-not $p.WaitForExit(30000)) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; throw 'Full feature smoke test timed out.' }
+          if (Test-Path $startupLog) { Get-Content $startupLog }
+          if ($p.ExitCode -ne 0 -or -not (Test-Path $marker)) { throw "Full feature smoke test failed: $($p.ExitCode)" }
+          Remove-Item Env:GYM_TEST_USER_DATA -ErrorAction SilentlyContinue
+          Write-Host 'CRUD + plan creation/edit + trainee edit + subscription edit + payment + reports + CSV data + archive test passed.'
 
       - name: Test migration from v1.0.0 Realm database
         shell: pwsh
@@ -65,11 +88,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path $legacyDir | Out-Null
           $env:GYM_TEST_USER_DATA = $legacyDir
           $exe = Join-Path $PWD 'dist\win-unpacked\Captain Mostafa Gym.exe'
-
           $seed = Start-Process -FilePath $exe -ArgumentList '--create-legacy-fixture' -PassThru
           if (-not $seed.WaitForExit(30000)) { Stop-Process -Id $seed.Id -Force -ErrorAction SilentlyContinue; throw 'Legacy fixture creation timed out.' }
           if ($seed.ExitCode -ne 0) { if (Test-Path $startupLog) { Get-Content $startupLog }; throw "Legacy fixture creation failed: $($seed.ExitCode)" }
-
           $verify = Start-Process -FilePath $exe -ArgumentList '--verify-legacy-migration' -PassThru
           if (-not $verify.WaitForExit(30000)) { Stop-Process -Id $verify.Id -Force -ErrorAction SilentlyContinue; throw 'Legacy migration verification timed out.' }
           if (Test-Path $startupLog) { Get-Content $startupLog }
@@ -82,38 +103,29 @@ jobs:
         run: |
           $installer = Get-ChildItem -Path dist -Filter '*Setup*.exe' | Select-Object -First 1
           if (-not $installer) { throw 'Installer not found.' }
-          Write-Host "Installing: $($installer.FullName)"
           $install = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -PassThru -Wait
           if ($install.ExitCode -ne 0) { throw "Installer failed with exit code $($install.ExitCode)" }
-
           $desktop = [Environment]::GetFolderPath('Desktop')
           $shortcut = Join-Path $desktop 'Captain Mostafa Gym.lnk'
           if (-not (Test-Path $shortcut)) { throw "Desktop shortcut was not created: $shortcut" }
-
           $ws = New-Object -ComObject WScript.Shell
           $lnk = $ws.CreateShortcut($shortcut)
           $installedExe = $lnk.TargetPath
-          Write-Host "Shortcut target: $installedExe"
           if (-not (Test-Path $installedExe)) { throw 'Installed executable target does not exist.' }
-
           $marker = Join-Path $env:TEMP 'captain-mostafa-gym-smoke-ok.txt'
           $startupLog = Join-Path $env:TEMP 'captain-mostafa-gym-startup.log'
           Remove-Item $marker -Force -ErrorAction SilentlyContinue
           Remove-Item $startupLog -Force -ErrorAction SilentlyContinue
           $p = Start-Process -FilePath $installedExe -ArgumentList '--smoke-test','--enable-logging' -PassThru
-          if (-not $p.WaitForExit(30000)) {
-            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-            if (Test-Path $startupLog) { Get-Content $startupLog }
-            throw 'Installed application did not exit after smoke test.'
-          }
+          if (-not $p.WaitForExit(30000)) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; if (Test-Path $startupLog) { Get-Content $startupLog }; throw 'Installed application smoke test timed out.' }
           if (Test-Path $startupLog) { Get-Content $startupLog }
-          if (-not (Test-Path $marker)) { throw "Installed application failed smoke test. Exit code: $($p.ExitCode)" }
-          Write-Host 'Installed app + Realm + desktop shortcut smoke test passed.'
+          if ($p.ExitCode -ne 0 -or -not (Test-Path $marker)) { throw "Installed application failed UI smoke test: $($p.ExitCode)" }
+          Write-Host 'Installed app + full UI + Realm + desktop shortcut smoke test passed.'
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Captain-Mostafa-Gym-Windows-Installer-v1.0.2
+          name: Captain-Mostafa-Gym-Windows-Installer-v1.1.0
           path: |
             dist/*.exe
             dist/*.yml
