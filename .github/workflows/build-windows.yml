@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
+    paths:
+      - BUILD_TRIGGER.txt
 
 jobs:
   build-windows:
@@ -18,27 +20,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Extract application source
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path build-src | Out-Null
-          tar -xf project.zip -C build-src
-          Test-Path build-src/captain-mostafa-gym/package.json
+          cache: 'npm'
 
       - name: Install dependencies
         shell: pwsh
-        working-directory: build-src/captain-mostafa-gym
         run: npm install --no-audit --no-fund
 
       - name: Run logic tests
         shell: pwsh
-        working-directory: build-src/captain-mostafa-gym
         run: npm test
 
       - name: Build NSIS Windows installer
         shell: pwsh
-        working-directory: build-src/captain-mostafa-gym
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npm run dist:win
@@ -48,7 +41,7 @@ jobs:
         with:
           name: Captain-Mostafa-Gym-Windows-Installer
           path: |
-            build-src/captain-mostafa-gym/dist/*.exe
-            build-src/captain-mostafa-gym/dist/*.yml
+            dist/*.exe
+            dist/*.yml
           if-no-files-found: error
           retention-days: 30
