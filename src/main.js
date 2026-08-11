@@ -3,175 +3,48 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const db = require('./db');
+const db = require('./db-pro');
 const migration = require('./migration');
 
 const forcedUserData = process.env.GYM_TEST_USER_DATA;
-if (forcedUserData) {
-  fs.mkdirSync(forcedUserData, { recursive: true });
-  app.setPath('userData', forcedUserData);
-}
+if (forcedUserData) { fs.mkdirSync(forcedUserData,{recursive:true}); app.setPath('userData',forcedUserData); }
 
-let mainWindow;
-let realmPath;
+let mainWindow, realmPath;
 const isSmokeTest = process.argv.includes('--smoke-test');
+const featureSmokeTest = process.argv.includes('--feature-smoke-test');
 const createLegacyFixture = process.argv.includes('--create-legacy-fixture');
 const verifyLegacyMigration = process.argv.includes('--verify-legacy-migration');
 
-function tempLogPath() {
-  try { return path.join(app.getPath('temp'), 'captain-mostafa-gym-startup.log'); }
-  catch { return path.join(process.env.TEMP || process.cwd(), 'captain-mostafa-gym-startup.log'); }
+function tempLogPath(){try{return path.join(app.getPath('temp'),'captain-mostafa-gym-startup.log')}catch{return path.join(process.env.TEMP||process.cwd(),'captain-mostafa-gym-startup.log')}}
+function logStartup(message,error){const line=`[${new Date().toISOString()}] ${message}${error?`\n${error.stack||error.message||error}`:''}\n`;try{fs.appendFileSync(tempLogPath(),line,'utf8')}catch{}try{if(app.isReady())fs.appendFileSync(path.join(app.getPath('userData'),'startup.log'),line,'utf8')}catch{}console.error(line)}
+process.on('uncaughtException',e=>logStartup('UNCAUGHT EXCEPTION',e));
+process.on('unhandledRejection',e=>logStartup('UNHANDLED REJECTION',e));
+
+function createWindow(){
+  mainWindow=new BrowserWindow({width:1500,height:940,minWidth:1180,minHeight:720,title:'Captain Mostafa Gym',backgroundColor:'#f3f7f6',autoHideMenuBar:true,show:!isSmokeTest,webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false}});
+  mainWindow.webContents.on('did-fail-load',(_e,c,d)=>logStartup(`RENDERER FAILED TO LOAD (${c}): ${d}`));
+  if(isSmokeTest)mainWindow.webContents.once('did-finish-load',()=>{try{fs.writeFileSync(path.join(app.getPath('temp'),'captain-mostafa-gym-smoke-ok.txt'),`OK ${new Date().toISOString()}`,'utf8');logStartup('PACKAGED SMOKE TEST PASSED')}catch(e){logStartup('FAILED TO WRITE SMOKE TEST MARKER',e)}setTimeout(()=>app.quit(),300)});
+  mainWindow.loadFile(path.join(__dirname,'index.html')).catch(e=>logStartup('FAILED TO LOAD INDEX.HTML',e)); return mainWindow;
+}
+function safeHandle(channel,fn){ipcMain.handle(channel,async(_event,...args)=>{try{return{ok:true,data:await fn(...args)}}catch(error){console.error(channel,error);return{ok:false,error:error?.message||'حدث خطأ غير متوقع'}}})}
+function csvCell(v){const s=String(v??'').replace(/"/g,'""');return `"${s}"`}
+function csvText(rows){const headers=[['name','اسم المتدرب'],['country','البلد'],['countryCode','كود الدولة'],['phone','رقم الموبايل'],['normalizedPhone','رقم واتساب'],['plan','الخطة'],['monthlyPrice','سعر الشهر'],['months','عدد الأشهر'],['startDate','بداية الاشتراك'],['endDate','نهاية الاشتراك'],['status','الحالة'],['total','الإجمالي'],['paid','المدفوع'],['remaining','المتبقي'],['archived','مؤرشف'],['notes','ملاحظات']];return '\ufeff'+[headers.map(x=>csvCell(x[1])).join(','),...rows.map(r=>headers.map(x=>csvCell(r[x[0]])).join(','))].join('\r\n')}
+
+function registerIpc(){
+  safeHandle('gym:bootstrap',()=>({dashboard:db.dashboard(),trainees:db.listTrainees(),plans:db.plans(),allPlans:db.plans(true),settings:db.settings(),reminders:db.dueReminders()}));
+  safeHandle('gym:dashboard',()=>db.dashboard()); safeHandle('gym:list',f=>db.listTrainees(f)); safeHandle('gym:get',id=>db.getTrainee(id));
+  safeHandle('gym:add',d=>db.addTrainee(d)); safeHandle('gym:update',(id,d)=>db.updateTrainee(id,d)); safeHandle('gym:update-subscription',(id,d)=>db.updateCurrentSubscription(id,d));
+  safeHandle('gym:archive',(id,v)=>db.archiveTrainee(id,v)); safeHandle('gym:delete',id=>db.deleteTrainee(id)); safeHandle('gym:payment',(t,s,a,m,n)=>db.addPayment(t,s,a,m,n)); safeHandle('gym:renew',(id,d)=>db.renew(id,d));
+  safeHandle('gym:plans',(all=false)=>db.plans(all)); safeHandle('gym:plan-create',d=>db.createPlan(d)); safeHandle('gym:plan-update',(id,d)=>db.updatePlan(id,d)); safeHandle('gym:plan-active',(id,v)=>db.setPlanActive(id,v));
+  safeHandle('gym:settings',()=>db.settings()); safeHandle('gym:save-settings',d=>db.saveSettings(d)); safeHandle('gym:reminders',()=>db.dueReminders()); safeHandle('gym:reminder-mark',(id,s,e)=>db.markReminder(id,s,e));
+  safeHandle('gym:whatsapp',async(phone,message,reminderId)=>{const normalized=String(phone||'').replace(/[^\d]/g,'');if(!normalized)throw new Error('رقم واتساب غير صحيح');await shell.openExternal(`https://wa.me/${normalized}?text=${encodeURIComponent(message||'')}`);if(reminderId)db.markReminder(reminderId,'sent');return true});
+  safeHandle('gym:backup',async()=>{const r=await dialog.showSaveDialog(mainWindow,{title:'حفظ نسخة احتياطية',defaultPath:`gym-backup-${new Date().toISOString().slice(0,10)}.realm`,filters:[{name:'Realm Backup',extensions:['realm']}]});if(r.canceled||!r.filePath)return false;fs.copyFileSync(realmPath,r.filePath);return r.filePath});
+  safeHandle('gym:export-csv',async()=>{const r=await dialog.showSaveDialog(mainWindow,{title:'تصدير بيانات المتدربين CSV',defaultPath:`trainees-${new Date().toISOString().slice(0,10)}.csv`,filters:[{name:'CSV',extensions:['csv']}]});if(r.canceled||!r.filePath)return false;fs.writeFileSync(r.filePath,csvText(db.exportRows()),'utf8');return r.filePath});
+  safeHandle('gym:open-data-folder',async()=>{await shell.openPath(app.getPath('userData'));return true});
 }
 
-function logStartup(message, error) {
-  const line = `[${new Date().toISOString()}] ${message}${error ? `\n${error.stack || error.message || error}` : ''}\n`;
-  try { fs.appendFileSync(tempLogPath(), line, 'utf8'); } catch {}
-  try {
-    if (app.isReady()) fs.appendFileSync(path.join(app.getPath('userData'), 'startup.log'), line, 'utf8');
-  } catch {}
-  console.error(line);
-}
+function verifyMigratedFixture(){const t=db.getTrainee('legacy-trainee'),p=db.plans().find(x=>x.id==='bodybuilding'),s=db.settings();if(!t)throw new Error('Legacy trainee was not preserved');if(t.notes!=='')throw new Error('Nullable trainee notes were not normalized');if(!t.subscriptions?.length||t.subscriptions[0].planName!=='كمال أجسام'||t.subscriptions[0].months!==2)throw new Error('Legacy subscription fields were not migrated');if(!t.payments?.length||t.payments[0].method!=='نقدي'||t.payments[0].note!=='')throw new Error('Legacy payment nullable fields were not migrated');if(!p||p.monthlyPrice!==333)throw new Error('Legacy plan price was not preserved');if(s.gymName!=='جيم اختبار الهجرة'||s.reminderDays!=='3')throw new Error('Legacy settings were not preserved');fs.writeFileSync(path.join(app.getPath('temp'),'captain-mostafa-gym-migration-ok.txt'),`OK ${new Date().toISOString()}`,'utf8');logStartup('LEGACY MIGRATION VERIFICATION PASSED')}
+function runFeatureSmoke(){const plan=db.createPlan({name:'خطة اختبار الميزات',monthlyPrice:555});let t=db.addTrainee({name:'متدرب اختبار الميزات',country:'مصر',countryCode:'+20',phone:'01099998888',planId:plan.id,months:2,startDate:'2026-08-12',paid:100,method:'نقدي',notes:'قبل التعديل'});t=db.updateTrainee(t.id,{name:'متدرب اختبار معدل',country:'مصر',countryCode:'+20',phone:'01099998888',notes:'تم التعديل',whatsappEnabled:true});t=db.updateCurrentSubscription(t.id,{planId:plan.id,months:3,startDate:'2026-08-13'});db.addPayment(t.id,t.subscription.id,50,'InstaPay','اختبار دفعة');db.archiveTrainee(t.id,true);db.archiveTrainee(t.id,false);const rows=db.exportRows();const dash=db.dashboard();const final=db.getTrainee(t.id);if(final.name!=='متدرب اختبار معدل'||final.notes!=='تم التعديل')throw new Error('Edit trainee feature failed');if(final.subscription.months!==3||final.subscription.paid!==150)throw new Error('Subscription/payment feature failed');if(!rows.some(r=>r.name==='متدرب اختبار معدل'))throw new Error('CSV data feature failed');if(typeof dash.totalPaid!=='number'||typeof dash.remaining!=='number')throw new Error('Dashboard reports feature failed');db.deleteTrainee(t.id);db.setPlanActive(plan.id,false);fs.writeFileSync(path.join(app.getPath('temp'),'captain-mostafa-gym-feature-ok.txt'),`OK ${new Date().toISOString()}`,'utf8');logStartup('FULL FEATURE SMOKE TEST PASSED')}
 
-process.on('uncaughtException', error => logStartup('UNCAUGHT EXCEPTION', error));
-process.on('unhandledRejection', error => logStartup('UNHANDLED REJECTION', error));
-
-function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 1100,
-    minHeight: 700,
-    title: 'Captain Mostafa Gym',
-    backgroundColor: '#f4f8f7',
-    autoHideMenuBar: true,
-    show: !isSmokeTest,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
-    }
-  });
-
-  mainWindow.webContents.on('did-fail-load', (_event, code, description) => {
-    logStartup(`RENDERER FAILED TO LOAD (${code}): ${description}`);
-  });
-
-  if (isSmokeTest) {
-    mainWindow.webContents.once('did-finish-load', () => {
-      try {
-        const marker = path.join(app.getPath('temp'), 'captain-mostafa-gym-smoke-ok.txt');
-        fs.writeFileSync(marker, `OK ${new Date().toISOString()}`, 'utf8');
-        logStartup('PACKAGED SMOKE TEST PASSED');
-      } catch (error) {
-        logStartup('FAILED TO WRITE SMOKE TEST MARKER', error);
-      }
-      setTimeout(() => app.quit(), 300);
-    });
-  }
-
-  mainWindow.loadFile(path.join(__dirname, 'index.html')).catch(error => logStartup('FAILED TO LOAD INDEX.HTML', error));
-  return mainWindow;
-}
-
-function safeHandle(channel, fn) {
-  ipcMain.handle(channel, async (_event, ...args) => {
-    try { return { ok: true, data: await fn(...args) }; }
-    catch (error) { console.error(channel, error); return { ok: false, error: error?.message || 'حدث خطأ غير متوقع' }; }
-  });
-}
-
-function registerIpc() {
-  safeHandle('gym:bootstrap', () => ({ dashboard: db.dashboard(), trainees: db.listTrainees(), plans: db.plans(), settings: db.settings(), reminders: db.dueReminders() }));
-  safeHandle('gym:dashboard', () => db.dashboard());
-  safeHandle('gym:list', filters => db.listTrainees(filters));
-  safeHandle('gym:get', id => db.getTrainee(id));
-  safeHandle('gym:add', data => db.addTrainee(data));
-  safeHandle('gym:update', (id,data) => db.updateTrainee(id,data));
-  safeHandle('gym:archive', (id,value) => db.archiveTrainee(id,value));
-  safeHandle('gym:delete', id => db.deleteTrainee(id));
-  safeHandle('gym:payment', (traineeId,subscriptionId,amount,method,note) => db.addPayment(traineeId,subscriptionId,amount,method,note));
-  safeHandle('gym:renew', (id,data) => db.renew(id,data));
-  safeHandle('gym:plans', () => db.plans());
-  safeHandle('gym:plan-price', (id,price) => db.updatePlan(id,price));
-  safeHandle('gym:settings', () => db.settings());
-  safeHandle('gym:save-settings', data => db.saveSettings(data));
-  safeHandle('gym:reminders', () => db.dueReminders());
-  safeHandle('gym:reminder-mark', (id,status,error) => db.markReminder(id,status,error));
-  safeHandle('gym:whatsapp', async (phone,message,reminderId) => {
-    const normalized = String(phone||'').replace(/[^\d]/g,'');
-    if (!normalized) throw new Error('رقم واتساب غير صحيح');
-    const url = `https://wa.me/${normalized}?text=${encodeURIComponent(message||'')}`;
-    await shell.openExternal(url);
-    if (reminderId) db.markReminder(reminderId,'sent');
-    return true;
-  });
-  safeHandle('gym:backup', async () => {
-    const result = await dialog.showSaveDialog(mainWindow,{ title:'حفظ نسخة احتياطية', defaultPath:`gym-backup-${new Date().toISOString().slice(0,10)}.realm`, filters:[{name:'Realm Backup',extensions:['realm']}] });
-    if (result.canceled || !result.filePath) return false;
-    fs.copyFileSync(realmPath,result.filePath); return result.filePath;
-  });
-  safeHandle('gym:open-data-folder', async () => { await shell.openPath(app.getPath('userData')); return true; });
-}
-
-function verifyMigratedFixture() {
-  const t = db.getTrainee('legacy-trainee');
-  const p = db.plans().find(x => x.id === 'bodybuilding');
-  const s = db.settings();
-  if (!t) throw new Error('Legacy trainee was not preserved');
-  if (t.notes !== '') throw new Error('Nullable trainee notes were not normalized');
-  if (!t.subscriptions?.length || t.subscriptions[0].planName !== 'كمال أجسام' || t.subscriptions[0].months !== 2) throw new Error('Legacy subscription fields were not migrated');
-  if (!t.payments?.length || t.payments[0].method !== 'نقدي' || t.payments[0].note !== '') throw new Error('Legacy payment nullable fields were not migrated');
-  if (!p || p.monthlyPrice !== 333) throw new Error('Legacy plan price was not preserved');
-  if (s.gymName !== 'جيم اختبار الهجرة' || s.reminderDays !== '3') throw new Error('Legacy settings were not preserved');
-  const marker = path.join(app.getPath('temp'), 'captain-mostafa-gym-migration-ok.txt');
-  fs.writeFileSync(marker, `OK ${new Date().toISOString()}`, 'utf8');
-  logStartup('LEGACY MIGRATION VERIFICATION PASSED');
-}
-
-async function boot() {
-  try {
-    logStartup(`BOOT START packaged=${app.isPackaged} smoke=${isSmokeTest} electron=${process.versions.electron}`);
-    realmPath = path.join(app.getPath('userData'),'captain-mostafa-gym.realm');
-
-    if (createLegacyFixture) {
-      migration.createLegacyFixture(realmPath);
-      logStartup(`LEGACY TEST FIXTURE CREATED: ${realmPath}`);
-      app.exit(0);
-      return;
-    }
-
-    logStartup(`CHECKING REALM SCHEMA: ${realmPath}`);
-    migration.repairLegacyRealmIfNeeded(realmPath, message => logStartup(message));
-
-    logStartup(`OPENING REALM: ${realmPath}`);
-    db.open(realmPath);
-    logStartup('REALM OPENED SUCCESSFULLY');
-
-    if (verifyLegacyMigration) {
-      verifyMigratedFixture();
-      app.exit(0);
-      return;
-    }
-
-    registerIpc();
-    createWindow();
-    logStartup('MAIN WINDOW CREATED');
-    app.on('activate',()=>{ if(BrowserWindow.getAllWindows().length===0) createWindow(); });
-  } catch (error) {
-    logStartup('FATAL STARTUP ERROR', error);
-    if (!isSmokeTest && !createLegacyFixture && !verifyLegacyMigration) {
-      try {
-        dialog.showErrorBox('تعذر تشغيل برنامج الجيم', `حدث خطأ أثناء بدء البرنامج.\n\n${error?.message || error}\n\nتم حفظ التفاصيل في ملف startup.log.`);
-      } catch {}
-    }
-    app.exit(1);
-  }
-}
-
-app.whenReady().then(boot).catch(error => {
-  logStartup('APP READY FAILED', error);
-  app.exit(1);
-});
-
-app.on('window-all-closed',()=>{ if(process.platform!=='darwin') app.quit(); });
+async function boot(){try{logStartup(`BOOT START packaged=${app.isPackaged} smoke=${isSmokeTest} electron=${process.versions.electron}`);realmPath=path.join(app.getPath('userData'),'captain-mostafa-gym.realm');if(createLegacyFixture){migration.createLegacyFixture(realmPath);logStartup(`LEGACY TEST FIXTURE CREATED: ${realmPath}`);app.exit(0);return}logStartup(`CHECKING REALM SCHEMA: ${realmPath}`);migration.repairLegacyRealmIfNeeded(realmPath,m=>logStartup(m));logStartup(`OPENING REALM: ${realmPath}`);db.open(realmPath);logStartup('REALM OPENED SUCCESSFULLY');if(verifyLegacyMigration){verifyMigratedFixture();app.exit(0);return}if(featureSmokeTest){runFeatureSmoke();app.exit(0);return}registerIpc();createWindow();logStartup('MAIN WINDOW CREATED');app.on('activate',()=>{if(BrowserWindow.getAllWindows().length===0)createWindow()})}catch(error){logStartup('FATAL STARTUP ERROR',error);if(!isSmokeTest&&!createLegacyFixture&&!verifyLegacyMigration&&!featureSmokeTest){try{dialog.showErrorBox('تعذر تشغيل برنامج الجيم',`حدث خطأ أثناء بدء البرنامج.\n\n${error?.message||error}\n\nتم حفظ التفاصيل في ملف startup.log.`)}catch{}}app.exit(1)}}
+app.whenReady().then(boot).catch(e=>{logStartup('APP READY FAILED',e);app.exit(1)});app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
