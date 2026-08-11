@@ -1,6 +1,6 @@
 {
   "name": "captain-mostafa-el-reedy-gym",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Arabic RTL desktop gym management system for Captain Mostafa El Reedy",
   "main": "src/main.js",
   "author": "Captain Mostafa El Reedy Gym",
