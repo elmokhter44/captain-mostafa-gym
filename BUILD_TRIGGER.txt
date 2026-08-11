@@ -1,1 +1,1 @@
-Trigger Windows installer build for Captain Mostafa Gym.
+Build request: 2026-08-11 v1.0 direct-source Windows NSIS installer.
