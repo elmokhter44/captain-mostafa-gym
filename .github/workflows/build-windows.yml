@@ -50,10 +50,32 @@ jobs:
             throw 'Packaged application did not exit after smoke test.'
           }
           if (Test-Path $startupLog) { Get-Content $startupLog }
-          if (-not (Test-Path $marker)) {
-            throw "Packaged application failed smoke test. Exit code: $($p.ExitCode)"
-          }
+          if (-not (Test-Path $marker)) { throw "Packaged application failed smoke test. Exit code: $($p.ExitCode)" }
           Write-Host 'Packaged Electron + Realm startup smoke test passed.'
+
+      - name: Test migration from v1.0.0 Realm database
+        shell: pwsh
+        run: |
+          $legacyDir = Join-Path $env:TEMP 'captain-mostafa-gym-legacy-fixture'
+          $migrationMarker = Join-Path $env:TEMP 'captain-mostafa-gym-migration-ok.txt'
+          $startupLog = Join-Path $env:TEMP 'captain-mostafa-gym-startup.log'
+          Remove-Item $legacyDir -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $migrationMarker -Force -ErrorAction SilentlyContinue
+          Remove-Item $startupLog -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $legacyDir | Out-Null
+          $env:GYM_TEST_USER_DATA = $legacyDir
+          $exe = Join-Path $PWD 'dist\win-unpacked\Captain Mostafa Gym.exe'
+
+          $seed = Start-Process -FilePath $exe -ArgumentList '--create-legacy-fixture' -PassThru
+          if (-not $seed.WaitForExit(30000)) { Stop-Process -Id $seed.Id -Force -ErrorAction SilentlyContinue; throw 'Legacy fixture creation timed out.' }
+          if ($seed.ExitCode -ne 0) { if (Test-Path $startupLog) { Get-Content $startupLog }; throw "Legacy fixture creation failed: $($seed.ExitCode)" }
+
+          $verify = Start-Process -FilePath $exe -ArgumentList '--verify-legacy-migration' -PassThru
+          if (-not $verify.WaitForExit(30000)) { Stop-Process -Id $verify.Id -Force -ErrorAction SilentlyContinue; throw 'Legacy migration verification timed out.' }
+          if (Test-Path $startupLog) { Get-Content $startupLog }
+          if ($verify.ExitCode -ne 0 -or -not (Test-Path $migrationMarker)) { throw "Legacy migration test failed: $($verify.ExitCode)" }
+          Remove-Item Env:GYM_TEST_USER_DATA -ErrorAction SilentlyContinue
+          Write-Host 'v1.0.0 Realm data migrated and verified successfully.'
 
       - name: Install setup and test installed application
         shell: pwsh
@@ -85,15 +107,13 @@ jobs:
             throw 'Installed application did not exit after smoke test.'
           }
           if (Test-Path $startupLog) { Get-Content $startupLog }
-          if (-not (Test-Path $marker)) {
-            throw "Installed application failed smoke test. Exit code: $($p.ExitCode)"
-          }
+          if (-not (Test-Path $marker)) { throw "Installed application failed smoke test. Exit code: $($p.ExitCode)" }
           Write-Host 'Installed app + Realm + desktop shortcut smoke test passed.'
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Captain-Mostafa-Gym-Windows-Installer-v1.0.1
+          name: Captain-Mostafa-Gym-Windows-Installer-v1.0.2
           path: |
             dist/*.exe
             dist/*.yml
