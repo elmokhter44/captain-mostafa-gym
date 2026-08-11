@@ -1,0 +1,10 @@
+'use strict';
+const test=require('node:test');const assert=require('node:assert/strict');
+const {addCalendarMonthsInclusive,subscriptionStatus,normalizePhone,money,PLAN_DEFAULTS}=require('../src/logic');
+test('default plan prices are correct',()=>assert.deepEqual(PLAN_DEFAULTS.map(x=>x.monthlyPrice),[300,1500,1000,700,450]));
+test('one month is calendar based and inclusive',()=>assert.equal(addCalendarMonthsInclusive('2026-08-11',1).toISOString().slice(0,10),'2026-09-10'));
+test('end of month is handled safely',()=>assert.equal(addCalendarMonthsInclusive('2026-01-31',1).toISOString().slice(0,10),'2026-02-27'));
+test('status becomes expiring at two days',()=>assert.equal(subscriptionStatus('2026-08-13','2026-08-11'),'expiring'));
+test('status becomes expired after end date',()=>assert.equal(subscriptionStatus('2026-08-10','2026-08-11'),'expired'));
+test('egyptian phone is normalized',()=>assert.equal(normalizePhone('+20','01012345678'),'+201012345678'));
+test('money stays numeric and rounded',()=>assert.equal(money(700-399.999),300));
