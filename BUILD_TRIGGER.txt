@@ -1,1 +1,1 @@
-Build request: 2026-08-12 v1.0.2 legacy Realm repair migration + packaged and installed smoke tests.
+Build request: 2026-08-12 v1.1.0 full dashboard, plan management, trainee editing, reports, CSV export and full feature tests.
