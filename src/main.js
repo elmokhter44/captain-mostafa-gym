@@ -20,6 +20,7 @@ const authSmokeTest = process.argv.includes('--auth-smoke-test');
 const loginUiSmokeTest = process.argv.includes('--login-ui-smoke-test');
 
 const AUTH_KEYS = new Set(['authUsername','authPasswordSalt','authPasswordHash']);
+const wait = ms => new Promise(resolve=>setTimeout(resolve,ms));
 
 function tempLogPath(){try{return path.join(app.getPath('temp'),'captain-mostafa-gym-startup.log')}catch{return path.join(process.env.TEMP||process.cwd(),'captain-mostafa-gym-startup.log')}}
 function logStartup(message,error){const line=`[${new Date().toISOString()}] ${message}${error?`\n${error.stack||error.message||error}`:''}\n`;try{fs.appendFileSync(tempLogPath(),line,'utf8')}catch{}try{if(app.isReady())fs.appendFileSync(path.join(app.getPath('userData'),'startup.log'),line,'utf8')}catch{}console.error(line)}
@@ -32,9 +33,28 @@ function savePublicSettings(input){const clean={};for(const [key,value] of Objec
 function createWindow(){
   if(!authenticated && !isSmokeTest) throw new Error('يجب تسجيل الدخول قبل فتح البرنامج');
   if(mainWindow && !mainWindow.isDestroyed()){mainWindow.focus();return mainWindow}
-  mainWindow=new BrowserWindow({width:1500,height:940,minWidth:1180,minHeight:720,title:'Captain Mostafa Gym',backgroundColor:'#f3f7f6',autoHideMenuBar:true,show:!isSmokeTest,webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false}});
+  mainWindow=new BrowserWindow({width:1500,height:940,minWidth:760,minHeight:600,title:'Captain Mostafa Gym',backgroundColor:'#f3f7f6',autoHideMenuBar:true,show:!isSmokeTest,webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false}});
   mainWindow.webContents.on('did-fail-load',(_e,c,d)=>logStartup(`RENDERER FAILED TO LOAD (${c}): ${d}`));
-  if(isSmokeTest)mainWindow.webContents.once('did-finish-load',async()=>{try{let report=null;for(let i=0;i<30;i++){report=await mainWindow.webContents.executeJavaScript('({ready:!!window.__GYM_UI_READY__,features:window.__GYM_UI_FEATURES__||null})');if(report?.ready)break;await new Promise(r=>setTimeout(r,200));}if(!report?.ready||!report.features?.hasCsv||!report.features?.hasPlans||!report.features?.hasEdit||report.features.buttons<15)throw new Error(`UI smoke report invalid: ${JSON.stringify(report)}`);fs.writeFileSync(path.join(app.getPath('temp'),'captain-mostafa-gym-smoke-ok.txt'),JSON.stringify(report),'utf8');logStartup(`PACKAGED UI SMOKE TEST PASSED ${JSON.stringify(report.features)}`);setTimeout(()=>app.quit(),200)}catch(e){logStartup('PACKAGED UI SMOKE TEST FAILED',e);app.exit(1)}});
+  if(isSmokeTest)mainWindow.webContents.once('did-finish-load',async()=>{try{
+    let report=null;
+    for(let i=0;i<40;i++){
+      report=await mainWindow.webContents.executeJavaScript('({ready:!!window.__GYM_UI_READY__,features:window.__GYM_UI_FEATURES__||null,authSettings:!!window.__GYM_AUTH_SETTINGS_PAGE__})');
+      if(report?.ready&&report?.authSettings)break;
+      await wait(200);
+    }
+    if(!report?.ready||!report.features?.hasCsv||!report.features?.hasPlans||!report.features?.hasEdit||report.features.buttons<15||!report.authSettings)throw new Error(`UI smoke report invalid: ${JSON.stringify(report)}`);
+    const responsive=[];
+    for(const [w,h] of [[1200,800],[900,700],[760,620]]){
+      mainWindow.setSize(w,h);await wait(180);
+      const layout=await mainWindow.webContents.executeJavaScript(`({vw:window.innerWidth,scrollW:document.documentElement.scrollWidth,settingsNav:!!document.getElementById('settingsPageNav'),loginPage:!!document.getElementById('settingsLoginPage'),generalPage:!!document.getElementById('settingsGeneralPage')})`);
+      if(layout.scrollW>layout.vw+4)throw new Error(`Responsive overflow at ${w}px: ${JSON.stringify(layout)}`);
+      if(!layout.settingsNav||!layout.loginPage||!layout.generalPage)throw new Error(`Separate settings login page missing at ${w}px`);
+      responsive.push({width:w,viewport:layout.vw,scrollWidth:layout.scrollW});
+    }
+    const finalReport={...report,responsive};
+    fs.writeFileSync(path.join(app.getPath('temp'),'captain-mostafa-gym-smoke-ok.txt'),JSON.stringify(finalReport),'utf8');
+    logStartup(`PACKAGED RESPONSIVE UI SMOKE TEST PASSED ${JSON.stringify(finalReport)}`);setTimeout(()=>app.quit(),200)
+  }catch(e){logStartup('PACKAGED UI SMOKE TEST FAILED',e);app.exit(1)}});
   mainWindow.on('closed',()=>{mainWindow=null});
   mainWindow.loadFile(path.join(__dirname,'index.html')).catch(e=>logStartup('FAILED TO LOAD INDEX.HTML',e)); return mainWindow;
 }
@@ -42,11 +62,21 @@ function createWindow(){
 function createLoginWindow(){
   if(authenticated){return createWindow()}
   if(loginWindow && !loginWindow.isDestroyed()){loginWindow.focus();return loginWindow}
-  loginWindow=new BrowserWindow({width:520,height:720,minWidth:500,minHeight:680,maxWidth:620,maxHeight:820,resizable:true,title:'تسجيل الدخول - Captain Mostafa Gym',backgroundColor:'#f3f7f6',autoHideMenuBar:true,show:!loginUiSmokeTest,webPreferences:{preload:path.join(__dirname,'login-preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false}});
+  loginWindow=new BrowserWindow({width:460,height:650,minWidth:320,minHeight:500,resizable:true,title:'تسجيل الدخول - Captain Mostafa Gym',backgroundColor:'#f3f7f6',autoHideMenuBar:true,show:!loginUiSmokeTest,webPreferences:{preload:path.join(__dirname,'login-preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false}});
   loginWindow.webContents.on('did-fail-load',(_e,c,d)=>logStartup(`LOGIN PAGE FAILED TO LOAD (${c}): ${d}`));
-  loginWindow.webContents.once('did-finish-load',()=>{
+  loginWindow.webContents.once('did-finish-load',async()=>{
     logStartup('LOGIN WINDOW LOADED');
-    if(loginUiSmokeTest){try{const report={title:loginWindow.getTitle(),mainWindows:BrowserWindow.getAllWindows().filter(w=>w!==loginWindow).length};if(report.mainWindows!==0)throw new Error('Main application window opened before login');fs.writeFileSync(path.join(app.getPath('temp'),'captain-mostafa-gym-login-ui-ok.txt'),JSON.stringify(report),'utf8');logStartup('MANDATORY LOGIN UI SMOKE TEST PASSED');setTimeout(()=>app.quit(),200)}catch(e){logStartup('LOGIN UI SMOKE TEST FAILED',e);app.exit(1)}}
+    if(loginUiSmokeTest){try{
+      const text=await loginWindow.webContents.executeJavaScript('document.body.innerText');
+      if(/Admin/i.test(text)||text.includes('أول تشغيل'))throw new Error('Default credentials are visible on the login screen');
+      const mainWindows=BrowserWindow.getAllWindows().filter(w=>w!==loginWindow).length;
+      if(mainWindows!==0)throw new Error('Main application window opened before login');
+      loginWindow.setSize(340,560);await wait(180);
+      const layout=await loginWindow.webContents.executeJavaScript('({vw:window.innerWidth,scrollW:document.documentElement.scrollWidth,cardW:document.querySelector(".card")?.getBoundingClientRect().width||0})');
+      if(layout.scrollW>layout.vw+3||layout.cardW>layout.vw)throw new Error(`Login page is not responsive: ${JSON.stringify(layout)}`);
+      const report={title:loginWindow.getTitle(),mainWindows,defaultCredentialsVisible:false,responsive:layout};
+      fs.writeFileSync(path.join(app.getPath('temp'),'captain-mostafa-gym-login-ui-ok.txt'),JSON.stringify(report),'utf8');logStartup(`MANDATORY RESPONSIVE LOGIN UI SMOKE TEST PASSED ${JSON.stringify(report)}`);setTimeout(()=>app.quit(),200)
+    }catch(e){logStartup('LOGIN UI SMOKE TEST FAILED',e);app.exit(1)}}
   });
   loginWindow.on('closed',()=>{loginWindow=null;if(!authenticated&&!loginUiSmokeTest)app.quit()});
   loginWindow.loadFile(path.join(__dirname,'login.html')).catch(e=>logStartup('FAILED TO LOAD LOGIN.HTML',e));
