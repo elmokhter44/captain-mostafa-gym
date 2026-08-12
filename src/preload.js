@@ -9,13 +9,27 @@ contextBridge.exposeInMainWorld('gymAPI',{
   archive:(id,v)=>call('gym:archive',id,v), delete:id=>call('gym:delete',id), payment:(t,s,a,m,n)=>call('gym:payment',t,s,a,m,n), renew:(id,d)=>call('gym:renew',id,d),
   plans:(all=false)=>call('gym:plans',all), createPlan:d=>call('gym:plan-create',d), updatePlan:(id,d)=>call('gym:plan-update',id,d), setPlanActive:(id,v)=>call('gym:plan-active',id,v),
   settings:()=>call('gym:settings'), saveSettings:d=>call('gym:save-settings',d), reminders:()=>call('gym:reminders'), markReminder:(id,s,e)=>call('gym:reminder-mark',id,s,e),
-  whatsapp:(p,m,r)=>call('gym:whatsapp',p,m,r), backup:()=>call('gym:backup'), exportCsv:()=>call('gym:export-csv'), openDataFolder:()=>call('gym:open-data-folder'),
+  whatsapp:(p,m,r)=>call('gym:whatsapp',p,m,r), backup:()=>call('gym:backup'), exportCsv:()=>call('gym:export-excel'), openDataFolder:()=>call('gym:open-data-folder'),
   authInfo:()=>call('auth:info'), changeCredentials:d=>call('auth:change',d)
 });
 
 function loadResponsiveStyles(){
   if(document.querySelector('link[data-responsive-styles]'))return;
   const link=document.createElement('link');link.rel='stylesheet';link.href='responsive.css';link.dataset.responsiveStyles='true';document.head.appendChild(link);
+}
+
+function replaceCsvText(){
+  if(!document.body)return;
+  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+  const nodes=[];let node;
+  while((node=walker.nextNode()))if(node.nodeValue&&node.nodeValue.includes('CSV'))nodes.push(node);
+  nodes.forEach(n=>{n.nodeValue=n.nodeValue.replaceAll('CSV','Excel')});
+}
+
+function watchExportLabels(){
+  replaceCsvText();
+  const observer=new MutationObserver(()=>replaceCsvText());
+  observer.observe(document.body,{childList:true,subtree:true,characterData:true});
 }
 
 function injectSettingsPages(){
@@ -84,4 +98,4 @@ function injectSettingsPages(){
   });
 }
 
-window.addEventListener('DOMContentLoaded',()=>{loadResponsiveStyles();setTimeout(injectSettingsPages,0);setTimeout(injectSettingsPages,500)});
+window.addEventListener('DOMContentLoaded',()=>{loadResponsiveStyles();watchExportLabels();setTimeout(injectSettingsPages,0);setTimeout(injectSettingsPages,500);setTimeout(replaceCsvText,800)});
