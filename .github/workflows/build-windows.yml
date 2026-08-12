@@ -62,9 +62,9 @@ jobs:
           if (Test-Path $startupLog) { Get-Content $startupLog }
           if ($p.ExitCode -ne 0 -or -not (Test-Path $marker)) { throw "Authentication smoke test failed: $($p.ExitCode)" }
           Remove-Item Env:GYM_TEST_USER_DATA -ErrorAction SilentlyContinue
-          Write-Host 'Default Admin/Admin + wrong-password rejection + credential change + reset test passed.'
+          Write-Host 'Default credentials + wrong-password rejection + credential change + reset test passed.'
 
-      - name: Test mandatory login screen before main app
+      - name: Test hidden and responsive mandatory login screen
         shell: pwsh
         run: |
           $loginDir = Join-Path $env:TEMP 'captain-mostafa-gym-login-ui-test'
@@ -82,9 +82,9 @@ jobs:
           if ($p.ExitCode -ne 0 -or -not (Test-Path $marker)) { throw "Login UI smoke test failed: $($p.ExitCode)" }
           Get-Content $marker
           Remove-Item Env:GYM_TEST_USER_DATA -ErrorAction SilentlyContinue
-          Write-Host 'Login window loaded and main application remained blocked before authentication.'
+          Write-Host 'Login credentials are hidden, login page is responsive, and main app remains blocked before authentication.'
 
-      - name: Smoke test packaged UI and Realm
+      - name: Smoke test responsive packaged UI and Realm
         shell: pwsh
         run: |
           $marker = Join-Path $env:TEMP 'captain-mostafa-gym-smoke-ok.txt'
@@ -93,11 +93,11 @@ jobs:
           Remove-Item $startupLog -Force -ErrorAction SilentlyContinue
           $exe = Join-Path $PWD 'dist\win-unpacked\Captain Mostafa Gym.exe'
           $p = Start-Process -FilePath $exe -ArgumentList '--smoke-test','--enable-logging' -PassThru
-          if (-not $p.WaitForExit(30000)) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; if (Test-Path $startupLog) { Get-Content $startupLog }; throw 'Packaged UI smoke test timed out.' }
+          if (-not $p.WaitForExit(30000)) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; if (Test-Path $startupLog) { Get-Content $startupLog }; throw 'Packaged responsive UI smoke test timed out.' }
           if (Test-Path $startupLog) { Get-Content $startupLog }
-          if ($p.ExitCode -ne 0 -or -not (Test-Path $marker)) { throw "Packaged UI smoke test failed: $($p.ExitCode)" }
+          if ($p.ExitCode -ne 0 -or -not (Test-Path $marker)) { throw "Packaged responsive UI smoke test failed: $($p.ExitCode)" }
           Get-Content $marker
-          Write-Host 'Existing packaged UI + Electron + Realm smoke test passed unchanged.'
+          Write-Host 'Responsive widths + separate login settings page + existing UI + Electron + Realm smoke test passed.'
 
       - name: Test full CRUD, plans, payments, reports and CSV data
         shell: pwsh
@@ -179,12 +179,12 @@ jobs:
           if (-not $p.WaitForExit(30000)) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; if (Test-Path $startupLog) { Get-Content $startupLog }; throw 'Installed application smoke test timed out.' }
           if (Test-Path $startupLog) { Get-Content $startupLog }
           if ($p.ExitCode -ne 0 -or -not (Test-Path $marker)) { throw "Installed application failed UI smoke test: $($p.ExitCode)" }
-          Write-Host 'Installed Setup + mandatory login + existing full UI + Realm + desktop shortcut tests passed.'
+          Write-Host 'Installed Setup + hidden responsive login + responsive app + separate login settings page + existing features + Realm + desktop shortcut tests passed.'
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Captain-Mostafa-Gym-Windows-Installer-v1.1.1
+          name: Captain-Mostafa-Gym-Windows-Installer-v1.1.2
           path: |
             dist/*.exe
             dist/*.yml
