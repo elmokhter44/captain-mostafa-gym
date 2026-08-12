@@ -2,6 +2,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 const call=(channel,...args)=>ipcRenderer.invoke(channel,...args);
 
+contextBridge.exposeInMainWorld('__GYM_AUTH_SETTINGS_PAGE__',true);
 contextBridge.exposeInMainWorld('gymAPI',{
   bootstrap:()=>call('gym:bootstrap'), dashboard:()=>call('gym:dashboard'), list:f=>call('gym:list',f), get:id=>call('gym:get',id),
   add:d=>call('gym:add',d), update:(id,d)=>call('gym:update',id,d), updateSubscription:(id,d)=>call('gym:update-subscription',id,d),
@@ -81,7 +82,6 @@ function injectSettingsPages(){
       setTimeout(()=>{message.textContent='';message.className=''},3500);
     }catch(error){message.className='auth-msg error';message.textContent=error?.message||'تعذر حفظ بيانات الدخول'}
   });
-  window.__GYM_AUTH_SETTINGS_PAGE__=true;
 }
 
 window.addEventListener('DOMContentLoaded',()=>{loadResponsiveStyles();setTimeout(injectSettingsPages,0);setTimeout(injectSettingsPages,500)});
