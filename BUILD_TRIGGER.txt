@@ -1,1 +1,1 @@
-Build request: 2026-08-12 v1.1.2 attempt 2 — hide default credentials on login, responsive login/full app, separate login credentials page inside Settings, context-isolation test marker fixed, preserve all other features unchanged.
+Build request: 2026-08-12 v1.1.3 — replace CSV export with formatted Excel XLSX export only; preserve all other design, login, responsive behavior, RealmDB data and existing features unchanged.
