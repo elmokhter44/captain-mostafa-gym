@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تسجيل الدخول - كابتن مصطفى الريدي</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alexandria:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(145deg,#eff8f4,#eef5ff);font-family:Alexandria,Tahoma,Arial,sans-serif;color:#17313b}.card{width:min(440px,calc(100vw - 36px));background:#fff;border:1px solid #e6eeec;border-radius:28px;padding:34px;box-shadow:0 28px 70px rgba(31,61,73,.14)}.logo{width:72px;height:72px;border-radius:22px;margin:0 auto 18px;display:grid;place-items:center;background:linear-gradient(135deg,#19a974,#2878e3);color:#fff;box-shadow:0 14px 30px rgba(40,120,227,.22)}.logo svg{width:34px;height:34px}.title{text-align:center;margin:0;font-size:25px}.subtitle{text-align:center;color:#75858d;font-size:13px;margin:8px 0 28px}.field{display:grid;gap:8px;margin-bottom:15px}.field label{font-size:12px;color:#63777f}.field input{width:100%;border:1px solid #e1eae8;border-radius:15px;padding:14px 15px;outline:none;background:#fbfdfd;font:inherit;color:#17313b;transition:.2s}.field input:focus{border-color:#5aa7c8;box-shadow:0 0 0 4px rgba(40,120,227,.07)}.pass-wrap{position:relative}.pass-wrap input{padding-left:48px}.toggle{position:absolute;left:8px;top:50%;transform:translateY(-50%);width:36px;height:36px;border:0;background:#eef4f3;border-radius:10px;cursor:pointer;font-size:16px}.login{width:100%;border:0;border-radius:15px;padding:14px;font:700 14px Alexandria;color:#fff;background:linear-gradient(135deg,#19a974,#2878e3);cursor:pointer;margin-top:4px;box-shadow:0 10px 24px rgba(40,120,227,.18)}.login:disabled{opacity:.6;cursor:wait}.error{display:none;margin:14px 0 0;padding:11px 12px;border-radius:12px;background:#fff0f0;color:#c73d3d;font-size:12px}.error.show{display:block}.default{margin-top:18px;padding:12px 14px;border-radius:14px;background:#f4faf8;color:#587079;font-size:11px;line-height:1.8;text-align:center}.forgot{display:block;margin:16px auto 0;border:0;background:transparent;color:#2878e3;font:600 12px Alexandria;cursor:pointer}.footer{text-align:center;color:#9aabad;font-size:10px;margin-top:22px}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v2"/></svg></div>
+  <h1 class="title">تسجيل الدخول</h1>
+  <p class="subtitle">نظام إدارة جيم كابتن مصطفى الريدي</p>
+  <form id="loginForm">
+    <div class="field"><label for="username">اسم المستخدم</label><input id="username" autocomplete="username" required autofocus></div>
+    <div class="field"><label for="password">كلمة المرور</label><div class="pass-wrap"><input id="password" type="password" autocomplete="current-password" required><button class="toggle" type="button" id="togglePassword" title="إظهار/إخفاء كلمة المرور">◉</button></div></div>
+    <button class="login" id="loginBtn" type="submit">دخول إلى البرنامج</button>
+    <div class="error" id="errorBox"></div>
+  </form>
+  <div class="default">أول تشغيل: اسم المستخدم <b>Admin</b> وكلمة المرور <b>Admin</b><br>يمكن تغييرهما بعد الدخول من الإعدادات.</div>
+  <button class="forgot" id="forgotBtn" type="button">نسيت بيانات الدخول؟</button>
+  <div class="footer">البيانات محفوظة محليًا على هذا الجهاز</div>
+</main>
+<script>
+const form=document.getElementById('loginForm'),user=document.getElementById('username'),pass=document.getElementById('password'),btn=document.getElementById('loginBtn'),err=document.getElementById('errorBox');
+function showError(message){err.textContent=message;err.classList.add('show')}
+function clearError(){err.classList.remove('show');err.textContent=''}
+document.getElementById('togglePassword').onclick=()=>{pass.type=pass.type==='password'?'text':'password'};
+form.addEventListener('submit',async e=>{e.preventDefault();clearError();btn.disabled=true;btn.textContent='جاري التحقق...';try{const r=await window.loginAPI.login(user.value.trim(),pass.value);if(!r?.ok)showError(r?.error||'اسم المستخدم أو كلمة المرور غير صحيحة')}catch(e){showError('تعذر تسجيل الدخول، حاول مرة أخرى')}finally{btn.disabled=false;btn.textContent='دخول إلى البرنامج'}});
+document.getElementById('forgotBtn').onclick=async()=>{const first=confirm('سيتم إعادة اسم المستخدم وكلمة المرور إلى القيم الافتراضية Admin / Admin.\n\nهل تريد المتابعة؟');if(!first)return;const second=confirm('تأكيد أخير: سيتم استبدال بيانات الدخول الحالية فقط ولن تتأثر بيانات المتدربين أو الاشتراكات.');if(!second)return;try{const r=await window.loginAPI.resetToDefaults();if(r?.ok){user.value='Admin';pass.value='';showError('تمت الاستعادة. استخدم Admin / Admin ثم غيّر البيانات من الإعدادات.')}else showError(r?.error||'تعذر استعادة بيانات الدخول')}catch(e){showError('تعذر استعادة بيانات الدخول')}};
+</script>
+</body>
+</html>
