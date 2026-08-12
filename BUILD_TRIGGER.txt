@@ -1,1 +1,1 @@
-Build request: 2026-08-12 v1.1.1 mandatory username/password login only; preserve all v1.1.0 design and features unchanged.
+Build request: 2026-08-12 v1.1.2 hide default credentials on login, make login and full app responsive, move login credentials to a separate page inside Settings, preserve all other v1.1.1 design and features unchanged.
