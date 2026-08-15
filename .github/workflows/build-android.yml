@@ -39,7 +39,7 @@ jobs:
         run: |
           npx --yes @react-native-community/cli@latest init CaptainMostafaGymMobile --version 0.80.0 --skip-install
           cd CaptainMostafaGymMobile
-          npm install --no-audit --no-fund realm@20.2.0 react-native-webview react-native-fs @react-native-documents/picker crypto-js@4.2.0 buffer@6.0.3
+          npm install --no-audit --no-fund realm@20.2.0 react-native-webview react-native-fs @react-native-documents/picker react-native-get-random-values crypto-js@4.2.0 buffer@6.0.3
 
       - name: Prepare identical gym UI and Realm services
         shell: bash
@@ -50,6 +50,10 @@ jobs:
           node --check CaptainMostafaGymMobile/auth-mobile.js
           node --check CaptainMostafaGymMobile/restore-mobile.js
           node --check CaptainMostafaGymMobile/android/app/src/main/assets/gym/bridge.js
+          grep -q "react-native-get-random-values" CaptainMostafaGymMobile/index.js
+          grep -q "getRandomValues" CaptainMostafaGymMobile/auth-mobile.js
+          grep -q "versionCode 2" CaptainMostafaGymMobile/android/app/build.gradle
+          grep -q 'versionName "1.0.1"' CaptainMostafaGymMobile/android/app/build.gradle
           grep -q "bridge.js" CaptainMostafaGymMobile/android/app/src/main/assets/gym/index.html
           grep -q "mobile-preload.js" CaptainMostafaGymMobile/android/app/src/main/assets/gym/index.html
           node - <<'NODE'
@@ -106,15 +110,17 @@ jobs:
           unzip -l "$APK" | grep -E -q "lib/.*/.*realm|lib/.*/librealm|lib/.*/libjsi"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee "$GITHUB_WORKSPACE/android-badging.txt"
-          cp "$APK" "$GITHUB_WORKSPACE/Captain_Mostafa_Gym_Android_v1.0.0.apk"
-          sha256sum "$GITHUB_WORKSPACE/Captain_Mostafa_Gym_Android_v1.0.0.apk" | tee "$GITHUB_WORKSPACE/android-sha256.txt"
+          grep -q "versionCode='2'" "$GITHUB_WORKSPACE/android-badging.txt"
+          grep -q "versionName='1.0.1'" "$GITHUB_WORKSPACE/android-badging.txt"
+          cp "$APK" "$GITHUB_WORKSPACE/Captain_Mostafa_Gym_Android_v1.0.1.apk"
+          sha256sum "$GITHUB_WORKSPACE/Captain_Mostafa_Gym_Android_v1.0.1.apk" | tee "$GITHUB_WORKSPACE/android-sha256.txt"
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: Captain-Mostafa-Gym-Android-APK-v1.0.0
+          name: Captain-Mostafa-Gym-Android-APK-v1.0.1
           path: |
-            Captain_Mostafa_Gym_Android_v1.0.0.apk
+            Captain_Mostafa_Gym_Android_v1.0.1.apk
             android-badging.txt
             android-sha256.txt
           if-no-files-found: error
