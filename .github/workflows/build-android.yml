@@ -55,10 +55,13 @@ jobs:
           grep -q "loginUsername" CaptainMostafaGymMobile/App.js
           grep -q "loginButton" CaptainMostafaGymMobile/App.js
           grep -q "mainWebView" CaptainMostafaGymMobile/App.js
-          grep -q "versionCode 3" CaptainMostafaGymMobile/android/app/build.gradle
-          grep -q 'versionName "1.0.2"' CaptainMostafaGymMobile/android/app/build.gradle
+          grep -q "textZoom={100}" CaptainMostafaGymMobile/App.js
+          grep -q "versionCode 4" CaptainMostafaGymMobile/android/app/build.gradle
+          grep -q 'versionName "1.0.3"' CaptainMostafaGymMobile/android/app/build.gradle
+          grep -q "viewport-fit=cover" CaptainMostafaGymMobile/android/app/src/main/assets/gym/index.html
           grep -q "bridge.js" CaptainMostafaGymMobile/android/app/src/main/assets/gym/index.html
           grep -q "mobile-preload.js" CaptainMostafaGymMobile/android/app/src/main/assets/gym/index.html
+          grep -q "Trainees table becomes a readable card list on phones" CaptainMostafaGymMobile/android/app/src/main/assets/gym/responsive.css
           node - <<'NODE'
           const fs=require('fs');const h=fs.readFileSync('CaptainMostafaGymMobile/android/app/src/main/assets/gym/index.html','utf8');
           const b=h.indexOf('bridge.js'),p=h.indexOf('mobile-preload.js'),r=h.indexOf('renderer.js');
@@ -113,16 +116,16 @@ jobs:
           unzip -l "$APK" | grep -E -q "lib/.*/.*realm|lib/.*/librealm|lib/.*/libjsi"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee "$GITHUB_WORKSPACE/android-badging.txt"
-          grep -q "versionCode='3'" "$GITHUB_WORKSPACE/android-badging.txt"
-          grep -q "versionName='1.0.2'" "$GITHUB_WORKSPACE/android-badging.txt"
-          cp "$APK" "$GITHUB_WORKSPACE/app-release-v1.0.2.apk"
+          grep -q "versionCode='4'" "$GITHUB_WORKSPACE/android-badging.txt"
+          grep -q "versionName='1.0.3'" "$GITHUB_WORKSPACE/android-badging.txt"
+          cp "$APK" "$GITHUB_WORKSPACE/app-release-v1.0.3.apk"
 
       - name: Upload APK candidate for device test
         uses: actions/upload-artifact@v4
         with:
-          name: android-candidate-v1.0.2
+          name: android-candidate-v1.0.3
           path: |
-            app-release-v1.0.2.apk
+            app-release-v1.0.3.apk
             android-badging.txt
           if-no-files-found: error
           retention-days: 3
@@ -138,13 +141,13 @@ jobs:
       - name: Download exact APK candidate
         uses: actions/download-artifact@v4
         with:
-          name: android-candidate-v1.0.2
+          name: android-candidate-v1.0.3
           path: android-candidate
 
       - name: Verify candidate exists
         shell: bash
         run: |
-          test -s android-candidate/app-release-v1.0.2.apk
+          test -s android-candidate/app-release-v1.0.3.apk
           df -h
 
       - name: Enable KVM access
@@ -154,7 +157,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: End-to-end login and dashboard test on Android emulator
+      - name: End-to-end login dashboard and responsive test on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 29
@@ -162,22 +165,25 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash mobile/test-android-login.sh android-candidate/app-release-v1.0.2.apk
+          script: bash mobile/test-android-login.sh android-candidate/app-release-v1.0.3.apk
 
-      - name: Package only after real login test passes
+      - name: Package only after real phone test passes
         shell: bash
         run: |
-          cp android-candidate/app-release-v1.0.2.apk Captain_Mostafa_Gym_Android_v1.0.2.apk
+          cp android-candidate/app-release-v1.0.3.apk Captain_Mostafa_Gym_Android_v1.0.3.apk
           cp android-candidate/android-badging.txt android-badging.txt
-          sha256sum Captain_Mostafa_Gym_Android_v1.0.2.apk | tee android-sha256.txt
+          sha256sum Captain_Mostafa_Gym_Android_v1.0.3.apk | tee android-sha256.txt
+          test -s gym-login-test/dashboard-success.png
 
       - name: Upload verified Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: Captain-Mostafa-Gym-Android-APK-v1.0.2
+          name: Captain-Mostafa-Gym-Android-APK-v1.0.3
           path: |
-            Captain_Mostafa_Gym_Android_v1.0.2.apk
+            Captain_Mostafa_Gym_Android_v1.0.3.apk
             android-badging.txt
             android-sha256.txt
+            gym-login-test/dashboard-success.png
+            gym-login-test/window.xml
           if-no-files-found: error
           retention-days: 30
