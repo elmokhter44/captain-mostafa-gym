@@ -39,12 +39,10 @@ tap_desc() {
   adb shell input tap "$x" "$y"
 }
 
-# Verify the login screen is actually present.
 center_for_desc loginUsername >/dev/null
 center_for_desc loginPassword >/dev/null
 center_for_desc loginButton >/dev/null
 
-# Enter the default credentials exactly as a user would.
 tap_desc loginUsername
 adb shell input text Admin
 sleep 1
@@ -53,7 +51,6 @@ adb shell input text Admin
 sleep 1
 tap_desc loginButton
 
-# Native PBKDF2 is synchronous but should complete quickly. Allow the WebView and Realm UI to bootstrap.
 for i in $(seq 1 30); do
   sleep 1
   pull_ui
@@ -69,7 +66,6 @@ for i in $(seq 1 30); do
   fi
 done
 
-# Confirm the HTML dashboard has rendered, not just an empty WebView.
 rendered=0
 for i in $(seq 1 20); do
   sleep 1
@@ -88,8 +84,6 @@ if [ "$rendered" != 1 ]; then
   exit 1
 fi
 
-# Phone responsiveness gate: important dashboard controls must be present and
-# fully inside the physical display rather than clipped beyond the left/right edge.
 pull_ui
 SIZE="$(adb shell wm size | tr -d '\r' | tail -n 1)"
 WIDTH="$(printf '%s' "$SIZE" | sed -E 's/.*: ([0-9]+)x([0-9]+).*/\1/')"
@@ -98,13 +92,13 @@ python3 - "$WORK/window.xml" "$WIDTH" "$HEIGHT" <<'PY'
 import re,sys,xml.etree.ElementTree as ET
 p,w,h=sys.argv[1],int(sys.argv[2]),int(sys.argv[3])
 root=ET.parse(p).getroot()
-required=['الرئيسية والتقارير','المتدربون','إضافة متدرب']
+required=['الرئيسية والتقارير','المتدربون','إضافة متدرب','تصدير']
 
 def parse_bounds(v):
     m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',v or '')
     return tuple(map(int,m.groups())) if m else None
 
-for label in required:
+def visible_bounds(label):
     matches=[]
     for n in root.iter('node'):
         text=(n.attrib.get('text') or '')
@@ -114,12 +108,25 @@ for label in required:
             if b: matches.append(b)
     if not matches:
         raise SystemExit(f'Responsive check could not find visible control: {label}')
-    # At least one accessibility node for the label must be fully on-screen.
     good=[b for b in matches if b[0]>=0 and b[1]>=0 and b[2]<=w and b[3]<=h and b[2]-b[0]>=20 and b[3]-b[1]>=12]
     if not good:
         raise SystemExit(f'Control is clipped outside {w}x{h}: {label} bounds={matches}')
-    print(f'VISIBLE {label}: {good[0]}')
-print(f'ANDROID RESPONSIVE BOUNDS PASSED at {w}x{h}')
+    return good[0]
+
+bounds={label:visible_bounds(label) for label in required}
+for label,b in bounds.items(): print(f'VISIBLE {label}: {b}')
+
+# The first three navigation buttons must share the compact mobile nav row.
+# A desktop sidebar makes them large, same-width buttons stacked vertically.
+nav=[bounds[x] for x in ['الرئيسية والتقارير','المتدربون','إضافة متدرب']]
+yc=[(b[1]+b[3])//2 for b in nav]
+widths=[b[2]-b[0] for b in nav]
+if max(yc)-min(yc)>80:
+    raise SystemExit(f'Desktop-style vertical navigation detected; nav centers={yc}, bounds={nav}')
+if any(x>w*0.45 for x in widths):
+    raise SystemExit(f'Navigation buttons are too wide for mobile grid; widths={widths}, screen={w}')
+
+print(f'ANDROID RESPONSIVE MOBILE NAV PASSED at {w}x{h}')
 PY
 
 adb exec-out screencap -p > "$WORK/dashboard-success.png"
