@@ -1,1 +1,1 @@
-Build request: 2026-08-15 Android v1.0.0 attempt 3 — standalone signed RELEASE APK; preserve the current gym system, RealmDB data model, login, reports, plans, trainee editing, payments, reminders, WhatsApp, Excel export, backup and restore; reuse the exact current responsive Arabic RTL web UI inside Android.
+Build request: 2026-08-15 Android v1.0.0 attempt 4 — standalone signed RELEASE APK with explicit New Architecture dependency Codegen and deterministic local WebView bridge; preserve all current gym features and responsive Arabic RTL UI unchanged.
