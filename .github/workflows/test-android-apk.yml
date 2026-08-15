@@ -6,6 +6,10 @@ on:
     paths:
       - mobile/SMOKE_TRIGGER.txt
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   emulator-smoke:
     runs-on: ubuntu-latest
