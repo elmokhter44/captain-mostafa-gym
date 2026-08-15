@@ -11,3 +11,123 @@
 @media(max-width:480px){
   .sidebar{padding:11px}.brand{gap:9px}.brand-mark{width:39px;height:39px}.brand p{display:none}.nav-btn{padding:9px 10px;font-size:11px}.content{padding:11px 8px 20px}.topbar>.btn{flex:1 1 100%}.quick-actions{grid-template-columns:1fr}.summary-strip{grid-template-columns:1fr 1fr}.info-grid{grid-template-columns:1fr}.profile-id{align-items:flex-start}.profile-avatar{width:50px;height:50px;border-radius:16px}.settings-subnav-btn small{white-space:normal}.plan-row{grid-template-columns:1fr}.plan-row .actions{grid-column:auto}.filters .control{flex-basis:100%}.control{width:100%}.check-line{font-size:11px}.auth-page-head{align-items:flex-start}.auth-page-icon{width:42px;height:42px;flex-basis:42px}.bar-row{grid-template-columns:1fr}.bar-bg{order:3}.table-wrap{overscroll-behavior-x:contain}
 }
+
+/* Phone-first Android/WebView layout. These rules intentionally override the
+   older tablet fallbacks above so no desktop-width child can push the page
+   outside the physical phone viewport. */
+@media(max-width:700px){
+  html,body{width:100%;max-width:100%;min-width:0;overflow-x:hidden!important}
+  body{overscroll-behavior-x:none}
+  .app,.sidebar,.content,.topbar,.view,.page-title,.stats,.dashboard-grid,.card,.table-card,.panel,.settings-layout,.settings-subpage,.auth-page-card{width:100%;max-width:100%;min-width:0}
+  .app{display:block}
+  .sidebar{overflow:hidden;padding:12px 10px 10px}
+  .brand{width:100%;min-width:0;padding:2px 4px 11px;justify-content:center}
+  .brand>div:last-child{min-width:0}
+  .brand h1{font-size:16px;line-height:1.45;white-space:normal}
+  .brand p{font-size:9px}
+  .nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;width:100%;overflow:visible;margin-top:10px;padding:0}
+  .nav-btn{width:100%;min-width:0;max-width:100%;height:auto;min-height:43px;padding:8px 5px;gap:5px;white-space:normal;line-height:1.35;text-align:center;justify-content:center;font-size:10.5px;overflow-wrap:anywhere}
+  .nav-btn svg{width:17px;height:17px;flex:0 0 17px}
+
+  .content{padding:12px 10px 28px;overflow:hidden}
+  .topbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%;margin-bottom:18px}
+  .searchbox{grid-column:1/-1;width:100%;min-width:0;order:initial}
+  .searchbox input{width:100%;min-width:0;height:47px;padding:0 43px 0 12px;border-radius:16px;font-size:12px;text-overflow:ellipsis}
+  .searchbox svg{right:14px;width:18px;height:18px}
+  .topbar>.btn{width:100%;min-width:0;max-width:100%;min-height:44px;padding:9px 7px;white-space:normal;line-height:1.3;font-size:10.5px;overflow:hidden;text-overflow:ellipsis}
+  .topbar>.btn svg{width:17px;height:17px;flex:0 0 17px}
+
+  .page-title{gap:8px;margin-bottom:14px;overflow:hidden}
+  .page-title>div{min-width:0}
+  .page-title h2{font-size:22px;line-height:1.35;overflow-wrap:anywhere}
+  .page-title p{font-size:10.5px;line-height:1.7;overflow-wrap:anywhere}
+  #dashboard .page-title{flex-direction:row;align-items:flex-start;justify-content:space-between}
+  #dashboard .page-title>.btn{flex:0 0 auto;align-self:flex-start;padding:8px 10px;font-size:10.5px}
+  .page-title .toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .page-title .toolbar .btn{width:100%;min-width:0;padding-inline:8px;white-space:normal}
+
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:10px}
+  .stat-card{min-width:0;min-height:132px;padding:13px 12px 12px;border-radius:17px;overflow:hidden}
+  .stat-card:before{width:58px;height:58px;left:-20px;top:-20px}
+  .stat-icon{width:36px;height:36px;border-radius:12px;margin-bottom:9px}
+  .stat-icon svg{width:18px;height:18px}
+  .stat-label{font-size:9.5px;line-height:1.55;margin-bottom:5px;overflow-wrap:anywhere}
+  .stat-value{font-size:19px;line-height:1.25;overflow-wrap:anywhere}
+  .stat-note{font-size:8.5px;line-height:1.55;margin-top:4px;overflow-wrap:anywhere}
+
+  .dashboard-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin-top:10px}
+  .card,.table-card,.panel,.auth-page-card{border-radius:17px;overflow:hidden}
+  .card-head{padding:13px 14px;gap:8px;min-width:0}
+  .card-head>div{min-width:0}
+  .card-head h3{font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+  .card-head p{font-size:9px;line-height:1.6;overflow-wrap:anywhere}
+  .card-body,.panel,.auth-page-card{padding:14px}
+  .quick-actions{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .quick{min-width:0;padding:11px 6px;font-size:10px;line-height:1.4;overflow-wrap:anywhere}
+  .quick .qicon{width:35px;height:35px;border-radius:11px;margin-bottom:7px}
+  .list-row,.history-row{min-width:0;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+  .list-row>div,.history-row>div{min-width:0}
+  .list-title,.list-sub{overflow-wrap:anywhere}
+
+  .form-grid{grid-template-columns:minmax(0,1fr);gap:11px}
+  .field,.field.full{grid-column:auto;min-width:0}
+  .field input,.field select,.field textarea{min-width:0;font-size:12px}
+  .summary-strip{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;padding:10px}
+  .summary-item{min-width:0}
+  .summary-item b{font-size:10.5px;overflow-wrap:anywhere}
+
+  .filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;width:100%}
+  .filters .control,.filters .check-line{width:100%;min-width:0;margin:0}
+  .filters .check-line{min-height:41px;padding:6px 8px;border:1px solid var(--line);border-radius:12px;background:#fff}
+
+  /* Trainees table becomes a readable card list on phones. */
+  .table-wrap{width:100%;max-width:100%;overflow:visible!important;padding:8px}
+  .table-wrap table{display:block;width:100%;min-width:0!important;max-width:100%;border-collapse:separate}
+  .table-wrap thead{display:none}
+  .table-wrap tbody{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;width:100%}
+  .table-wrap tr{display:block;width:100%;min-width:0;border:1px solid var(--line);border-radius:15px;background:#fff;padding:5px 10px;box-shadow:0 5px 16px rgba(22,58,68,.04);overflow:hidden}
+  .table-wrap td{display:grid;grid-template-columns:82px minmax(0,1fr);gap:8px;align-items:center;width:100%;min-width:0;padding:8px 1px;border-bottom:1px solid #edf2f1;font-size:10px;white-space:normal;overflow-wrap:anywhere}
+  .table-wrap td:last-child{border-bottom:0}
+  .table-wrap td:before{font-size:8.5px;color:var(--muted);font-weight:600;line-height:1.4}
+  .table-wrap td:nth-child(1):before{content:"المتدرب"}.table-wrap td:nth-child(2):before{content:"الموبايل"}.table-wrap td:nth-child(3):before{content:"الخطة"}.table-wrap td:nth-child(4):before{content:"الفترة"}.table-wrap td:nth-child(5):before{content:"الإجمالي"}.table-wrap td:nth-child(6):before{content:"المدفوع"}.table-wrap td:nth-child(7):before{content:"المتبقي"}.table-wrap td:nth-child(8):before{content:"الحالة"}.table-wrap td:nth-child(9):before{content:"إجراءات"}
+  .table-wrap .person{min-width:0;gap:7px}
+  .table-wrap .person>div{min-width:0;overflow-wrap:anywhere}
+  .table-wrap .avatar{width:33px;height:33px;border-radius:11px;flex:0 0 33px}
+  .table-wrap .actions{display:flex;gap:5px;flex-wrap:wrap;min-width:0}
+
+  .profile-hero{gap:10px}
+  .profile-id{width:100%;min-width:0}
+  .profile-id>div:last-child{min-width:0}
+  .profile-id h2,.profile-id p{overflow-wrap:anywhere}
+  .profile-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;width:100%}
+  .profile-actions .btn{width:100%;min-width:0;white-space:normal;padding:8px 6px;font-size:10px}
+  .info-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .info-box{min-width:0;padding:10px}
+  .info-box b{display:block;overflow-wrap:anywhere}
+  .tabs{width:100%;max-width:100%;gap:2px;overflow-x:auto}
+  .tab-btn{padding:9px 10px;white-space:nowrap}
+
+  .settings-layout,.settings-subnav{grid-template-columns:minmax(0,1fr);gap:9px}
+  .settings-subnav-btn,.plan-row{min-width:0}
+  .plan-row{grid-template-columns:minmax(0,1fr);gap:7px}
+  .plan-row .actions{grid-column:auto;justify-content:flex-start;flex-wrap:wrap}
+  .auth-page-head>div:last-child{min-width:0}
+  .auth-page-head h3,.auth-page-head p{overflow-wrap:anywhere}
+
+  .modal-back{padding:6px;overflow-x:hidden}
+  .modal,.modal.small{width:100%;max-width:100%;min-width:0;margin:auto;border-radius:17px}
+  .modal-head,.modal-body{min-width:0}
+  .modal-body{overflow-x:hidden}
+  .bar-row{grid-template-columns:minmax(0,1fr);gap:6px}
+  .bar-bg{width:100%;order:3}
+}
+
+@media(max-width:360px){
+  .nav{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .topbar{grid-template-columns:minmax(0,1fr)}
+  .searchbox{grid-column:auto}
+  .stats{grid-template-columns:minmax(0,1fr)}
+  .info-grid,.profile-actions,.filters{grid-template-columns:minmax(0,1fr)}
+  #dashboard .page-title{flex-direction:column}
+  .summary-strip{grid-template-columns:minmax(0,1fr)}
+}
