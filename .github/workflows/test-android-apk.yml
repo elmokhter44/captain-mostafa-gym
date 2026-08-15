@@ -1,0 +1,73 @@
+name: Test Android APK on Emulator
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - mobile/SMOKE_TRIGGER.txt
+
+jobs:
+  emulator-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download verified release APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Captain-Mostafa-Gym-Android-APK-v1.0.0
+          path: apk
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 31894677069
+
+      - name: Locate APK
+        shell: bash
+        run: |
+          find apk -maxdepth 2 -type f -print
+          test -s apk/Captain_Mostafa_Gym_Android_v1.0.0.apk
+
+      - name: Install and launch on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            set -e
+            APK="$GITHUB_WORKSPACE/apk/Captain_Mostafa_Gym_Android_v1.0.0.apk"
+            PKG="com.captainmostafagymmobile"
+            adb install -r "$APK"
+            adb logcat -c
+            adb shell am force-stop "$PKG"
+            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
+            sleep 12
+            PID=$(adb shell pidof "$PKG" | tr -d '\r')
+            test -n "$PID"
+            echo "App PID: $PID"
+            adb shell uiautomator dump /sdcard/window.xml || true
+            adb pull /sdcard/window.xml "$GITHUB_WORKSPACE/window.xml" || true
+            if [ -f "$GITHUB_WORKSPACE/window.xml" ]; then
+              cat "$GITHUB_WORKSPACE/window.xml"
+              grep -q "كابتن مصطفى الريدي" "$GITHUB_WORKSPACE/window.xml" || grep -q "تسجيل الدخول" "$GITHUB_WORKSPACE/window.xml"
+            fi
+            adb logcat -d > "$GITHUB_WORKSPACE/logcat.txt"
+            if grep -E "FATAL EXCEPTION|AndroidRuntime.*FATAL|Process: $PKG.*has died" "$GITHUB_WORKSPACE/logcat.txt"; then
+              echo "Fatal Android crash detected"
+              exit 1
+            fi
+            echo "Installed release APK launched and remained alive on Android API 35 emulator."
+
+      - name: Upload smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-APK-Emulator-Smoke-Diagnostics
+          path: |
+            window.xml
+            logcat.txt
+          if-no-files-found: ignore
