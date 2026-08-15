@@ -10,7 +10,7 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 70
     env:
       REALM_DISABLE_ANALYTICS: '1'
     steps:
@@ -115,6 +115,37 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee "$GITHUB_WORKSPACE/android-badging.txt"
           grep -q "versionCode='3'" "$GITHUB_WORKSPACE/android-badging.txt"
           grep -q "versionName='1.0.2'" "$GITHUB_WORKSPACE/android-badging.txt"
+          cp "$APK" "$GITHUB_WORKSPACE/app-release-v1.0.2.apk"
+
+      - name: Upload APK candidate for device test
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-candidate-v1.0.2
+          path: |
+            app-release-v1.0.2.apk
+            android-badging.txt
+          if-no-files-found: error
+          retention-days: 3
+
+  e2e-android-login:
+    needs: build-android
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout test script
+        uses: actions/checkout@v4
+
+      - name: Download exact APK candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: android-candidate-v1.0.2
+          path: android-candidate
+
+      - name: Verify candidate exists
+        shell: bash
+        run: |
+          test -s android-candidate/app-release-v1.0.2.apk
+          df -h
 
       - name: Enable KVM access
         shell: bash
@@ -131,16 +162,16 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash mobile/test-android-login.sh CaptainMostafaGymMobile/android/app/build/outputs/apk/release/app-release.apk
+          script: bash mobile/test-android-login.sh android-candidate/app-release-v1.0.2.apk
 
-      - name: Package verified APK
+      - name: Package only after real login test passes
         shell: bash
         run: |
-          APK="CaptainMostafaGymMobile/android/app/build/outputs/apk/release/app-release.apk"
-          cp "$APK" "$GITHUB_WORKSPACE/Captain_Mostafa_Gym_Android_v1.0.2.apk"
-          sha256sum "$GITHUB_WORKSPACE/Captain_Mostafa_Gym_Android_v1.0.2.apk" | tee "$GITHUB_WORKSPACE/android-sha256.txt"
+          cp android-candidate/app-release-v1.0.2.apk Captain_Mostafa_Gym_Android_v1.0.2.apk
+          cp android-candidate/android-badging.txt android-badging.txt
+          sha256sum Captain_Mostafa_Gym_Android_v1.0.2.apk | tee android-sha256.txt
 
-      - name: Upload Android APK
+      - name: Upload verified Android APK
         uses: actions/upload-artifact@v4
         with:
           name: Captain-Mostafa-Gym-Android-APK-v1.0.2
