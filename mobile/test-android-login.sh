@@ -2,7 +2,7 @@
 set -euo pipefail
 APK="${1:?APK path required}"
 PKG="com.captainmostafagymmobile"
-WORK="${RUNNER_TEMP:-/tmp}/gym-login-test"
+WORK="${GITHUB_WORKSPACE:-${RUNNER_TEMP:-/tmp}}/gym-login-test"
 mkdir -p "$WORK"
 
 adb wait-for-device
@@ -70,18 +70,57 @@ for i in $(seq 1 30); do
 done
 
 # Confirm the HTML dashboard has rendered, not just an empty WebView.
+rendered=0
 for i in $(seq 1 20); do
   sleep 1
   pull_ui
   if grep -q 'الرئيسية' "$WORK/window.xml" || grep -q 'المتدربون' "$WORK/window.xml" || grep -q 'إجمالي المتدربين' "$WORK/window.xml"; then
-    echo 'ANDROID LOGIN + DASHBOARD E2E PASSED'
-    adb exec-out screencap -p > "$WORK/dashboard-success.png" || true
-    exit 0
+    rendered=1
+    break
   fi
 done
 
-echo 'Main WebView opened, but dashboard content was not exposed/rendered in the accessibility tree.' >&2
-cat "$WORK/window.xml" >&2
-adb logcat -d | tail -n 500 >&2 || true
-adb exec-out screencap -p > "$WORK/dashboard-failure.png" || true
-exit 1
+if [ "$rendered" != 1 ]; then
+  echo 'Main WebView opened, but dashboard content was not exposed/rendered in the accessibility tree.' >&2
+  cat "$WORK/window.xml" >&2
+  adb logcat -d | tail -n 500 >&2 || true
+  adb exec-out screencap -p > "$WORK/dashboard-failure.png" || true
+  exit 1
+fi
+
+# Phone responsiveness gate: important dashboard controls must be present and
+# fully inside the physical display rather than clipped beyond the left/right edge.
+pull_ui
+SIZE="$(adb shell wm size | tr -d '\r' | tail -n 1)"
+WIDTH="$(printf '%s' "$SIZE" | sed -E 's/.*: ([0-9]+)x([0-9]+).*/\1/')"
+HEIGHT="$(printf '%s' "$SIZE" | sed -E 's/.*: ([0-9]+)x([0-9]+).*/\2/')"
+python3 - "$WORK/window.xml" "$WIDTH" "$HEIGHT" <<'PY'
+import re,sys,xml.etree.ElementTree as ET
+p,w,h=sys.argv[1],int(sys.argv[2]),int(sys.argv[3])
+root=ET.parse(p).getroot()
+required=['الرئيسية والتقارير','المتدربون','إضافة متدرب']
+
+def parse_bounds(v):
+    m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',v or '')
+    return tuple(map(int,m.groups())) if m else None
+
+for label in required:
+    matches=[]
+    for n in root.iter('node'):
+        text=(n.attrib.get('text') or '')
+        desc=(n.attrib.get('content-desc') or '')
+        if label in text or label in desc:
+            b=parse_bounds(n.attrib.get('bounds'))
+            if b: matches.append(b)
+    if not matches:
+        raise SystemExit(f'Responsive check could not find visible control: {label}')
+    # At least one accessibility node for the label must be fully on-screen.
+    good=[b for b in matches if b[0]>=0 and b[1]>=0 and b[2]<=w and b[3]<=h and b[2]-b[0]>=20 and b[3]-b[1]>=12]
+    if not good:
+        raise SystemExit(f'Control is clipped outside {w}x{h}: {label} bounds={matches}')
+    print(f'VISIBLE {label}: {good[0]}')
+print(f'ANDROID RESPONSIVE BOUNDS PASSED at {w}x{h}')
+PY
+
+adb exec-out screencap -p > "$WORK/dashboard-success.png"
+echo 'ANDROID LOGIN + DASHBOARD + RESPONSIVE E2E PASSED'
