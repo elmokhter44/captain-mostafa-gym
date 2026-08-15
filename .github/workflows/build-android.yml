@@ -77,11 +77,19 @@ jobs:
         shell: bash
         run: node --test tests/logic.test.js tests/excel-export.test.js
 
-      - name: Build standalone signed release APK
+      - name: Generate native dependency Codegen
         shell: bash
         run: |
           cd CaptainMostafaGymMobile/android
           chmod +x gradlew
+          ./gradlew generateCodegenArtifactsFromSchema --no-daemon --stacktrace
+          test -d ../node_modules/react-native-webview/android/build/generated/source/codegen/jni
+          test -d ../node_modules/@react-native-documents/picker/android/build/generated/source/codegen/jni
+
+      - name: Build standalone signed release APK
+        shell: bash
+        run: |
+          cd CaptainMostafaGymMobile/android
           ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Verify standalone release APK
