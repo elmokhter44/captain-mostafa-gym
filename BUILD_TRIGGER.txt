@@ -1,1 +1,1 @@
-Build request: 2026-08-12 v1.1.3 — replace CSV export with formatted Excel XLSX export only; preserve all other design, login, responsive behavior, RealmDB data and existing features unchanged.
+Build request: 2026-08-15 v1.1.4 — add safe in-app Realm backup restore only; preserve all existing design, Excel export, login, responsive behavior, trainee features, plans, reports and current data unchanged.
