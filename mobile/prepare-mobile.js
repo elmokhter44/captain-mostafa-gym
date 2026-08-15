@@ -23,6 +23,9 @@ fs.writeFileSync(path.join(shared,'excel-mobile.js'),excel,'utf8');
 
 let html=fs.readFileSync(path.join(root,'src','index.html'),'utf8');
 html=html.replace(/<meta name="viewport" content="[^"]*">/i,'<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">');
+if(!/href="responsive\.css"/i.test(html)){
+  html=html.replace('<link rel="stylesheet" href="styles.css">','<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="responsive.css" data-responsive-styles="true">');
+}
 if(!html.includes('bridge.js')){
   if(html.includes('<script src="renderer.js"></script>'))html=html.replace('<script src="renderer.js"></script>','<script src="bridge.js"></script><script src="mobile-preload.js"></script><script src="renderer.js"></script>');
   else html=html.replace('</body>','<script src="bridge.js"></script><script src="mobile-preload.js"></script><script src="renderer.js"></script></body>');
