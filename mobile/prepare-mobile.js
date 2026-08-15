@@ -35,7 +35,23 @@ fs.copyFileSync(path.join(root,'mobile','App.js'),path.join(target,'App.js'));
 fs.copyFileSync(path.join(root,'mobile','auth-mobile.js'),path.join(target,'auth-mobile.js'));
 fs.copyFileSync(path.join(root,'mobile','restore-mobile.js'),path.join(target,'restore-mobile.js'));
 
+const entry=path.join(target,'index.js');
+if(fs.existsSync(entry)){
+  let s=fs.readFileSync(entry,'utf8');
+  if(!s.includes("react-native-get-random-values")) s="import 'react-native-get-random-values';\n"+s;
+  fs.writeFileSync(entry,s,'utf8');
+}
+
 const strings=path.join(target,'android','app','src','main','res','values','strings.xml');
 if(fs.existsSync(strings)){let s=fs.readFileSync(strings,'utf8');s=s.replace(/<string name="app_name">[\s\S]*?<\/string>/,'<string name="app_name">كابتن مصطفى الريدي</string>');fs.writeFileSync(strings,s,'utf8')}
+
+const appGradle=path.join(target,'android','app','build.gradle');
+if(fs.existsSync(appGradle)){
+  let s=fs.readFileSync(appGradle,'utf8');
+  s=s.replace(/versionCode\s+\d+/,'versionCode 2');
+  s=s.replace(/versionName\s+"[^"]+"/,'versionName "1.0.1"');
+  fs.writeFileSync(appGradle,s,'utf8');
+}
+
 const gp=path.join(target,'android','gradle.properties');if(fs.existsSync(gp)){let s=fs.readFileSync(gp,'utf8');if(/newArchEnabled=.*/.test(s))s=s.replace(/newArchEnabled=.*/,'newArchEnabled=true');else s+='\nnewArchEnabled=true\n';fs.writeFileSync(gp,s,'utf8')}
 console.log('Mobile project prepared:',target);
