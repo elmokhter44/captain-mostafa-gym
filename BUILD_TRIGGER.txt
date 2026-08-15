@@ -1,1 +1,1 @@
-Build request: 2026-08-15 v1.1.4 — add safe in-app Realm backup restore only; preserve all existing design, Excel export, login, responsive behavior, trainee features, plans, reports and current data unchanged.
+Build request: 2026-08-15 v1.1.4 attempt 2 — safe in-app Realm backup restore only; isolated restore tests prevent Realm test-runner hang; preserve all existing design and features unchanged.
