@@ -22,6 +22,7 @@ excel=excel.replace(/function exportTraineesExcel\([\s\S]*?\n\}\n\nmodule\.expor
 fs.writeFileSync(path.join(shared,'excel-mobile.js'),excel,'utf8');
 
 let html=fs.readFileSync(path.join(root,'src','index.html'),'utf8');
+html=html.replace(/<meta name="viewport" content="[^"]*">/i,'<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">');
 if(!html.includes('bridge.js')){
   if(html.includes('<script src="renderer.js"></script>'))html=html.replace('<script src="renderer.js"></script>','<script src="bridge.js"></script><script src="mobile-preload.js"></script><script src="renderer.js"></script>');
   else html=html.replace('</body>','<script src="bridge.js"></script><script src="mobile-preload.js"></script><script src="renderer.js"></script></body>');
@@ -36,6 +37,7 @@ app=app.replace('<TextInput value={username}','<TextInput testID="loginUsername"
 app=app.replace('<TextInput value={password}','<TextInput testID="loginPassword" accessibilityLabel="loginPassword" value={password}');
 app=app.replace('<TouchableOpacity style={styles.loginButton} onPress={doLogin}','<TouchableOpacity testID="loginButton" accessibilityLabel="loginButton" style={styles.loginButton} onPress={doLogin}');
 app=app.replace('<WebView key={webKey}','<WebView testID="mainWebView" accessibilityLabel="mainWebView" key={webKey}');
+app=app.replace('javaScriptEnabled domStorageEnabled allowFileAccess','javaScriptEnabled domStorageEnabled textZoom={100} allowFileAccess');
 fs.writeFileSync(path.join(target,'App.js'),app,'utf8');
 fs.copyFileSync(path.join(root,'mobile','auth-mobile.js'),path.join(target,'auth-mobile.js'));
 fs.copyFileSync(path.join(root,'mobile','restore-mobile.js'),path.join(target,'restore-mobile.js'));
@@ -59,8 +61,8 @@ if(fs.existsSync(strings)){let s=fs.readFileSync(strings,'utf8');s=s.replace(/<s
 const appGradle=path.join(target,'android','app','build.gradle');
 if(fs.existsSync(appGradle)){
   let s=fs.readFileSync(appGradle,'utf8');
-  s=s.replace(/versionCode\s+\d+/,'versionCode 3');
-  s=s.replace(/versionName\s+"[^"]+"/,'versionName "1.0.2"');
+  s=s.replace(/versionCode\s+\d+/,'versionCode 4');
+  s=s.replace(/versionName\s+"[^"]+"/,'versionName "1.0.3"');
   fs.writeFileSync(appGradle,s,'utf8');
 }
 
