@@ -1,0 +1,1 @@
+Smoke test request: 2026-08-15 — install and launch the verified standalone release APK from workflow run 31894677069 on Android API 35 emulator and verify login UI/process stability.
