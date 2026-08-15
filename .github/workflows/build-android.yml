@@ -39,7 +39,7 @@ jobs:
         run: |
           npx --yes @react-native-community/cli@latest init CaptainMostafaGymMobile --version 0.80.0 --skip-install
           cd CaptainMostafaGymMobile
-          npm install --no-audit --no-fund realm@20.2.0 react-native-webview react-native-fs @react-native-documents/picker react-native-get-random-values crypto-js@4.2.0 buffer@6.0.3
+          npm install --no-audit --no-fund realm@20.2.0 react-native-webview react-native-fs @react-native-documents/picker react-native-get-random-values@1.11.0 crypto-js@4.2.0 buffer@6.0.3
 
       - name: Prepare identical gym UI and Realm services
         shell: bash
