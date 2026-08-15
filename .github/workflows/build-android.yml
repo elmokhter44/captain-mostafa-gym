@@ -69,30 +69,36 @@ jobs:
         shell: bash
         run: node --test tests/logic.test.js tests/excel-export.test.js
 
-      - name: Build installable debug APK
+      - name: Build standalone signed release APK
         shell: bash
         run: |
           cd CaptainMostafaGymMobile/android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Verify APK contents
+      - name: Verify standalone release APK
         shell: bash
         run: |
-          APK="CaptainMostafaGymMobile/android/app/build/outputs/apk/debug/app-debug.apk"
+          APK="CaptainMostafaGymMobile/android/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
+          unzip -l "$APK" | grep -q "assets/index.android.bundle"
           unzip -l "$APK" | grep -q "assets/gym/index.html"
           unzip -l "$APK" | grep -q "assets/gym/renderer.js"
           unzip -l "$APK" | grep -q "assets/gym/responsive.css"
           unzip -l "$APK" | grep -q "assets/gym/mobile-preload.js"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | head -20
+          unzip -l "$APK" | grep -E -q "lib/.*/.*realm|lib/.*/librealm|lib/.*/libjsi"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee "$GITHUB_WORKSPACE/android-badging.txt"
           cp "$APK" "$GITHUB_WORKSPACE/Captain_Mostafa_Gym_Android_v1.0.0.apk"
-          sha256sum "$GITHUB_WORKSPACE/Captain_Mostafa_Gym_Android_v1.0.0.apk"
+          sha256sum "$GITHUB_WORKSPACE/Captain_Mostafa_Gym_Android_v1.0.0.apk" | tee "$GITHUB_WORKSPACE/android-sha256.txt"
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
           name: Captain-Mostafa-Gym-Android-APK-v1.0.0
-          path: Captain_Mostafa_Gym_Android_v1.0.0.apk
+          path: |
+            Captain_Mostafa_Gym_Android_v1.0.0.apk
+            android-badging.txt
+            android-sha256.txt
           if-no-files-found: error
           retention-days: 30
