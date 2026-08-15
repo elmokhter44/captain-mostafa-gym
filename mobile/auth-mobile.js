@@ -1,5 +1,6 @@
 'use strict';
 
+require('react-native-get-random-values');
 const CryptoJS = require('crypto-js');
 
 const DEFAULT_USERNAME = 'Admin';
@@ -16,7 +17,16 @@ function createMobileAuthService(db) {
       hasher: CryptoJS.algo.SHA256
     }).toString(CryptoJS.enc.Hex);
   }
-  function randomSalt() { return CryptoJS.lib.WordArray.random(24).toString(CryptoJS.enc.Hex); }
+  function randomSalt() {
+    if (!global.crypto || typeof global.crypto.getRandomValues !== 'function') {
+      throw new Error('Secure random generator is unavailable on this Android device.');
+    }
+    const bytes = new Uint8Array(24);
+    global.crypto.getRandomValues(bytes);
+    let hex = '';
+    for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
+    return hex;
+  }
   function equalHex(a,b) {
     const x=String(a||''), y=String(b||'');
     if(x.length!==y.length) return false;
