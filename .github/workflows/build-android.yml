@@ -49,7 +49,15 @@ jobs:
           node --check CaptainMostafaGymMobile/shared/excel-mobile.js
           node --check CaptainMostafaGymMobile/auth-mobile.js
           node --check CaptainMostafaGymMobile/restore-mobile.js
+          node --check CaptainMostafaGymMobile/android/app/src/main/assets/gym/bridge.js
+          grep -q "bridge.js" CaptainMostafaGymMobile/android/app/src/main/assets/gym/index.html
           grep -q "mobile-preload.js" CaptainMostafaGymMobile/android/app/src/main/assets/gym/index.html
+          node - <<'NODE'
+          const fs=require('fs');const h=fs.readFileSync('CaptainMostafaGymMobile/android/app/src/main/assets/gym/index.html','utf8');
+          const b=h.indexOf('bridge.js'),p=h.indexOf('mobile-preload.js'),r=h.indexOf('renderer.js');
+          if(!(b>=0&&p>b&&r>p))throw new Error('Mobile bridge/preload/renderer script order is invalid');
+          console.log('Deterministic WebView bridge script order passed.');
+          NODE
           grep -q "استعادة نسخة احتياطية" CaptainMostafaGymMobile/android/app/src/main/assets/gym/mobile-preload.js
 
       - name: Verify mobile password hashing matches desktop PBKDF2
@@ -83,6 +91,7 @@ jobs:
           test -s "$APK"
           unzip -l "$APK" | grep -q "assets/index.android.bundle"
           unzip -l "$APK" | grep -q "assets/gym/index.html"
+          unzip -l "$APK" | grep -q "assets/gym/bridge.js"
           unzip -l "$APK" | grep -q "assets/gym/renderer.js"
           unzip -l "$APK" | grep -q "assets/gym/responsive.css"
           unzip -l "$APK" | grep -q "assets/gym/mobile-preload.js"
