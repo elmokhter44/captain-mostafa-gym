@@ -31,15 +31,26 @@ for(const f of ['styles.css','responsive.css','renderer.js'])fs.copyFileSync(pat
 fs.copyFileSync(path.join(root,'mobile','bridge.js'),path.join(assets,'bridge.js'));
 fs.copyFileSync(path.join(root,'mobile','mobile-preload.js'),path.join(assets,'mobile-preload.js'));
 
-fs.copyFileSync(path.join(root,'mobile','App.js'),path.join(target,'App.js'));
+let app=fs.readFileSync(path.join(root,'mobile','App.js'),'utf8');
+app=app.replace('<TextInput value={username}','<TextInput testID="loginUsername" accessibilityLabel="loginUsername" value={username}');
+app=app.replace('<TextInput value={password}','<TextInput testID="loginPassword" accessibilityLabel="loginPassword" value={password}');
+app=app.replace('<TouchableOpacity style={styles.loginButton} onPress={doLogin}','<TouchableOpacity testID="loginButton" accessibilityLabel="loginButton" style={styles.loginButton} onPress={doLogin}');
+app=app.replace('<WebView key={webKey}','<WebView testID="mainWebView" accessibilityLabel="mainWebView" key={webKey}');
+fs.writeFileSync(path.join(target,'App.js'),app,'utf8');
 fs.copyFileSync(path.join(root,'mobile','auth-mobile.js'),path.join(target,'auth-mobile.js'));
 fs.copyFileSync(path.join(root,'mobile','restore-mobile.js'),path.join(target,'restore-mobile.js'));
 
-const entry=path.join(target,'index.js');
-if(fs.existsSync(entry)){
-  let s=fs.readFileSync(entry,'utf8');
-  if(!s.includes("react-native-get-random-values")) s="import 'react-native-get-random-values';\n"+s;
-  fs.writeFileSync(entry,s,'utf8');
+const javaDir=path.join(target,'android','app','src','main','java','com','captainmostafagymmobile');
+fs.mkdirSync(javaDir,{recursive:true});
+fs.copyFileSync(path.join(root,'mobile','GymCryptoModule.kt'),path.join(javaDir,'GymCryptoModule.kt'));
+fs.copyFileSync(path.join(root,'mobile','GymCryptoPackage.kt'),path.join(javaDir,'GymCryptoPackage.kt'));
+const mainApp=path.join(javaDir,'MainApplication.kt');
+if(fs.existsSync(mainApp)){
+  let s=fs.readFileSync(mainApp,'utf8');
+  if(!s.includes('GymCryptoPackage()')){
+    s=s.replace(/PackageList\(this\)\.packages\.apply\s*\{/,m=>`${m}\n          add(GymCryptoPackage())`);
+  }
+  fs.writeFileSync(mainApp,s,'utf8');
 }
 
 const strings=path.join(target,'android','app','src','main','res','values','strings.xml');
@@ -48,8 +59,8 @@ if(fs.existsSync(strings)){let s=fs.readFileSync(strings,'utf8');s=s.replace(/<s
 const appGradle=path.join(target,'android','app','build.gradle');
 if(fs.existsSync(appGradle)){
   let s=fs.readFileSync(appGradle,'utf8');
-  s=s.replace(/versionCode\s+\d+/,'versionCode 2');
-  s=s.replace(/versionName\s+"[^"]+"/,'versionName "1.0.1"');
+  s=s.replace(/versionCode\s+\d+/,'versionCode 3');
+  s=s.replace(/versionName\s+"[^"]+"/,'versionName "1.0.2"');
   fs.writeFileSync(appGradle,s,'utf8');
 }
 
