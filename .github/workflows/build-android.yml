@@ -51,7 +51,6 @@ jobs:
           node --check CaptainMostafaGymMobile/restore-mobile.js
           grep -q "mobile-preload.js" CaptainMostafaGymMobile/android/app/src/main/assets/gym/index.html
           grep -q "استعادة نسخة احتياطية" CaptainMostafaGymMobile/android/app/src/main/assets/gym/mobile-preload.js
-          grep -q "تصدير Excel" CaptainMostafaGymMobile/android/app/src/main/assets/gym/index.html || true
 
       - name: Verify mobile password hashing matches desktop PBKDF2
         shell: bash
@@ -66,9 +65,9 @@ jobs:
           console.log('Desktop/mobile authentication hash compatibility passed.');
           NODE
 
-      - name: Run existing business logic tests
+      - name: Run portable business logic and Excel tests
         shell: bash
-        run: npm test
+        run: node --test tests/logic.test.js tests/excel-export.test.js
 
       - name: Build installable debug APK
         shell: bash
