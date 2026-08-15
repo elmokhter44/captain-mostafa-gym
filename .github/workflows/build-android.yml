@@ -10,7 +10,7 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     env:
       REALM_DISABLE_ANALYTICS: '1'
     steps:
@@ -39,7 +39,7 @@ jobs:
         run: |
           npx --yes @react-native-community/cli@latest init CaptainMostafaGymMobile --version 0.80.0 --skip-install
           cd CaptainMostafaGymMobile
-          npm install --no-audit --no-fund realm@20.2.0 react-native-webview react-native-fs @react-native-documents/picker react-native-get-random-values@1.11.0 crypto-js@4.2.0 buffer@6.0.3
+          npm install --no-audit --no-fund realm@20.2.0 react-native-webview react-native-fs @react-native-documents/picker crypto-js@4.2.0 buffer@6.0.3
 
       - name: Prepare identical gym UI and Realm services
         shell: bash
@@ -50,10 +50,13 @@ jobs:
           node --check CaptainMostafaGymMobile/auth-mobile.js
           node --check CaptainMostafaGymMobile/restore-mobile.js
           node --check CaptainMostafaGymMobile/android/app/src/main/assets/gym/bridge.js
-          grep -q "react-native-get-random-values" CaptainMostafaGymMobile/index.js
-          grep -q "getRandomValues" CaptainMostafaGymMobile/auth-mobile.js
-          grep -q "versionCode 2" CaptainMostafaGymMobile/android/app/build.gradle
-          grep -q 'versionName "1.0.1"' CaptainMostafaGymMobile/android/app/build.gradle
+          grep -q "GymCryptoPackage()" CaptainMostafaGymMobile/android/app/src/main/java/com/captainmostafagymmobile/MainApplication.kt
+          grep -q "class GymCryptoModule" CaptainMostafaGymMobile/android/app/src/main/java/com/captainmostafagymmobile/GymCryptoModule.kt
+          grep -q "loginUsername" CaptainMostafaGymMobile/App.js
+          grep -q "loginButton" CaptainMostafaGymMobile/App.js
+          grep -q "mainWebView" CaptainMostafaGymMobile/App.js
+          grep -q "versionCode 3" CaptainMostafaGymMobile/android/app/build.gradle
+          grep -q 'versionName "1.0.2"' CaptainMostafaGymMobile/android/app/build.gradle
           grep -q "bridge.js" CaptainMostafaGymMobile/android/app/src/main/assets/gym/index.html
           grep -q "mobile-preload.js" CaptainMostafaGymMobile/android/app/src/main/assets/gym/index.html
           node - <<'NODE'
@@ -64,7 +67,7 @@ jobs:
           NODE
           grep -q "استعادة نسخة احتياطية" CaptainMostafaGymMobile/android/app/src/main/assets/gym/mobile-preload.js
 
-      - name: Verify mobile password hashing matches desktop PBKDF2
+      - name: Verify PBKDF2 target remains desktop-compatible
         shell: bash
         run: |
           cd CaptainMostafaGymMobile
@@ -73,8 +76,8 @@ jobs:
           const password='Admin',salt='00112233445566778899aabbccddeeff0011223344556677';
           const a=crypto.pbkdf2Sync(password,Buffer.from(salt,'hex'),160000,32,'sha256').toString('hex');
           const b=C.PBKDF2(password,C.enc.Hex.parse(salt),{keySize:8,iterations:160000,hasher:C.algo.SHA256}).toString(C.enc.Hex);
-          if(a!==b)throw new Error('Mobile authentication hash is not desktop-compatible');
-          console.log('Desktop/mobile authentication hash compatibility passed.');
+          if(a!==b)throw new Error('PBKDF2 compatibility vector failed');
+          console.log('Desktop PBKDF2 compatibility vector passed.');
           NODE
 
       - name: Run portable business logic and Excel tests
@@ -110,17 +113,39 @@ jobs:
           unzip -l "$APK" | grep -E -q "lib/.*/.*realm|lib/.*/librealm|lib/.*/libjsi"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee "$GITHUB_WORKSPACE/android-badging.txt"
-          grep -q "versionCode='2'" "$GITHUB_WORKSPACE/android-badging.txt"
-          grep -q "versionName='1.0.1'" "$GITHUB_WORKSPACE/android-badging.txt"
-          cp "$APK" "$GITHUB_WORKSPACE/Captain_Mostafa_Gym_Android_v1.0.1.apk"
-          sha256sum "$GITHUB_WORKSPACE/Captain_Mostafa_Gym_Android_v1.0.1.apk" | tee "$GITHUB_WORKSPACE/android-sha256.txt"
+          grep -q "versionCode='3'" "$GITHUB_WORKSPACE/android-badging.txt"
+          grep -q "versionName='1.0.2'" "$GITHUB_WORKSPACE/android-badging.txt"
+
+      - name: Enable KVM access
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: End-to-end login and dashboard test on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash mobile/test-android-login.sh CaptainMostafaGymMobile/android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Package verified APK
+        shell: bash
+        run: |
+          APK="CaptainMostafaGymMobile/android/app/build/outputs/apk/release/app-release.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/Captain_Mostafa_Gym_Android_v1.0.2.apk"
+          sha256sum "$GITHUB_WORKSPACE/Captain_Mostafa_Gym_Android_v1.0.2.apk" | tee "$GITHUB_WORKSPACE/android-sha256.txt"
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: Captain-Mostafa-Gym-Android-APK-v1.0.1
+          name: Captain-Mostafa-Gym-Android-APK-v1.0.2
           path: |
-            Captain_Mostafa_Gym_Android_v1.0.1.apk
+            Captain_Mostafa_Gym_Android_v1.0.2.apk
             android-badging.txt
             android-sha256.txt
           if-no-files-found: error
