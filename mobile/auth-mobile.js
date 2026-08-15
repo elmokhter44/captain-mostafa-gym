@@ -1,31 +1,27 @@
 'use strict';
 
-require('react-native-get-random-values');
-const CryptoJS = require('crypto-js');
+const { NativeModules } = require('react-native');
+const GymCrypto = NativeModules.GymCrypto;
 
 const DEFAULT_USERNAME = 'Admin';
 const DEFAULT_PASSWORD = 'Admin';
 const ITERATIONS = 160000;
-const KEY_LENGTH_WORDS = 8; // 32 bytes
+const KEY_LENGTH_BYTES = 32;
+
+function nativeCrypto() {
+  if (!GymCrypto || typeof GymCrypto.pbkdf2 !== 'function' || typeof GymCrypto.secureRandomHex !== 'function') {
+    throw new Error('تعذر تشغيل وحدة التشفير الآمنة على هذا الهاتف.');
+  }
+  return GymCrypto;
+}
 
 function createMobileAuthService(db) {
   function read() { return db.settings(); }
   function derive(password, saltHex) {
-    return CryptoJS.PBKDF2(String(password), CryptoJS.enc.Hex.parse(String(saltHex)), {
-      keySize: KEY_LENGTH_WORDS,
-      iterations: ITERATIONS,
-      hasher: CryptoJS.algo.SHA256
-    }).toString(CryptoJS.enc.Hex);
+    return String(nativeCrypto().pbkdf2(String(password), String(saltHex), ITERATIONS, KEY_LENGTH_BYTES));
   }
   function randomSalt() {
-    if (!global.crypto || typeof global.crypto.getRandomValues !== 'function') {
-      throw new Error('Secure random generator is unavailable on this Android device.');
-    }
-    const bytes = new Uint8Array(24);
-    global.crypto.getRandomValues(bytes);
-    let hex = '';
-    for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
-    return hex;
+    return String(nativeCrypto().secureRandomHex(24));
   }
   function equalHex(a,b) {
     const x=String(a||''), y=String(b||'');
