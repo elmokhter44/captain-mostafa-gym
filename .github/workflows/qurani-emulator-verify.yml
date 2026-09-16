@@ -84,14 +84,22 @@ jobs:
             adb shell am force-stop com.qurani.app
             adb shell monkey -p com.qurani.app -c android.intent.category.LAUNCHER 1 | tee evidence/launch.txt
             sleep 12
-            PID="$(adb shell pidof com.qurani.app | tr -d '\r')"
-            test -n "$PID"
-            echo "PID=$PID" | tee evidence/process.txt
+
+            # Capture diagnostics BEFORE asserting that the process survived.
+            adb logcat -d > evidence/android-logcat-first-launch.txt || true
+            adb shell dumpsys activity exit-info com.qurani.app > evidence/application-exit-info.txt 2>&1 || true
+            adb exec-out screencap -p > evidence/qurani-first-launch.png 2>/dev/null || true
+            PID="$(adb shell pidof com.qurani.app 2>/dev/null | tr -d '\r' || true)"
+            echo "PID=${PID:-NONE}" | tee evidence/process.txt
+            if [ -z "$PID" ]; then
+              grep -n -E -A40 -B10 'FATAL EXCEPTION|AndroidRuntime|ReactNativeJS|com\.qurani\.app|SoLoader|Realm|UnsatisfiedLinkError' evidence/android-logcat-first-launch.txt > evidence/startup-crash-summary.txt 2>/dev/null || true
+              echo 'FIRST_LAUNCH_PROCESS_DIED' | tee evidence/result.txt
+              exit 1
+            fi
 
             adb shell uiautomator dump /sdcard/qurani-home.xml >/dev/null 2>&1 || true
             adb pull /sdcard/qurani-home.xml evidence/qurani-home.xml >/dev/null 2>&1 || true
             adb exec-out screencap -p > evidence/qurani-home.png
-            adb logcat -d > evidence/android-logcat-first-launch.txt
             if grep -A12 -B3 'FATAL EXCEPTION' evidence/android-logcat-first-launch.txt | grep -q 'com.qurani.app'; then
               echo 'Qurani fatal exception detected on first launch' >&2
               exit 1
@@ -100,13 +108,17 @@ jobs:
             echo '=== Relaunch persistence smoke ==='
             adb shell am force-stop com.qurani.app
             sleep 2
+            adb logcat -c
             adb shell monkey -p com.qurani.app -c android.intent.category.LAUNCHER 1 | tee evidence/relaunch.txt
             sleep 8
-            PID2="$(adb shell pidof com.qurani.app | tr -d '\r')"
-            test -n "$PID2"
-            echo "PID_AFTER_RELAUNCH=$PID2" | tee -a evidence/process.txt
+            adb logcat -d > evidence/android-logcat-final.txt || true
+            PID2="$(adb shell pidof com.qurani.app 2>/dev/null | tr -d '\r' || true)"
+            echo "PID_AFTER_RELAUNCH=${PID2:-NONE}" | tee -a evidence/process.txt
+            if [ -z "$PID2" ]; then
+              adb shell dumpsys activity exit-info com.qurani.app > evidence/application-exit-info-relaunch.txt 2>&1 || true
+              exit 1
+            fi
             adb exec-out screencap -p > evidence/qurani-relaunch.png
-            adb logcat -d > evidence/android-logcat-final.txt
             if grep -A12 -B3 'FATAL EXCEPTION' evidence/android-logcat-final.txt | grep -q 'com.qurani.app'; then
               echo 'Qurani fatal exception detected after relaunch' >&2
               exit 1
