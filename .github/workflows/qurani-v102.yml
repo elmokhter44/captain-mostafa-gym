@@ -80,7 +80,6 @@ jobs:
           s=s.replace("export function SectionCard({section, width, onPress}: {section: SectionSeed; width: number; onPress: () => void}): React.JSX.Element {\n  return (", "export function SectionCard({section, width, onPress}: {section: SectionSeed; width: number; onPress: () => void}): React.JSX.Element {\n  const isHandwritten = section.id === 'handwritten';\n  return (")
           s=s.replace("style={({pressed}) => [styles.card, {width}, pressed && styles.pressed]}", "style={({pressed}) => [styles.card, {width}, isHandwritten && styles.handwrittenCard, pressed && styles.pressed]}")
           s=s.replace("<Text style={styles.title}>{section.title}</Text>\n        <Text style={styles.subtitle} numberOfLines={2}>{section.subtitle}</Text>", "<Text style={[styles.title, isHandwritten && styles.handwrittenTitle]}>{section.title}</Text>\n        {section.subtitle ? <Text style={styles.subtitle} numberOfLines={2}>{section.subtitle}</Text> : null}")
-          s=s.replace("card: {...SHADOW, minHeight: 132,", "card: {...SHADOW, minHeight: 132,")
           s=s.replace("  pressed: {opacity: 0.82", "  handwrittenCard: {minHeight: 168},\n  pressed: {opacity: 0.82")
           s=s.replace("  subtitle: {fontSize: 12", "  handwrittenTitle: {fontSize: 17, lineHeight: 27},\n  subtitle: {fontSize: 12")
           p.write_text(s)
@@ -102,7 +101,6 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           s=Path('src/data/sections.ts').read_text()
-          assert 'الأصول كما وردت في مصاحف السلسلة الفراتية' in s
           assert s.count('الأصول كما وردت في مصاحف السلسلة الفراتية') == 2
           assert "أصول وفروش قراءة الامام نافع المدني برواية (ورش وقالون) بخط الايد" in s
           assert "title: 'أصول وفروش قراءة الامام نافع المدني برواية (ورش وقالون) بخط الايد', subtitle: ''" in s
@@ -129,7 +127,7 @@ jobs:
           set -euo pipefail
           cd qurani-app
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
           cd android
           chmod +x gradlew
           ./gradlew clean assembleRelease --stacktrace | tee ../ci/gradle-release-build-v102.txt
