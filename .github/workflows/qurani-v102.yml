@@ -128,6 +128,7 @@ jobs:
           cd qurani-app
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
+          rm -rf android/app/.cxx android/.cxx
           cd android
           chmod +x gradlew
           ./gradlew clean assembleRelease --stacktrace | tee ../ci/gradle-release-build-v102.txt
