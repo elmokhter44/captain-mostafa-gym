@@ -1,0 +1,50 @@
+name: Qurani Inspect Signing
+
+on:
+  push:
+    branches: [qurani-build-temp]
+    paths:
+      - '.github/workflows/qurani-inspect-signing.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source and inspect signing configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qurani-app
+          cat qurani-ci/text/part-* > /tmp/qurani-src.b64
+          base64 -d /tmp/qurani-src.b64 > /tmp/qurani-src.tar.gz
+          echo '8419ab562a4783684b34e1bc62a96be4dc3da00f8a85e5e0d298182ab1e79192  /tmp/qurani-src.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/qurani-src.tar.gz -C qurani-app
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('qurani-app/android/app/build.gradle')
+          print('=== build.gradle signing/buildTypes relevant lines ===')
+          for i, line in enumerate(p.read_text().splitlines(), 1):
+              low = line.lower()
+              if any(k in low for k in ['signingconfig', 'buildtypes', 'storefile', 'keyalias']):
+                  print(f'{i}: {line}')
+              elif 'password' in low:
+                  print(f'{i}: <PASSWORD LINE REDACTED>')
+          kp = Path('qurani-app/android/keystore.properties')
+          print('=== keystore.properties keys ===')
+          if kp.exists():
+              for line in kp.read_text().splitlines():
+                  if '=' in line:
+                      key, value = line.split('=', 1)
+                      if 'password' in key.lower():
+                          print(f'{key}=<REDACTED>')
+                      elif 'file' in key.lower() or 'alias' in key.lower():
+                          print(f'{key}={value}')
+                      else:
+                          print(f'{key}=<PRESENT>')
+          else:
+              print('MISSING')
+          PY
