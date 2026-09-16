@@ -54,6 +54,80 @@ jobs:
           ls -lh /tmp/Qurani-v1.0.0.apk
           df -h /
 
+      - name: Enable KVM and prepare one-shell smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -e /dev/kvm ]]; then
+            sudo chmod 666 /dev/kvm
+            ls -l /dev/kvm
+          else
+            echo '/dev/kvm is not present on this runner' >&2
+          fi
+          cat > /tmp/qurani-smoke.sh <<'BASH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          mkdir -p evidence
+
+          echo '=== Emulator/device ===' | tee evidence/emulator.txt
+          adb devices -l | tee -a evidence/emulator.txt
+          adb shell getprop ro.build.version.release | tee -a evidence/emulator.txt
+          adb shell getprop ro.build.version.sdk | tee -a evidence/emulator.txt
+
+          echo '=== Install APK ==='
+          adb install -r /tmp/Qurani-v1.0.0.apk | tee evidence/adb-install.txt
+          adb shell pm path com.qurani.app | tee evidence/package-path.txt
+          adb shell dumpsys package com.qurani.app | grep -E 'versionCode=|versionName=' | head -n 5 | tee evidence/package-version.txt
+          grep -q 'versionCode=1' evidence/package-version.txt
+          grep -q 'versionName=1.0.0' evidence/package-version.txt
+
+          echo '=== First launch ==='
+          adb logcat -c
+          adb shell am force-stop com.qurani.app
+          adb shell am start -W -n com.qurani.app/.MainActivity | tee evidence/launch.txt
+          sleep 10
+          PID="$(adb shell pidof com.qurani.app | tr -d '\r')"
+          test -n "$PID"
+          echo "PID=$PID" | tee evidence/process.txt
+          adb shell dumpsys activity activities | grep -m 1 'mResumedActivity' | tee evidence/resumed-activity.txt || true
+          grep -q 'com.qurani.app' evidence/resumed-activity.txt
+          adb shell uiautomator dump /sdcard/qurani-home.xml >/dev/null 2>&1 || true
+          adb pull /sdcard/qurani-home.xml evidence/qurani-home.xml >/dev/null 2>&1 || true
+          adb exec-out screencap -p > evidence/qurani-home.png
+          adb logcat -d > evidence/android-logcat-first-launch.txt
+          if grep -q 'Process: com.qurani.app' evidence/android-logcat-first-launch.txt; then
+            echo 'Qurani process crash detected on first launch' >&2
+            exit 1
+          fi
+
+          echo '=== Relaunch ==='
+          adb shell am force-stop com.qurani.app
+          sleep 2
+          adb logcat -c
+          adb shell am start -W -n com.qurani.app/.MainActivity | tee evidence/relaunch.txt
+          sleep 8
+          PID2="$(adb shell pidof com.qurani.app | tr -d '\r')"
+          test -n "$PID2"
+          echo "PID_AFTER_RELAUNCH=$PID2" | tee -a evidence/process.txt
+          adb shell dumpsys activity activities | grep -m 1 'mResumedActivity' | tee evidence/resumed-activity-relaunch.txt || true
+          grep -q 'com.qurani.app' evidence/resumed-activity-relaunch.txt
+          adb exec-out screencap -p > evidence/qurani-relaunch.png
+          adb logcat -d > evidence/android-logcat-final.txt
+          if grep -q 'Process: com.qurani.app' evidence/android-logcat-final.txt; then
+            echo 'Qurani process crash detected after relaunch' >&2
+            exit 1
+          fi
+
+          printf '%s\n' \
+            'APK_INSTALL=PASS' \
+            'FIRST_LAUNCH=PASS' \
+            'FOREGROUND_ACTIVITY=PASS' \
+            'RELAUNCH=PASS' \
+            'NO_QURANI_FATAL_EXCEPTION=PASS' | tee evidence/result.txt
+          BASH
+          chmod +x /tmp/qurani-smoke.sh
+          bash -n /tmp/qurani-smoke.sh
+
       - name: Install, launch, relaunch and inspect on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -66,68 +140,7 @@ jobs:
           heap-size: 512M
           disable-animations: true
           emulator-options: -no-snapshot -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-metrics
-          script: |
-            set -eu
-            mkdir -p evidence
-            echo '=== Emulator/device ===' | tee evidence/emulator.txt
-            adb devices -l | tee -a evidence/emulator.txt
-            adb shell getprop ro.build.version.release | tee -a evidence/emulator.txt
-            adb shell getprop ro.build.version.sdk | tee -a evidence/emulator.txt
-
-            echo '=== Install APK ==='
-            adb install -r /tmp/Qurani-v1.0.0.apk | tee evidence/adb-install.txt
-            adb shell pm path com.qurani.app | tee evidence/package-path.txt
-            adb shell dumpsys package com.qurani.app | grep -E 'versionCode=|versionName=' | head -n 5 | tee evidence/package-version.txt
-
-            echo '=== First launch ==='
-            adb logcat -c
-            adb shell am force-stop com.qurani.app
-            adb shell monkey -p com.qurani.app -c android.intent.category.LAUNCHER 1 | tee evidence/launch.txt
-            sleep 12
-
-            # Capture diagnostics BEFORE asserting that the process survived.
-            adb logcat -d > evidence/android-logcat-first-launch.txt || true
-            adb shell dumpsys activity exit-info com.qurani.app > evidence/application-exit-info.txt 2>&1 || true
-            adb exec-out screencap -p > evidence/qurani-first-launch.png 2>/dev/null || true
-            PID="$(adb shell pidof com.qurani.app 2>/dev/null | tr -d '\r' || true)"
-            echo "PID=${PID:-NONE}" | tee evidence/process.txt
-            if [ -z "$PID" ]; then
-              grep -n -E -A40 -B10 'FATAL EXCEPTION|AndroidRuntime|ReactNativeJS|com\.qurani\.app|SoLoader|Realm|UnsatisfiedLinkError' evidence/android-logcat-first-launch.txt > evidence/startup-crash-summary.txt 2>/dev/null || true
-              echo 'FIRST_LAUNCH_PROCESS_DIED' | tee evidence/result.txt
-              exit 1
-            fi
-
-            adb shell uiautomator dump /sdcard/qurani-home.xml >/dev/null 2>&1 || true
-            adb pull /sdcard/qurani-home.xml evidence/qurani-home.xml >/dev/null 2>&1 || true
-            adb exec-out screencap -p > evidence/qurani-home.png
-            if grep -A12 -B3 'FATAL EXCEPTION' evidence/android-logcat-first-launch.txt | grep -q 'com.qurani.app'; then
-              echo 'Qurani fatal exception detected on first launch' >&2
-              exit 1
-            fi
-
-            echo '=== Relaunch persistence smoke ==='
-            adb shell am force-stop com.qurani.app
-            sleep 2
-            adb logcat -c
-            adb shell monkey -p com.qurani.app -c android.intent.category.LAUNCHER 1 | tee evidence/relaunch.txt
-            sleep 8
-            adb logcat -d > evidence/android-logcat-final.txt || true
-            PID2="$(adb shell pidof com.qurani.app 2>/dev/null | tr -d '\r' || true)"
-            echo "PID_AFTER_RELAUNCH=${PID2:-NONE}" | tee -a evidence/process.txt
-            if [ -z "$PID2" ]; then
-              adb shell dumpsys activity exit-info com.qurani.app > evidence/application-exit-info-relaunch.txt 2>&1 || true
-              exit 1
-            fi
-            adb exec-out screencap -p > evidence/qurani-relaunch.png
-            if grep -A12 -B3 'FATAL EXCEPTION' evidence/android-logcat-final.txt | grep -q 'com.qurani.app'; then
-              echo 'Qurani fatal exception detected after relaunch' >&2
-              exit 1
-            fi
-
-            echo 'APK_INSTALL=PASS' | tee evidence/result.txt
-            echo 'FIRST_LAUNCH=PASS' | tee -a evidence/result.txt
-            echo 'RELAUNCH=PASS' | tee -a evidence/result.txt
-            echo 'NO_QURANI_FATAL_EXCEPTION=PASS' | tee -a evidence/result.txt
+          script: bash /tmp/qurani-smoke.sh
 
       - name: Upload emulator verification evidence
         if: always()
