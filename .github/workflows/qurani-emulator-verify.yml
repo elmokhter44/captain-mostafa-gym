@@ -89,8 +89,8 @@ jobs:
           PID="$(adb shell pidof com.qurani.app | tr -d '\r')"
           test -n "$PID"
           echo "PID=$PID" | tee evidence/process.txt
-          adb shell dumpsys activity activities | grep -m 1 'mResumedActivity' | tee evidence/resumed-activity.txt || true
-          grep -q 'com.qurani.app' evidence/resumed-activity.txt
+          adb shell dumpsys activity top > evidence/activity-top.txt
+          grep -q 'com.qurani.app' evidence/activity-top.txt
           adb shell uiautomator dump /sdcard/qurani-home.xml >/dev/null 2>&1 || true
           adb pull /sdcard/qurani-home.xml evidence/qurani-home.xml >/dev/null 2>&1 || true
           adb exec-out screencap -p > evidence/qurani-home.png
@@ -109,8 +109,8 @@ jobs:
           PID2="$(adb shell pidof com.qurani.app | tr -d '\r')"
           test -n "$PID2"
           echo "PID_AFTER_RELAUNCH=$PID2" | tee -a evidence/process.txt
-          adb shell dumpsys activity activities | grep -m 1 'mResumedActivity' | tee evidence/resumed-activity-relaunch.txt || true
-          grep -q 'com.qurani.app' evidence/resumed-activity-relaunch.txt
+          adb shell dumpsys activity top > evidence/activity-top-relaunch.txt
+          grep -q 'com.qurani.app' evidence/activity-top-relaunch.txt
           adb exec-out screencap -p > evidence/qurani-relaunch.png
           adb logcat -d > evidence/android-logcat-final.txt
           if grep -q 'Process: com.qurani.app' evidence/android-logcat-final.txt; then
