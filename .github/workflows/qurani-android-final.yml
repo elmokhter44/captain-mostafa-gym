@@ -1,0 +1,268 @@
+name: Qurani Android FINAL Production
+
+on:
+  push:
+    branches: [qurani-build-temp]
+    paths:
+      - '.github/workflows/qurani-android-final.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      REALM_DISABLE_ANALYTICS: '1'
+      DRIVE_FILE_ID: '1qKoCutARg2BzM4VfrO9iOsjuw_vbKeHu'
+    steps:
+      - name: Checkout temporary build branch
+        uses: actions/checkout@v4
+
+      - name: Reconstruct Qurani source and approved logo
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qurani-app
+          cat qurani-ci/text/part-* > /tmp/qurani-src.b64
+          base64 -d /tmp/qurani-src.b64 > /tmp/qurani-src.tar.gz
+          echo '8419ab562a4783684b34e1bc62a96be4dc3da00f8a85e5e0d298182ab1e79192  /tmp/qurani-src.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/qurani-src.tar.gz -C qurani-app
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          b64 = ''.join(p.read_text() for p in sorted(Path('qurani-ci/logo').glob('part-*')))
+          Path('/tmp/qurani-logo.jpg').write_bytes(base64.b64decode(b64, validate=True))
+          PY
+          echo '4c8d65a11c77539831be3a791e54b9eb984375cea878262fd1972ed3acf58cae  /tmp/qurani-logo.jpg' | sha256sum -c -
+
+      - name: Setup Node 22.13
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Generate and preserve FINAL release signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIGNING_PASSWORD="$(openssl rand -hex 32)"
+          rm -f qurani-app/android/app/qurani-release.keystore
+          keytool -genkeypair -v \
+            -keystore qurani-app/android/app/qurani-release.keystore \
+            -storepass "$SIGNING_PASSWORD" \
+            -keypass "$SIGNING_PASSWORD" \
+            -alias qurani-release \
+            -keyalg RSA -keysize 4096 -validity 10000 \
+            -dname 'CN=Qurani Android Release, OU=Qurani, O=Qurani, L=Cairo, C=EG'
+          cat > qurani-app/android/keystore.properties <<EOF
+          storeFile=qurani-release.keystore
+          storePassword=$SIGNING_PASSWORD
+          keyAlias=qurani-release
+          keyPassword=$SIGNING_PASSWORD
+          EOF
+          mkdir -p qurani-app/release-private qurani-app/signing-backup
+          cat > qurani-app/release-private/signing-credentials.txt <<EOF
+          IMPORTANT: Keep this file and qurani-release.keystore private. They are required to sign every future update of com.qurani.app.
+          Alias: qurani-release
+          Keystore file: qurani-release.keystore
+          Store password: $SIGNING_PASSWORD
+          Key password: $SIGNING_PASSWORD
+          EOF
+          cp qurani-app/android/app/qurani-release.keystore qurani-app/signing-backup/
+          cp qurani-app/release-private/signing-credentials.txt qurani-app/signing-backup/
+          chmod 600 qurani-app/android/app/qurani-release.keystore qurani-app/android/keystore.properties qurani-app/release-private/signing-credentials.txt
+          keytool -list -keystore qurani-app/android/app/qurani-release.keystore -storepass "$SIGNING_PASSWORD" -alias qurani-release > /dev/null
+
+      - name: Prepare exact 681-page offline source assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils unzip zip
+          python3 -m pip install --user --upgrade gdown pillow
+          mkdir -p qurani-app/assets/branding
+          python3 - <<'PY'
+          from PIL import Image
+          Image.open('/tmp/qurani-logo.jpg').convert('RGBA').save('qurani-app/assets/branding/qurani-icon.png', optimize=True)
+          PY
+          python3 -m gdown "$DRIVE_FILE_ID" -O /tmp/qurani-source.pdf
+          test "$(pdfinfo /tmp/qurani-source.pdf | awk '/^Pages:/ {print $2}')" = '681'
+          cd qurani-app
+          bash scripts/split-pdf.sh /tmp/qurani-source.pdf | tee ci/pdf-split-report.txt
+          test "$(pdfinfo android/app/src/main/assets/pdf/quran.pdf | awk '/^Pages:/ {print $2}')" = '604'
+          test "$(pdfinfo android/app/src/main/assets/pdf/qalun_usul.pdf | awk '/^Pages:/ {print $2}')" = '11'
+          test "$(pdfinfo android/app/src/main/assets/pdf/handwritten_warsh_qalun.pdf | awk '/^Pages:/ {print $2}')" = '32'
+          python3 scripts/generate-icons.py
+          sha256sum /tmp/qurani-source.pdf > ci/source-pdf-sha256.txt
+
+      - name: Install dependencies and run business/type checks
+        working-directory: qurani-app
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          node --experimental-strip-types --test __tests__/*.node.test.ts | tee ci/business-tests.txt
+          cat > tsconfig.app.json <<'EOF'
+          {
+            "extends": "./tsconfig.json",
+            "exclude": ["node_modules", "android", "__tests__", "**/*.node.test.ts"]
+          }
+          EOF
+          npx tsc --noEmit -p tsconfig.app.json | tee ci/typecheck.txt
+
+      - name: Install Android SDK 36 and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Build signed production APK
+        working-directory: qurani-app/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle wrapper --gradle-version 9.3.1
+          chmod +x gradlew
+          ./gradlew clean
+          ./gradlew assembleRelease --stacktrace | tee ../ci/gradle-release-build.txt
+
+      - name: Verify identity, signature, SDKs and Realm native libraries
+        working-directory: qurani-app
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='android/app/build/outputs/apk/release/app-release.apk'
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          test -s "$APK"
+          "$AAPT" dump badging "$APK" | tee ci/apk-badging.txt
+          grep -q "package: name='com.qurani.app' versionCode='1' versionName='1.0.0'" ci/apk-badging.txt
+          grep -q "sdkVersion:'24'" ci/apk-badging.txt
+          grep -q "targetSdkVersion:'36'" ci/apk-badging.txt
+          grep -q "application-label:'قرآني'" ci/apk-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee ci/apksigner.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' ci/apksigner.txt
+          unzip -l "$APK" > ci/apk-contents.txt
+          grep -q 'lib/arm64-v8a/librealm.so' ci/apk-contents.txt
+          grep -q 'lib/armeabi-v7a/librealm.so' ci/apk-contents.txt
+          grep -q 'lib/x86_64/librealm.so' ci/apk-contents.txt
+          grep 'librealm.so' ci/apk-contents.txt > ci/realm-native-libs.txt
+          sha256sum "$APK" | tee ci/apk-sha256.txt
+
+      - name: Preserve APK, signing backup and complete source BEFORE emulator test
+        working-directory: qurani-app
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp android/app/build/outputs/apk/release/app-release.apk Qurani-v1.0.0.apk
+          (cd signing-backup && zip -q -r ../Qurani-signing-backup-v1.zip .)
+          zip -q -r Qurani-source-v1.0.0.zip . \
+            -x 'node_modules/*' 'android/.gradle/*' 'android/app/build/*' \
+               'android/app/qurani-release.keystore' 'android/keystore.properties' \
+               'release-private/*' 'signing-backup/*' '*.zip' 'Qurani-v1.0.0.apk'
+          mkdir -p ci/build-info
+          printf '%s\n' \
+            'App: قرآني' \
+            'Package: com.qurani.app' \
+            'Version: 1.0.0 (1)' \
+            'Min SDK: 24' \
+            'Target SDK: 36' \
+            'React Native: 0.86.3' \
+            'Realm JS: 20.2.0' \
+            'Architectures: arm64-v8a, armeabi-v7a, x86_64' \
+            > ci/build-info/BUILD-INFO.txt
+
+      - name: Upload build payload for fresh emulator runner
+        uses: actions/upload-artifact@v4
+        with:
+          name: qurani-final-build-${{ github.run_number }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            qurani-app/Qurani-v1.0.0.apk
+            qurani-app/Qurani-source-v1.0.0.zip
+            qurani-app/Qurani-signing-backup-v1.zip
+            qurani-app/ci/ui_smoke.py
+            qurani-app/ci/*.txt
+            qurani-app/ci/build-info/BUILD-INFO.txt
+
+  emulator-test:
+    needs: build-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Download signed APK and test harness from clean build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: qurani-final-build-${{ github.run_number }}
+          path: qurani-app
+
+      - name: Prepare APK path expected by smoke harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qurani-app/android/app/build/outputs/apk/release
+          cp qurani-app/Qurani-v1.0.0.apk qurani-app/android/app/build/outputs/apk/release/app-release.apk
+          df -h /
+
+      - name: Install, launch, exercise Realm CRUD/persistence and inspect logcat
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: default
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: |
+            set -euo pipefail
+            cd qurani-app
+            python3 ci/ui_smoke.py | tee ci/android-emulator-smoke.txt
+            adb logcat -d -v time > ci/android-logcat.txt
+            if grep -E 'FATAL EXCEPTION|AndroidRuntime.*Process: com.qurani.app' ci/android-logcat.txt; then
+              echo 'Fatal application exception detected' >&2
+              exit 1
+            fi
+            adb exec-out screencap -p > ci/emulator-final.png
+
+      - name: Create final user delivery files
+        working-directory: qurani-app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p final-delivery/reports
+          cp Qurani-v1.0.0.apk final-delivery/
+          cp Qurani-source-v1.0.0.zip final-delivery/
+          cp Qurani-signing-backup-v1.zip final-delivery/
+          cp ci/*.txt final-delivery/reports/ 2>/dev/null || true
+          cp ci/emulator-final.png final-delivery/reports/
+          cp ci/build-info/BUILD-INFO.txt final-delivery/
+          (cd final-delivery && zip -q ../Qurani-APK-v1.0.0.zip Qurani-v1.0.0.apk)
+          sha256sum Qurani-v1.0.0.apk > final-delivery/APK-SHA256.txt
+
+      - name: Upload FINAL verified deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: QURANI-FINAL-v1.0.0-${{ github.run_number }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            qurani-app/final-delivery/**
+            qurani-app/Qurani-APK-v1.0.0.zip
