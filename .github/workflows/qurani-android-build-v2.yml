@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reconstruct source, signing key and approved logo
+      - name: Reconstruct source and approved logo
         shell: bash
         run: |
           set -euo pipefail
@@ -32,13 +32,9 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import base64
-          Path('qurani-app/android/app/qurani-release.keystore').write_bytes(
-              bytes.fromhex(Path('qurani-ci/keystore.hex').read_text().strip())
-          )
           b64 = ''.join(p.read_text() for p in sorted(Path('qurani-ci/logo').glob('part-*')))
           Path('/tmp/qurani-logo.jpg').write_bytes(base64.b64decode(b64, validate=True))
           PY
-          echo '072ecb59aa703e49392601a8b47f6859e0c08344091f2be3b55019d96aa86677  qurani-app/android/app/qurani-release.keystore' | sha256sum -c -
           echo '4c8d65a11c77539831be3a791e54b9eb984375cea878262fd1972ed3acf58cae  /tmp/qurani-logo.jpg' | sha256sum -c -
 
       - uses: actions/setup-node@v4
@@ -49,6 +45,36 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Generate production release signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIGNING_PASSWORD="$(openssl rand -hex 32)"
+          rm -f qurani-app/android/app/qurani-release.keystore
+          keytool -genkeypair -v \
+            -keystore qurani-app/android/app/qurani-release.keystore \
+            -storepass "$SIGNING_PASSWORD" \
+            -keypass "$SIGNING_PASSWORD" \
+            -alias qurani-release \
+            -keyalg RSA -keysize 4096 -validity 10000 \
+            -dname 'CN=Qurani Android Release, OU=Qurani, O=Qurani, L=Cairo, C=EG'
+          cat > qurani-app/android/keystore.properties <<EOF
+          storeFile=qurani-release.keystore
+          storePassword=$SIGNING_PASSWORD
+          keyAlias=qurani-release
+          keyPassword=$SIGNING_PASSWORD
+          EOF
+          mkdir -p qurani-app/release-private
+          cat > qurani-app/release-private/signing-credentials.txt <<EOF
+          IMPORTANT: Keep this file and qurani-release.keystore private. They are required to sign future updates.
+          Alias: qurani-release
+          Keystore file: android/app/qurani-release.keystore
+          Store password: $SIGNING_PASSWORD
+          Key password: $SIGNING_PASSWORD
+          EOF
+          chmod 600 qurani-app/android/app/qurani-release.keystore qurani-app/android/keystore.properties qurani-app/release-private/signing-credentials.txt
+          keytool -list -keystore qurani-app/android/app/qurani-release.keystore -storepass "$SIGNING_PASSWORD" -alias qurani-release >/dev/null
 
       - name: Prepare canonical offline assets
         shell: bash
@@ -156,9 +182,13 @@ jobs:
         run: |
           set -euo pipefail
           cp android/app/build/outputs/apk/release/app-release.apk Qurani-v1.0.0.apk
-          zip -q -r Qurani-source-v1.0.0.zip . -x 'node_modules/*' 'android/.gradle/*' 'android/app/build/*' '*.zip' 'Qurani-v1.0.0.apk'
+          mkdir -p signing-backup
+          cp android/app/qurani-release.keystore signing-backup/
+          cp release-private/signing-credentials.txt signing-backup/
+          (cd signing-backup && zip -q -r ../Qurani-signing-backup-v1.zip .)
+          zip -q -r Qurani-source-v1.0.0.zip . -x 'node_modules/*' 'android/.gradle/*' 'android/app/build/*' '*.zip' 'Qurani-v1.0.0.apk' 'signing-backup/*'
           mkdir -p delivery
-          cp Qurani-v1.0.0.apk delivery/
+          cp Qurani-v1.0.0.apk Qurani-signing-backup-v1.zip delivery/
           cp ci/apk-sha256.txt ci/apksigner.txt ci/apk-badging.txt ci/business-tests.txt ci/typecheck.txt ci/pdf-split-report.txt ci/android-emulator-smoke.txt delivery/
           cp ci/android-logcat.txt ci/emulator-final.png delivery/ 2>/dev/null || true
           printf '%s\n' 'App: قرآني' 'Package: com.qurani.app' 'Version: 1.0.0 (1)' 'Min SDK: 24' 'Target SDK: 36' > delivery/BUILD-INFO.txt
@@ -175,6 +205,7 @@ jobs:
             qurani-app/Qurani-v1.0.0.apk
             qurani-app/Qurani-source-v1.0.0.zip
             qurani-app/Qurani-delivery-v1.0.0.zip
+            qurani-app/Qurani-signing-backup-v1.zip
             qurani-app/ci/*.txt
             qurani-app/ci/*.png
             qurani-app/android/app/build/outputs/apk/release/app-release.apk
