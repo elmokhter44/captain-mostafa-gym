@@ -62,7 +62,7 @@ jobs:
           from PIL import Image
           Image.open('/tmp/qurani-logo.jpg').convert('RGBA').save('qurani-app/assets/branding/qurani-icon.png', optimize=True)
           PY
-          python3 -m gdown --id "$DRIVE_FILE_ID" -O /tmp/qurani-source.pdf
+          python3 -m gdown "$DRIVE_FILE_ID" -O /tmp/qurani-source.pdf
           test "$(pdfinfo /tmp/qurani-source.pdf | awk '/^Pages:/ {print $2}')" = '681'
           cd qurani-app
           bash scripts/split-pdf.sh /tmp/qurani-source.pdf | tee ci/pdf-split-report.txt
