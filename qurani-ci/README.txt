@@ -1,0 +1,1 @@
+Temporary isolated build payload for Qurani Android. Do not merge this branch into main.
