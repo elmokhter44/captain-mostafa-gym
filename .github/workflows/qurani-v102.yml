@@ -1,0 +1,237 @@
+name: Qurani v1.0.2 Requested Updates
+
+on:
+  push:
+    branches: [qurani-build-temp]
+    paths:
+      - '.github/workflows/qurani-v102.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      REALM_DISABLE_ANALYTICS: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Restore verified v1.0.1 source and signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n QURANI-FINAL-v1.0.1-R2-1 -D /tmp/v101
+          test -s /tmp/v101/final-delivery/Qurani-source-v1.0.1.zip
+          test -s /tmp/v101/final-delivery/Qurani-signing-backup-v1.0.1.zip
+          test -s /tmp/v101/final-delivery/Qurani-v1.0.1.apk
+          mkdir qurani-app /tmp/signing
+          unzip -q /tmp/v101/final-delivery/Qurani-source-v1.0.1.zip -d qurani-app
+          unzip -q /tmp/v101/final-delivery/Qurani-signing-backup-v1.0.1.zip -d /tmp/signing
+          cp /tmp/signing/qurani-release.keystore qurani-app/android/app/qurani-release.keystore
+          STORE_PASSWORD="$(sed -n 's/^Store password: //p' /tmp/signing/signing-credentials.txt)"
+          KEY_PASSWORD="$(sed -n 's/^Key password: //p' /tmp/signing/signing-credentials.txt)"
+          cat > qurani-app/android/keystore.properties <<EOF
+          storeFile=qurani-release.keystore
+          storePassword=$STORE_PASSWORD
+          keyAlias=qurani-release
+          keyPassword=$KEY_PASSWORD
+          EOF
+          chmod 600 qurani-app/android/keystore.properties qurani-app/android/app/qurani-release.keystore
+
+      - name: Apply only approved v1.0.2 code and UI changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          npm version 1.0.2 --no-git-tag-version --allow-same-version
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p=Path(path); s=p.read_text()
+              if old not in s:
+                  raise SystemExit(f'missing expected text in {path}: {old[:80]}')
+              p.write_text(s.replace(old,new))
+
+          replace('android/app/build.gradle', 'versionCode 2\n        versionName "1.0.1"', 'versionCode 3\n        versionName "1.0.2"')
+          Path('android/app/src/main/res/values/strings.xml').write_text('<resources><string name="app_name">المصحف المعلم بقراءة الامام نافع</string></resources>\n')
+          Path('app.json').write_text('{"name":"Qurani","displayName":"المصحف المعلم بقراءة الامام نافع"}\n')
+
+          replace('src/data/sections.ts', "{id: 'warsh-usul', title: 'أصول قراءة الإمام نافع برواية ورش', subtitle: 'الأصول كما وردت في المصدر',", "{id: 'warsh-usul', title: 'أصول قراءة الإمام نافع برواية ورش', subtitle: 'الأصول كما وردت في مصاحف السلسلة الفراتية',")
+          replace('src/data/sections.ts', "{id: 'qalun-usul', title: 'أصول قراءة الإمام نافع برواية قالون', subtitle: 'يشمل الصفحات 639 إلى 649',", "{id: 'qalun-usul', title: 'أصول قراءة الإمام نافع برواية قالون', subtitle: 'الأصول كما وردت في مصاحف السلسلة الفراتية',")
+          replace('src/data/sections.ts', "{id: 'handwritten', title: 'أصول وفروش ورش وقالون بخط اليد', subtitle: 'أصول وفروش قراءة الإمام نافع المدني',", "{id: 'handwritten', title: 'أصول وفروش قراءة الامام نافع المدني برواية (ورش وقالون) بخط الايد', subtitle: '',")
+
+          p=Path('src/features/home/SectionCard.tsx'); s=p.read_text()
+          s=s.replace("export function SectionCard({section, width, onPress}: {section: SectionSeed; width: number; onPress: () => void}): React.JSX.Element {\n  return (", "export function SectionCard({section, width, onPress}: {section: SectionSeed; width: number; onPress: () => void}): React.JSX.Element {\n  const isHandwritten = section.id === 'handwritten';\n  return (")
+          s=s.replace("style={({pressed}) => [styles.card, {width}, pressed && styles.pressed]}", "style={({pressed}) => [styles.card, {width}, isHandwritten && styles.handwrittenCard, pressed && styles.pressed]}")
+          s=s.replace("<Text style={styles.title}>{section.title}</Text>\n        <Text style={styles.subtitle} numberOfLines={2}>{section.subtitle}</Text>", "<Text style={[styles.title, isHandwritten && styles.handwrittenTitle]}>{section.title}</Text>\n        {section.subtitle ? <Text style={styles.subtitle} numberOfLines={2}>{section.subtitle}</Text> : null}")
+          s=s.replace("card: {...SHADOW, minHeight: 132,", "card: {...SHADOW, minHeight: 132,")
+          s=s.replace("  pressed: {opacity: 0.82", "  handwrittenCard: {minHeight: 168},\n  pressed: {opacity: 0.82")
+          s=s.replace("  subtitle: {fontSize: 12", "  handwrittenTitle: {fontSize: 17, lineHeight: 27},\n  subtitle: {fontSize: 12")
+          p.write_text(s)
+
+          p=Path('src/features/index/IndexScreen.tsx'); s=p.read_text()
+          s=s.replace("import React, {useMemo} from 'react';", "import React, {useMemo, useState} from 'react';")
+          s=s.replace("import {PdfPage} from '../reader/PdfPage';", "import {ZoomablePdfPage} from '../reader/ZoomablePdfPage';\nimport {pageWidthForScreen} from '../reader/zoomModel';")
+          s=s.replace("  const {width: screenWidth} = useWindowDimensions();\n  const pageWidth = Math.max(280, screenWidth - SPACING.md * 2);", "  const {width: screenWidth} = useWindowDimensions();\n  const [pageZoomed, setPageZoomed] = useState(false);\n  const pageWidth = pageWidthForScreen(screenWidth);")
+          s=s.replace('<PdfPage assetName="quran_index.pdf" pageIndex={index} width={pageWidth} overlay={overlaysFor(item)} />', '<ZoomablePdfPage assetName="quran_index.pdf" pageIndex={index} width={pageWidth} overlay={overlaysFor(item)} onZoomStateChange={setPageZoomed} />')
+          s=s.replace("        windowSize={4}\n        contentContainerStyle", "        windowSize={4}\n        scrollEnabled={!pageZoomed}\n        contentContainerStyle")
+          p.write_text(s)
+          PY
+
+      - name: Verify approved source contract and run tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('src/data/sections.ts').read_text()
+          assert 'الأصول كما وردت في مصاحف السلسلة الفراتية' in s
+          assert s.count('الأصول كما وردت في مصاحف السلسلة الفراتية') == 2
+          assert "أصول وفروش قراءة الامام نافع المدني برواية (ورش وقالون) بخط الايد" in s
+          assert "title: 'أصول وفروش قراءة الامام نافع المدني برواية (ورش وقالون) بخط الايد', subtitle: ''" in s
+          idx=Path('src/features/index/IndexScreen.tsx').read_text()
+          assert 'ZoomablePdfPage' in idx and 'pageWidthForScreen(screenWidth)' in idx and 'scrollEnabled={!pageZoomed}' in idx
+          card=Path('src/features/home/SectionCard.tsx').read_text()
+          assert 'section.subtitle ?' in card and 'handwrittenTitle' in card
+          strings=Path('android/app/src/main/res/values/strings.xml').read_text()
+          assert 'المصحف المعلم بقراءة الامام نافع' in strings
+          gradle=Path('android/app/build.gradle').read_text()
+          assert 'versionCode 3' in gradle and 'versionName "1.0.2"' in gradle
+          PY
+          npm install --no-audit --no-fund
+          node --experimental-strip-types --test __tests__/*.node.test.ts | tee ci/business-tests-v102.txt
+          grep -q '# fail 0' ci/business-tests-v102.txt
+          cat > tsconfig.app.json <<'EOF'
+          {"extends":"./tsconfig.json","exclude":["node_modules","android","__tests__","**/*.node.test.ts"]}
+          EOF
+          npx tsc --noEmit -p tsconfig.app.json | tee ci/typecheck-v102.txt
+
+      - name: Build signed release with same update key
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006'
+          cd android
+          chmod +x gradlew
+          ./gradlew clean assembleRelease --stacktrace | tee ../ci/gradle-release-build-v102.txt
+          cd ..
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          test -s "$APK"
+          "$AAPT" dump badging "$APK" | tee ci/apk-badging-v102.txt
+          grep -q "package: name='com.qurani.app' versionCode='3' versionName='1.0.2'" ci/apk-badging-v102.txt
+          grep -q "application-label:'المصحف المعلم بقراءة الامام نافع'" ci/apk-badging-v102.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee ci/apksigner-v102.txt
+          "$APKSIGNER" verify --print-certs /tmp/v101/final-delivery/Qurani-v1.0.1.apk > /tmp/oldcert.txt
+          OLD_CERT="$(grep 'Signer #1 certificate SHA-256 digest:' /tmp/oldcert.txt | sed 's/.*: //')"
+          NEW_CERT="$(grep 'Signer #1 certificate SHA-256 digest:' ci/apksigner-v102.txt | sed 's/.*: //')"
+          test -n "$OLD_CERT" && test "$OLD_CERT" = "$NEW_CERT"
+          unzip -l "$APK" > ci/apk-contents-v102.txt
+          grep -q 'lib/arm64-v8a/librealm.so' ci/apk-contents-v102.txt
+          cp "$APK" Qurani-v1.0.2-prepdf.apk
+          cp /tmp/v101/final-delivery/Qurani-v1.0.1.apk Qurani-v1.0.1.apk
+          cp /tmp/v101/final-delivery/Qurani-signing-backup-v1.0.1.zip Qurani-signing-backup-v1.0.2.zip
+          sha256sum Qurani-v1.0.2-prepdf.apk > ci/apk-sha256-v102-prepdf.txt
+          zip -q -r Qurani-source-v1.0.2-prepdf.zip . -x 'node_modules/*' 'android/.gradle/*' 'android/app/build/*' 'android/app/qurani-release.keystore' 'android/keystore.properties' '*.zip' '*.apk'
+
+      - name: Upload code-built release
+        uses: actions/upload-artifact@v4
+        with:
+          name: qurani-v102-codebuild-${{ github.run_number }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            qurani-app/Qurani-v1.0.2-prepdf.apk
+            qurani-app/Qurani-v1.0.1.apk
+            qurani-app/Qurani-source-v1.0.2-prepdf.zip
+            qurani-app/Qurani-signing-backup-v1.0.2.zip
+            qurani-app/ci/*v102*.txt
+
+  emulator-test:
+    needs: build-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf "$ANDROID_HOME/ndk" "$ANDROID_HOME/cmake" "$ANDROID_HOME/system-images" || true
+          rm -rf "$HOME/.gradle/caches" "$HOME/.gradle/wrapper" "$HOME/.npm/_cacache" || true
+          sudo docker system prune -af || true
+          sudo apt-get clean || true
+          df -h /
+      - uses: actions/download-artifact@v4
+        with:
+          name: qurani-v102-codebuild-${{ github.run_number }}
+          path: app
+      - name: Enable KVM
+        shell: bash
+        run: if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm; fi
+      - name: Android 15 update install launch and relaunch
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: default
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-metrics
+          script: |
+            set -e
+            adb install app/Qurani-v1.0.1.apk
+            adb shell am force-stop com.qurani.app
+            adb shell monkey -p com.qurani.app -c android.intent.category.LAUNCHER 1
+            sleep 8
+            test -n "$(adb shell pidof com.qurani.app | tr -d '\r')"
+            adb install -r app/Qurani-v1.0.2-prepdf.apk
+            dumpsys_out="$(adb shell dumpsys package com.qurani.app)"
+            echo "$dumpsys_out" | grep -q 'versionCode=3'
+            echo "$dumpsys_out" | grep -q 'versionName=1.0.2'
+            adb logcat -c
+            adb shell am force-stop com.qurani.app
+            adb shell monkey -p com.qurani.app -c android.intent.category.LAUNCHER 1
+            sleep 10
+            test -n "$(adb shell pidof com.qurani.app | tr -d '\r')"
+            adb shell screencap -p /sdcard/v102.png
+            adb pull /sdcard/v102.png app/emulator-v102.png
+            adb shell am force-stop com.qurani.app
+            adb shell monkey -p com.qurani.app -c android.intent.category.LAUNCHER 1
+            sleep 6
+            test -n "$(adb shell pidof com.qurani.app | tr -d '\r')"
+            adb logcat -d > app/logcat-v102.txt
+            ! grep -E 'FATAL EXCEPTION.*com.qurani.app|Process: com.qurani.app.*FATAL' app/logcat-v102.txt
+      - name: Upload emulator verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: qurani-v102-emulator-${{ github.run_number }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            app/emulator-v102.png
+            app/logcat-v102.txt
