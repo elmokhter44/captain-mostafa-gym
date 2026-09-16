@@ -1,0 +1,110 @@
+name: Qurani v1.0.1 Full Width Zoom Ayah Search
+
+on:
+  push:
+    branches: [qurani-build-temp]
+    paths:
+      - 'qurani-v101/**'
+      - '.github/workflows/qurani-v101-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      REALM_DISABLE_ANALYTICS: '1'
+      DRIVE_FILE_ID: '1qKoCutARg2BzM4VfrO9iOsjuw_vbKeHu'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+      - name: Build test sign and package v1.0.1
+        shell: bash
+        run: bash qurani-v101/build-release.sh
+      - name: Upload build payload for clean emulator
+        uses: actions/upload-artifact@v4
+        with:
+          name: qurani-v101-build-${{ github.run_number }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            qurani-app/Qurani-v1.0.1.apk
+            qurani-app/Qurani-source-v1.0.1.zip
+            qurani-app/Qurani-signing-backup-v1.0.1.zip
+            qurani-app/ci/ui_smoke.py
+            qurani-app/ci/*.txt
+            qurani-app/ci/build-info/BUILD-INFO.txt
+
+  emulator-test:
+    needs: build-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space for Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf "$ANDROID_HOME/ndk" "$ANDROID_HOME/cmake" "$ANDROID_HOME/system-images" || true
+          rm -rf "$HOME/.gradle/caches" "$HOME/.gradle/wrapper" "$HOME/.npm/_cacache" || true
+          sudo docker system prune -af || true
+          sudo apt-get clean || true
+          df -h /
+      - uses: actions/download-artifact@v4
+        with:
+          name: qurani-v101-build-${{ github.run_number }}
+          path: qurani-app
+      - name: Enable KVM
+        shell: bash
+        run: if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm; fi
+      - name: Install launch verify full width persistence and relaunch
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: default
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-metrics
+          script: bash qurani-v101/emulator-smoke.sh
+      - name: Create final verified delivery
+        working-directory: qurani-app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p final-delivery/reports
+          cp Qurani-v1.0.1.apk final-delivery/
+          cp Qurani-source-v1.0.1.zip final-delivery/
+          cp Qurani-signing-backup-v1.0.1.zip final-delivery/
+          cp ci/*.txt final-delivery/reports/ 2>/dev/null || true
+          cp ci/emulator-final.png final-delivery/reports/
+          cp ci/build-info/BUILD-INFO.txt final-delivery/
+          sha256sum Qurani-v1.0.1.apk > final-delivery/APK-SHA256.txt
+          (cd final-delivery && zip -q ../Qurani-APK-v1.0.1.zip Qurani-v1.0.1.apk APK-SHA256.txt)
+      - name: Upload final verified files
+        uses: actions/upload-artifact@v4
+        with:
+          name: QURANI-FINAL-v1.0.1-${{ github.run_number }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            qurani-app/final-delivery/**
+            qurani-app/Qurani-APK-v1.0.1.zip
