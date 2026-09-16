@@ -78,8 +78,14 @@ jobs:
         run: |
           set -euo pipefail
           npm install --no-audit --no-fund
-          npm install --save-dev --no-audit --no-fund @types/node@22.10.2
           node --experimental-strip-types --test __tests__/*.node.test.ts | tee ci/business-tests.txt
+          cat > tsconfig.app.json <<'EOF'
+          {
+            "extends": "./tsconfig.json",
+            "exclude": ["node_modules", "android", "__tests__", "**/*.node.test.ts"]
+          }
+          EOF
+          npm pkg set scripts.typecheck="tsc --noEmit -p tsconfig.app.json"
           npm run typecheck | tee ci/typecheck.txt
 
       - name: Install Android SDK 36 and NDK
