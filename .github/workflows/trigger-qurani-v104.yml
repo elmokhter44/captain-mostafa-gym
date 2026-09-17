@@ -1,5 +1,5 @@
 name: Trigger repaired Qurani v1.0.4
-# retry 2 after replacement source padding fix
+# retry 3 after complete replacement page validation
 on:
   push:
     branches: [qurani-build-temp]
