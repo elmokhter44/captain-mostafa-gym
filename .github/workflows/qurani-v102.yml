@@ -1,4 +1,4 @@
-name: Qurani v1.0.2 Requested Updates
+name: Qurani v1.0.2 Final Verified Release
 
 on:
   push:
@@ -8,28 +8,34 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 jobs:
-  build-release:
+  build-test-release:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
       REALM_DISABLE_ANALYTICS: '1'
       GH_TOKEN: ${{ github.token }}
+      FINAL_NAME: 'المصحف المعلم بقراءة الامام نافع.apk'
+      RELEASE_TAG: 'qurani-v1.0.2-nafi'
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22.13.0'
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
+          cache-read-only: true
 
       - name: Restore verified v1.0.1 source and signing key
         shell: bash
@@ -53,7 +59,7 @@ jobs:
           EOF
           chmod 600 qurani-app/android/keystore.properties qurani-app/android/app/qurani-release.keystore
 
-      - name: Apply only approved v1.0.2 code and UI changes
+      - name: Apply only approved v1.0.2 UI and naming changes
         shell: bash
         run: |
           set -euo pipefail
@@ -93,7 +99,49 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Verify approved source contract and run tests
+      - name: Replace source PDF page 9 with the exact corrected image
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'd0002e3d37b5314ddf5c0a62a70120efc095324394bc1af77667c6e8bcd8e395  .ci-assets/q9.jpg' | sha256sum -c -
+          python3 -m venv /tmp/pdfvenv
+          /tmp/pdfvenv/bin/pip install --quiet 'PyMuPDF==1.26.4'
+          /tmp/pdfvenv/bin/python - <<'PY'
+          import fitz, hashlib
+          from pathlib import Path
+
+          src = Path('qurani-app/android/app/src/main/assets/pdf/warsh_summary.pdf')
+          img = Path('.ci-assets/q9.jpg')
+          tmp = src.with_suffix('.patched.pdf')
+          expected_img = 'd0002e3d37b5314ddf5c0a62a70120efc095324394bc1af77667c6e8bcd8e395'
+
+          old = fitz.open(src)
+          assert old.page_count == 4
+          old_rect = old[3].rect
+          old_render = [hashlib.sha256(old[i].get_pixmap(matrix=fitz.Matrix(1,1), alpha=False).samples).hexdigest() for i in range(3)]
+
+          out = fitz.open()
+          out.insert_pdf(old, from_page=0, to_page=2)
+          page = out.new_page(pno=3, width=old_rect.width, height=old_rect.height)
+          page.insert_image(page.rect, filename=str(img), keep_proportion=False)
+          out.save(tmp, garbage=4, deflate=True)
+          out.close(); old.close()
+
+          check = fitz.open(tmp)
+          assert check.page_count == 4
+          assert abs(check[3].rect.width - old_rect.width) < 0.01 and abs(check[3].rect.height - old_rect.height) < 0.01
+          new_render = [hashlib.sha256(check[i].get_pixmap(matrix=fitz.Matrix(1,1), alpha=False).samples).hexdigest() for i in range(3)]
+          assert new_render == old_render, 'pages 6-8 changed unexpectedly'
+          images = check[3].get_images(full=True)
+          assert len(images) == 1
+          embedded = check.extract_image(images[0][0])['image']
+          assert hashlib.sha256(embedded).hexdigest() == expected_img, 'corrected page image was altered'
+          check.close()
+          tmp.replace(src)
+          print('PDF_PAGE_9_REPLACEMENT_VERIFIED=1')
+          PY
+
+      - name: Verify source contract and run tests
         shell: bash
         run: |
           set -euo pipefail
@@ -108,8 +156,7 @@ jobs:
           assert 'ZoomablePdfPage' in idx and 'pageWidthForScreen(screenWidth)' in idx and 'scrollEnabled={!pageZoomed}' in idx
           card=Path('src/features/home/SectionCard.tsx').read_text()
           assert 'section.subtitle ?' in card and 'handwrittenTitle' in card
-          strings=Path('android/app/src/main/res/values/strings.xml').read_text()
-          assert 'المصحف المعلم بقراءة الامام نافع' in strings
+          assert 'المصحف المعلم بقراءة الامام نافع' in Path('android/app/src/main/res/values/strings.xml').read_text()
           gradle=Path('android/app/build.gradle').read_text()
           assert 'versionCode 3' in gradle and 'versionName "1.0.2"' in gradle
           PY
@@ -121,7 +168,7 @@ jobs:
           EOF
           npx tsc --noEmit -p tsconfig.app.json | tee ci/typecheck-v102.txt
 
-      - name: Build signed release with same update key
+      - name: Build and verify signed release
         shell: bash
         run: |
           set -euo pipefail
@@ -147,49 +194,39 @@ jobs:
           test -n "$OLD_CERT" && test "$OLD_CERT" = "$NEW_CERT"
           unzip -l "$APK" > ci/apk-contents-v102.txt
           grep -q 'lib/arm64-v8a/librealm.so' ci/apk-contents-v102.txt
-          cp "$APK" Qurani-v1.0.2-prepdf.apk
-          cp /tmp/v101/final-delivery/Qurani-v1.0.1.apk Qurani-v1.0.1.apk
-          cp /tmp/v101/final-delivery/Qurani-signing-backup-v1.0.1.zip Qurani-signing-backup-v1.0.2.zip
-          sha256sum Qurani-v1.0.2-prepdf.apk > ci/apk-sha256-v102-prepdf.txt
-          zip -q -r Qurani-source-v1.0.2-prepdf.zip . -x 'node_modules/*' 'android/.gradle/*' 'android/app/build/*' 'android/app/qurani-release.keystore' 'android/keystore.properties' '*.zip' '*.apk'
+          mkdir -p /tmp/final
+          cp "$APK" "/tmp/final/$FINAL_NAME"
+          cp /tmp/v101/final-delivery/Qurani-v1.0.1.apk /tmp/final/Qurani-v1.0.1.apk
+          unzip -p "$APK" assets/pdf/warsh_summary.pdf > /tmp/final/warsh_summary_from_apk.pdf
+          /tmp/pdfvenv/bin/python - <<'PY'
+          import fitz, hashlib
+          p=fitz.open('/tmp/final/warsh_summary_from_apk.pdf')
+          assert p.page_count == 4
+          images=p[3].get_images(full=True)
+          assert len(images)==1
+          b=p.extract_image(images[0][0])['image']
+          assert hashlib.sha256(b).hexdigest() == 'd0002e3d37b5314ddf5c0a62a70120efc095324394bc1af77667c6e8bcd8e395'
+          print('APK_CONTAINS_EXACT_CORRECTED_PAGE_9=1')
+          PY
+          sha256sum "/tmp/final/$FINAL_NAME" | tee ci/apk-sha256-v102.txt
 
-      - name: Upload code-built release
-        uses: actions/upload-artifact@v4
-        with:
-          name: qurani-v102-codebuild-${{ github.run_number }}
-          retention-days: 30
-          if-no-files-found: error
-          path: |
-            qurani-app/Qurani-v1.0.2-prepdf.apk
-            qurani-app/Qurani-v1.0.1.apk
-            qurani-app/Qurani-source-v1.0.2-prepdf.zip
-            qurani-app/Qurani-signing-backup-v1.0.2.zip
-            qurani-app/ci/*v102*.txt
-
-  emulator-test:
-    needs: build-release
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - name: Free disk space
+      - name: Free space for Android emulator
         shell: bash
         run: |
           set -euo pipefail
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
+          rm -rf qurani-app/node_modules qurani-app/android/app/.cxx qurani-app/android/.cxx qurani-app/android/app/build/intermediates qurani-app/android/app/build/generated || true
+          rm -rf "$HOME/.gradle/caches" "$HOME/.npm/_cacache" || true
           sudo rm -rf "$ANDROID_HOME/ndk" "$ANDROID_HOME/cmake" "$ANDROID_HOME/system-images" || true
-          rm -rf "$HOME/.gradle/caches" "$HOME/.gradle/wrapper" "$HOME/.npm/_cacache" || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
           sudo docker system prune -af || true
           sudo apt-get clean || true
           df -h /
-      - uses: actions/download-artifact@v4
-        with:
-          name: qurani-v102-codebuild-${{ github.run_number }}
-          path: app
+
       - name: Enable KVM
         shell: bash
         run: if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm; fi
-      - name: Android 15 update install launch and relaunch
+
+      - name: Android 15 install update launch and relaunch verification
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -203,12 +240,12 @@ jobs:
           emulator-options: -no-snapshot -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-metrics
           script: |
             set -e
-            adb install app/Qurani-v1.0.1.apk
+            adb install /tmp/final/Qurani-v1.0.1.apk
             adb shell am force-stop com.qurani.app
             adb shell monkey -p com.qurani.app -c android.intent.category.LAUNCHER 1
             sleep 8
             test -n "$(adb shell pidof com.qurani.app | tr -d '\r')"
-            adb install -r app/Qurani-v1.0.2-prepdf.apk
+            adb install -r "/tmp/final/$FINAL_NAME"
             dumpsys_out="$(adb shell dumpsys package com.qurani.app)"
             echo "$dumpsys_out" | grep -q 'versionCode=3'
             echo "$dumpsys_out" | grep -q 'versionName=1.0.2'
@@ -218,19 +255,35 @@ jobs:
             sleep 10
             test -n "$(adb shell pidof com.qurani.app | tr -d '\r')"
             adb shell screencap -p /sdcard/v102.png
-            adb pull /sdcard/v102.png app/emulator-v102.png
+            adb pull /sdcard/v102.png /tmp/final/emulator-v102.png
+            adb logcat -d > /tmp/final/logcat-v102.txt
+            if grep -A12 -B2 'FATAL EXCEPTION' /tmp/final/logcat-v102.txt | grep -q 'com.qurani.app'; then exit 1; fi
             adb shell am force-stop com.qurani.app
             adb shell monkey -p com.qurani.app -c android.intent.category.LAUNCHER 1
-            sleep 6
+            sleep 8
             test -n "$(adb shell pidof com.qurani.app | tr -d '\r')"
-            adb logcat -d > app/logcat-v102.txt
-            ! grep -E 'FATAL EXCEPTION.*com.qurani.app|Process: com.qurani.app.*FATAL' app/logcat-v102.txt
-      - name: Upload emulator verification
-        uses: actions/upload-artifact@v4
-        with:
-          name: qurani-v102-emulator-${{ github.run_number }}
-          retention-days: 30
-          if-no-files-found: error
-          path: |
-            app/emulator-v102.png
-            app/logcat-v102.txt
+            echo EMULATOR_INSTALL_LAUNCH_RELAUNCH_OK=1
+
+      - name: Publish verified APK as release asset and expose temporary download URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="/tmp/final/$FINAL_NAME"
+          test -s "$APK"
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$APK" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$RELEASE_TAG" "$APK" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'المصحف المعلم بقراءة الامام نافع v1.0.2' --notes 'Verified Android release build.'
+          fi
+          ASSET_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.assets[] | select(.name=="المصحف المعلم بقراءة الامام نافع.apk") | .id')"
+          test -n "$ASSET_ID"
+          curl -sS -D /tmp/asset_headers -o /dev/null --max-redirs 0 \
+            -H 'Accept: application/octet-stream' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$ASSET_ID" || true
+          SIGNED_URL="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/\r$/,"); sub(/^location:[[:space:]]*/,""); print; exit}' /tmp/asset_headers)"
+          test -n "$SIGNED_URL"
+          echo "FINAL_APK_SHA256=$(sha256sum "$APK" | awk '{print $1}')"
+          echo "FINAL_RELEASE_ASSET_ID=$ASSET_ID"
+          echo "FINAL_SIGNED_DOWNLOAD_URL=$SIGNED_URL"
