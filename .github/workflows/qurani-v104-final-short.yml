@@ -1,0 +1,91 @@
+name: Qurani v1.0.4 Final Render Fix
+on:
+  push:
+    branches: [qurani-build-temp]
+    paths: ['.github/workflows/qurani-v104-final-short.yml']
+  workflow_dispatch:
+permissions: {contents: write, actions: read}
+jobs:
+  build-test-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      REALM_DISABLE_ANALYTICS: '1'
+      GH_TOKEN: ${{ github.token }}
+      TAG: qurani-v1.0.4-nafi-final
+      APK_NAME: al-mushaf-al-muallam-nafi-v1.0.4.apk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.13.0'}
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '9.3.1', cache-read-only: true}
+      - name: Restore source and signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n QURANI-FINAL-v1.0.1-R2-1 -D /tmp/v101
+          mkdir qurani-app /tmp/signing
+          unzip -q /tmp/v101/final-delivery/Qurani-source-v1.0.1.zip -d qurani-app
+          unzip -q /tmp/v101/final-delivery/Qurani-signing-backup-v1.0.1.zip -d /tmp/signing
+          cp /tmp/signing/qurani-release.keystore qurani-app/android/app/
+          S="$(sed -n 's/^Store password: //p' /tmp/signing/signing-credentials.txt)"; K="$(sed -n 's/^Key password: //p' /tmp/signing/signing-credentials.txt)"
+          printf 'storeFile=qurani-release.keystore\nstorePassword=%s\nkeyAlias=qurani-release\nkeyPassword=%s\n' "$S" "$K" > qurani-app/android/keystore.properties
+          gh release download qurani-v1.0.3-nafi-final --repo "$GITHUB_REPOSITORY" -p '*.apk' -D /tmp/v103
+      - name: Apply app changes and make safe page
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app; npm version 1.0.4 --no-git-tag-version --allow-same-version; cd ..
+          (cd qurani-app && python3 ../.ci-scripts/v104/apply_v104.py)
+          python3 -m venv /tmp/pv; /tmp/pv/bin/pip install -q 'PyMuPDF==1.26.4' 'Pillow==11.3.0'
+          /tmp/pv/bin/python .ci-scripts/v104/make_pdf.py
+          mkdir -p qurani-app/android/app/src/androidTest/java/com/qurani/app
+          cp .ci-scripts/v104/PdfRenderTest.kt qurani-app/android/app/src/androidTest/java/com/qurani/app/
+          keytool -genkeypair -keystore qurani-app/android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US' >/dev/null 2>&1 || true
+      - name: Tests typecheck release build
+        shell: bash
+        run: |
+          set -euo pipefail; cd qurani-app
+          npm install --no-audit --no-fund
+          node --experimental-strip-types --test __tests__/*.node.test.ts | tee /tmp/tests.txt; grep -q '# fail 0' /tmp/tests.txt
+          cat > tsconfig.app.json <<'EOF'
+          {"extends":"./tsconfig.json","exclude":["node_modules","android","__tests__","**/*.node.test.ts"]}
+          EOF
+          npx tsc --noEmit -p tsconfig.app.json
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
+          rm -rf android/app/.cxx android/.cxx; cd android; chmod +x gradlew; ./gradlew assembleRelease assembleDebug assembleDebugAndroidTest --stacktrace
+          A=app/build/outputs/apk/release/app-release.apk; "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$A" | tee /tmp/badging; grep -q "versionCode='5' versionName='1.0.4'" /tmp/badging
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$A" | tee /tmp/sign
+          unzip -l "$A" | grep -q 'assets/pdf/warsh_summary_v104.pdf'
+          mkdir -p /tmp/final; cp "$A" "/tmp/final/$APK_NAME"; sha256sum "/tmp/final/$APK_NAME" | tee /tmp/sha
+      - name: Free space and KVM
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android/sdk/ndk /usr/local/lib/android/sdk/cmake /opt/hostedtoolcache/CodeQL /usr/share/dotnet /usr/local/.ghcup || true
+          sudo chmod 666 /dev/kvm 2>/dev/null || true
+      - name: Android 15 page render plus launch
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            cd qurani-app/android
+            ./gradlew connectedDebugAndroidTest --stacktrace
+            adb install -r app/build/outputs/apk/release/app-release.apk
+            adb shell am force-stop com.qurani.app; adb shell monkey -p com.qurani.app 1 >/dev/null; sleep 8
+            test -n "$(adb shell pidof com.qurani.app | tr -d '\r')"
+            adb shell am force-stop com.qurani.app; adb shell monkey -p com.qurani.app 1 >/dev/null; sleep 5
+            test -n "$(adb shell pidof com.qurani.app | tr -d '\r')"
+      - name: Publish APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" -y --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" "/tmp/final/$APK_NAME" --repo "$GITHUB_REPOSITORY" --title 'المصحف المعلم بقراءة الامام نافع v1.0.4' --notes 'Replacement page rendering verified with Android PdfRenderer on Android 15.'
