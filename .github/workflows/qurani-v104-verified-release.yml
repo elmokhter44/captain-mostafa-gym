@@ -1,0 +1,284 @@
+name: Qurani v1.0.4 Verified Page Release
+
+on:
+  push:
+    branches: [qurani-build-temp]
+    paths:
+      - '.github/workflows/qurani-v104-verified-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build-test-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      REALM_DISABLE_ANALYTICS: '1'
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: qurani-v1.0.4-nafi-verified
+      FINAL_NAME: al-mushaf-al-muallam-nafi-v1.0.4.apk
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+          cache-read-only: true
+
+      - name: Restore verified source and signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n QURANI-FINAL-v1.0.1-R2-1 -D /tmp/v101
+          test -s /tmp/v101/final-delivery/Qurani-source-v1.0.1.zip
+          test -s /tmp/v101/final-delivery/Qurani-signing-backup-v1.0.1.zip
+          mkdir -p qurani-app /tmp/signing
+          unzip -q /tmp/v101/final-delivery/Qurani-source-v1.0.1.zip -d qurani-app
+          unzip -q /tmp/v101/final-delivery/Qurani-signing-backup-v1.0.1.zip -d /tmp/signing
+          cp /tmp/signing/qurani-release.keystore qurani-app/android/app/qurani-release.keystore
+          STORE_PASSWORD="$(sed -n 's/^Store password: //p' /tmp/signing/signing-credentials.txt)"
+          KEY_PASSWORD="$(sed -n 's/^Key password: //p' /tmp/signing/signing-credentials.txt)"
+          cat > qurani-app/android/keystore.properties <<EOF
+          storeFile=qurani-release.keystore
+          storePassword=$STORE_PASSWORD
+          keyAlias=qurani-release
+          keyPassword=$KEY_PASSWORD
+          EOF
+          chmod 600 qurani-app/android/keystore.properties qurani-app/android/app/qurani-release.keystore
+          gh release download qurani-v1.0.3-nafi-final --repo "$GITHUB_REPOSITORY" -p '*.apk' -D /tmp/v103
+          test -s /tmp/v103/al-mushaf-al-muallam-nafi-v1.0.3.apk
+
+      - name: Apply only approved v1.0.4 changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          npm version 1.0.4 --no-git-tag-version --allow-same-version
+          python3 - <<'PY'
+          from pathlib import Path
+          def rep(path, old, new):
+              p=Path(path); s=p.read_text()
+              if old not in s: raise SystemExit(f'missing expected text in {path}: {old[:80]}')
+              p.write_text(s.replace(old,new))
+          rep('android/app/build.gradle','versionCode 2\n        versionName "1.0.1"','versionCode 5\n        versionName "1.0.4"')
+          Path('android/app/src/main/res/values/strings.xml').write_text('<resources><string name="app_name">المصحف المعلم\\nبقراءة الامام نافع</string></resources>\n')
+          Path('app.json').write_text('{"name":"Qurani","displayName":"المصحف المعلم بقراءة الامام نافع"}\n')
+          rep('src/data/sections.ts',"{id: 'warsh-summary', title: 'شرح مختصر أصول الإمام ورش', subtitle: 'ملخص مبسط لأصول القراءة', sourceStartPage: 6, sourceEndPage: 9, assetName: 'warsh_summary.pdf'},","{id: 'warsh-summary', title: 'شرح مختصر أصول الإمام ورش', subtitle: 'ملخص مبسط لأصول القراءة', sourceStartPage: 6, sourceEndPage: 9, assetName: 'warsh_summary_v104.pdf'},")
+          rep('src/data/sections.ts',"{id: 'warsh-usul', title: 'أصول قراءة الإمام نافع برواية ورش', subtitle: 'الأصول كما وردت في المصدر',","{id: 'warsh-usul', title: 'أصول قراءة الإمام نافع برواية ورش', subtitle: 'الأصول كما وردت في مصاحف السلسلة الفراتية',")
+          rep('src/data/sections.ts',"{id: 'qalun-usul', title: 'أصول قراءة الإمام نافع برواية قالون', subtitle: 'يشمل الصفحات 639 إلى 649',","{id: 'qalun-usul', title: 'أصول قراءة الإمام نافع برواية قالون', subtitle: 'الأصول كما وردت في مصاحف السلسلة الفراتية',")
+          rep('src/data/sections.ts',"{id: 'handwritten', title: 'أصول وفروش ورش وقالون بخط اليد', subtitle: 'أصول وفروش قراءة الإمام نافع المدني',","{id: 'handwritten', title: 'أصول وفروش قراءة الامام نافع المدني برواية (ورش وقالون) بخط الايد', subtitle: '',")
+          p=Path('src/features/home/SectionCard.tsx'); s=p.read_text()
+          s=s.replace("export function SectionCard({section, width, onPress}: {section: SectionSeed; width: number; onPress: () => void}): React.JSX.Element {\n  return (","export function SectionCard({section, width, onPress}: {section: SectionSeed; width: number; onPress: () => void}): React.JSX.Element {\n  const isHandwritten = section.id === 'handwritten';\n  return (")
+          s=s.replace("style={({pressed}) => [styles.card, {width}, pressed && styles.pressed]}","style={({pressed}) => [styles.card, {width}, isHandwritten && styles.handwrittenCard, pressed && styles.pressed]")
+          s=s.replace("<Text style={styles.title}>{section.title}</Text>\n        <Text style={styles.subtitle} numberOfLines={2}>{section.subtitle}</Text>","<Text style={[styles.title, isHandwritten && styles.handwrittenTitle]}>{section.title}</Text>\n        {section.subtitle ? <Text style={styles.subtitle} numberOfLines={2}>{section.subtitle}</Text> : null}")
+          s=s.replace("  pressed: {opacity: 0.82","  handwrittenCard: {minHeight: 168},\n  pressed: {opacity: 0.82")
+          s=s.replace("  subtitle: {fontSize: 12","  handwrittenTitle: {fontSize: 17, lineHeight: 27},\n  subtitle: {fontSize: 12")
+          p.write_text(s)
+          p=Path('src/features/index/IndexScreen.tsx'); s=p.read_text()
+          s=s.replace("import React, {useMemo} from 'react';","import React, {useMemo, useState} from 'react';")
+          s=s.replace("import {PdfPage} from '../reader/PdfPage';","import {ZoomablePdfPage} from '../reader/ZoomablePdfPage';\nimport {pageWidthForScreen} from '../reader/zoomModel';")
+          s=s.replace("  const {width: screenWidth} = useWindowDimensions();\n  const pageWidth = Math.max(280, screenWidth - SPACING.md * 2);","  const {width: screenWidth} = useWindowDimensions();\n  const [pageZoomed, setPageZoomed] = useState(false);\n  const pageWidth = pageWidthForScreen(screenWidth);")
+          s=s.replace('<PdfPage assetName="quran_index.pdf" pageIndex={index} width={pageWidth} overlay={overlaysFor(item)} />','<ZoomablePdfPage assetName="quran_index.pdf" pageIndex={index} width={pageWidth} overlay={overlaysFor(item)} onZoomStateChange={setPageZoomed} />')
+          s=s.replace("        windowSize={4}\n        contentContainerStyle","        windowSize={4}\n        scrollEnabled={!pageZoomed}\n        contentContainerStyle")
+          p.write_text(s)
+          PY
+
+      - name: Create Android-safe real PDF page 9
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s .ci-assets/q9.jpg
+          python3 -m venv /tmp/pdfvenv
+          /tmp/pdfvenv/bin/pip install --quiet 'PyMuPDF==1.26.4' 'Pillow==11.3.0'
+          /tmp/pdfvenv/bin/python - <<'PY'
+          import fitz, hashlib
+          from pathlib import Path
+          from PIL import Image, ImageFile
+          ImageFile.LOAD_TRUNCATED_IMAGES=True
+          src=Path('qurani-app/android/app/src/main/assets/pdf/warsh_summary.pdf')
+          dst=Path('qurani-app/android/app/src/main/assets/pdf/warsh_summary_v104.pdf')
+          jpg=Path('/tmp/q9-baseline.jpg'); one=Path('/tmp/q9-one.pdf')
+          with Image.open('.ci-assets/q9.jpg') as im:
+              im.load(); im.convert('RGB').save(jpg,'JPEG',quality=95,subsampling=0,progressive=False,optimize=False,icc_profile=None)
+          old=fitz.open(src); assert old.page_count==4; rect=old[3].rect
+          with Image.open(jpg) as im: im.save(one,'PDF',resolution=127.5,quality=95,subsampling=0)
+          raw=fitz.open(one); safe=fitz.open(); p=safe.new_page(width=rect.width,height=rect.height)
+          p.show_pdf_page(p.rect,raw,0,keep_proportion=False)
+          safe_path=Path('/tmp/q9-safe.pdf'); safe.save(safe_path,garbage=4,deflate=True); safe.close(); raw.close()
+          safe_doc=fitz.open(safe_path); imgs=safe_doc[0].get_images(full=True)
+          assert len(imgs)==1 and imgs[0][5]=='DeviceRGB', imgs
+          before=[hashlib.sha256(old[i].get_pixmap(alpha=False).samples).hexdigest() for i in range(3)]
+          out=fitz.open(); out.insert_pdf(old,from_page=0,to_page=2); out.insert_pdf(safe_doc,from_page=0,to_page=0); out.save(dst,garbage=4,deflate=True); out.close()
+          chk=fitz.open(dst); assert chk.page_count==4
+          after=[hashlib.sha256(chk[i].get_pixmap(alpha=False).samples).hexdigest() for i in range(3)]
+          assert before==after
+          pix=chk[3].get_pixmap(matrix=fitz.Matrix(1.5,1.5),alpha=False)
+          vals=bytes(pix.samples); assert len(set(vals[::97]))>20
+          pix.save('/tmp/page4-reference.png')
+          chk.close(); safe_doc.close(); old.close()
+          print('SAFE_REAL_PAGE_9=1')
+          PY
+
+      - name: Tests and typecheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          npm install --no-audit --no-fund
+          node --experimental-strip-types --test __tests__/*.node.test.ts | tee ci/business-tests-v104.txt
+          grep -q '# fail 0' ci/business-tests-v104.txt
+          cat > tsconfig.app.json <<'EOF'
+          {"extends":"./tsconfig.json","exclude":["node_modules","android","__tests__","**/*.node.test.ts"]}
+          EOF
+          npx tsc --noEmit -p tsconfig.app.json
+
+      - name: Build and verify signed APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
+          rm -rf android/app/.cxx android/.cxx
+          cd android && chmod +x gradlew && ./gradlew clean assembleRelease --stacktrace && cd ..
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"; APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          test -s "$APK"
+          "$AAPT" dump badging "$APK" | tee ci/apk-badging-v104.txt
+          grep -q "package: name='com.qurani.app' versionCode='5' versionName='1.0.4'" ci/apk-badging-v104.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee ci/apksigner-v104.txt
+          "$APKSIGNER" verify --print-certs /tmp/v103/al-mushaf-al-muallam-nafi-v1.0.3.apk > /tmp/v103-cert.txt
+          test "$(grep 'Signer #1 certificate SHA-256 digest:' /tmp/v103-cert.txt | sed 's/.*: //')" = "$(grep 'Signer #1 certificate SHA-256 digest:' ci/apksigner-v104.txt | sed 's/.*: //')"
+          unzip -l "$APK" | grep -q 'assets/pdf/warsh_summary_v104.pdf'
+          mkdir -p /tmp/final
+          cp "$APK" "/tmp/final/$FINAL_NAME"
+          sha256sum "/tmp/final/$FINAL_NAME" | tee ci/apk-sha256-v104.txt
+
+      - name: Prepare visual update verification script
+        shell: bash
+        run: |
+          cat > /tmp/verify-v104.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/qurani-app"
+          V103=/tmp/v103/al-mushaf-al-muallam-nafi-v1.0.3.apk
+          V104="$PWD/android/app/build/outputs/apk/release/app-release.apk"
+
+          open_section() {
+            adb shell am force-stop com.qurani.app
+            adb shell monkey -p com.qurani.app -c android.intent.category.LAUNCHER 1 >/dev/null
+            sleep 5
+            for i in 1 2 3 4 5 6; do
+              adb shell uiautomator dump /sdcard/home.xml >/dev/null
+              adb exec-out cat /sdcard/home.xml > /tmp/home.xml
+              if grep -q 'فتح شرح مختصر أصول الإمام ورش' /tmp/home.xml; then
+                /usr/bin/python3 - <<'PY'
+          import re,subprocess
+          from pathlib import Path
+          s=Path('/tmp/home.xml').read_text(errors='ignore')
+          pats=[r'content-desc="فتح شرح مختصر أصول الإمام ورش"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^>]*content-desc="فتح شرح مختصر أصول الإمام ورش"']
+          m=None
+          for p in pats:
+              m=re.search(p,s)
+              if m: break
+          if not m: raise SystemExit('card bounds not found')
+          x1,y1,x2,y2=map(int,m.groups())
+          subprocess.check_call(['adb','shell','input','tap',str((x1+x2)//2),str((y1+y2)//2)])
+          PY
+                sleep 5
+                return 0
+              fi
+              adb shell input swipe 540 1800 540 450 350
+              sleep 1
+            done
+            echo 'warsh summary card not found' >&2
+            return 1
+          }
+
+          adb uninstall com.qurani.app >/dev/null 2>&1 || true
+          adb install "$V103"
+          open_section
+          adb shell input swipe 540 1800 540 350 350
+          adb shell input swipe 540 1800 540 350 350
+          adb shell input swipe 540 1800 540 350 350
+          sleep 3
+          adb shell am force-stop com.qurani.app
+
+          adb install -r "$V104"
+          open_section
+          for i in 1 2 3 4 5; do adb shell input swipe 540 1800 540 350 350; sleep 1; done
+          sleep 5
+          adb shell uiautomator dump /sdcard/page4.xml >/dev/null
+          adb exec-out cat /sdcard/page4.xml > /tmp/page4.xml
+          grep -q 'صفحة 4 من 4' /tmp/page4.xml
+          adb exec-out screencap -p > /tmp/page4.png
+          /tmp/pdfvenv/bin/python - <<'PY'
+          from PIL import Image, ImageStat
+          im=Image.open('/tmp/page4.png').convert('RGB')
+          w,h=im.size
+          crop=im.crop((0,int(h*0.17),w,int(h*0.84)))
+          px=list(crop.getdata())[::20]
+          gray=sum(1 for r,g,b in px if 118<=r<=142 and 118<=g<=142 and 118<=b<=142)/len(px)
+          dark=sum(1 for r,g,b in px if (r+g+b)/3<105)/len(px)
+          red=sum(1 for r,g,b in px if r>145 and r>g*1.35 and r>b*1.25)/len(px)
+          std=sum(ImageStat.Stat(crop).stddev)/3
+          print('PAGE4 gray=',gray,'dark=',dark,'red=',red,'std=',std)
+          if gray>0.25: raise SystemExit('gray placeholder still visible')
+          if dark<0.004: raise SystemExit('page text not detected')
+          if red<0.003: raise SystemExit('expected red content not detected')
+          if std<20: raise SystemExit('page appears too flat')
+          crop.save('ci/v104-page4-verified.png')
+          PY
+          adb shell am force-stop com.qurani.app
+          adb shell monkey -p com.qurani.app -c android.intent.category.LAUNCHER 1 >/dev/null
+          sleep 4
+          test -n "$(adb shell pidof com.qurani.app | tr -d '\r')"
+          SH
+          chmod +x /tmp/verify-v104.sh
+
+      - name: Free space for emulator
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android/sdk/ndk /usr/local/lib/android/sdk/cmake /opt/hostedtoolcache/CodeQL /usr/share/dotnet /usr/local/share/boost || true
+          sudo apt-get clean || true
+          df -h /
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+          sudo chmod 666 /dev/kvm 2>/dev/null || true
+
+      - name: Android 15 update and actual page 4 visual verification
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          disk-size: 6G
+          script: bash /tmp/verify-v104.sh
+
+      - name: Publish verified APK release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" -y --cleanup-tag 2>/dev/null || true
+          gh release create "$RELEASE_TAG" "/tmp/final/$FINAL_NAME#المصحف المعلم بقراءة الامام نافع v1.0.4.apk" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'المصحف المعلم بقراءة الامام نافع v1.0.4' --notes 'Verified update install and real page 4 rendering on Android 15.'
