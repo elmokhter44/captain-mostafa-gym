@@ -1,0 +1,59 @@
+name: Repair Qurani replacement image and trigger v1.0.4
+
+on:
+  push:
+    branches: [qurani-build-temp]
+    paths:
+      - '.github/workflows/repair-q9-and-trigger.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qurani-build-temp
+          fetch-depth: 0
+      - name: Repair truncated JPEG and validate page content
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet Pillow
+          python3 - <<'PY'
+          from PIL import Image, ImageFile
+          from pathlib import Path
+          p=Path('.ci-assets/q9.jpg')
+          ImageFile.LOAD_TRUNCATED_IMAGES=True
+          with Image.open(p) as im:
+              print('source', im.size, im.mode, p.stat().st_size)
+              rgb=im.convert('RGB')
+              rgb.save('/tmp/q9-repaired.jpg','JPEG',quality=92,subsampling=0,progressive=False,optimize=True,icc_profile=None)
+          with Image.open('/tmp/q9-repaired.jpg') as im:
+              im.load()
+              assert im.width >= 1000 and im.height >= 1400, im.size
+              small=im.resize((240,340)).convert('RGB')
+              px=list(small.getdata())
+              red=sum(1 for r,g,b in px if r>140 and r>g*1.2 and r>b*1.15)/len(px)
+              dark=sum(1 for r,g,b in px if (r+g+b)/3<110)/len(px)
+              gray=sum(1 for r,g,b in px if 118<=r<=142 and 118<=g<=142 and 118<=b<=142)/len(px)
+              print('metrics',red,dark,gray,'size',Path('/tmp/q9-repaired.jpg').stat().st_size)
+              assert red>0.003 and dark>0.004, (red,dark)
+              assert gray<0.30, gray
+          PY
+          cp /tmp/q9-repaired.jpg .ci-assets/q9.jpg
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .ci-assets/q9.jpg
+          git commit -m 'fix(qurani): repair replacement page JPEG'
+          git push origin HEAD:qurani-build-temp
+      - name: Trigger verified v1.0.4 build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run qurani-v104-image-page-final.yml --repo "$GITHUB_REPOSITORY" --ref qurani-build-temp
