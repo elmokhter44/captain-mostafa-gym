@@ -1,7 +1,21 @@
+import base64
 import fitz
 from PIL import Image
 from pathlib import Path
-jpg=Path('.ci-assets/q9.jpg'); assert jpg.stat().st_size>10000
+
+# Reconstruct the complete replacement image from verified text chunks.
+parts = sorted(Path('.ci-assets/q50-b64').glob('part*'))
+assert parts, 'replacement image chunks missing'
+payload = ''.join(p.read_text().strip() for p in parts)
+jpg = Path('.ci-assets/q9.jpg')
+jpg.write_bytes(base64.b64decode(payload, validate=True))
+assert jpg.stat().st_size > 20000, jpg.stat().st_size
+with Image.open(jpg) as check:
+    check.verify()
+with Image.open(jpg) as check:
+    assert check.width >= 700 and check.height >= 900, (check.width, check.height)
+    print('REPLACEMENT_IMAGE_SIZE=', check.size)
+
 safe=Path('/tmp/q9-safe.jpg')
 Image.open(jpg).convert('RGB').save(safe,'JPEG',quality=95,subsampling=0,progressive=False,optimize=False,icc_profile=None)
 Image.open(safe).save('/tmp/q9-safe.pdf','PDF',resolution=127.5,quality=95,subsampling=0)
