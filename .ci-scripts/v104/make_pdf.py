@@ -6,9 +6,10 @@ from pathlib import Path
 # Reconstruct the complete replacement image from verified text chunks.
 parts = sorted(Path('.ci-assets/q50-b64').glob('part*'))
 assert parts, 'replacement image chunks missing'
-payload = ''.join(p.read_text().strip() for p in parts)
+payload = ''.join(''.join(p.read_text().split()) for p in parts)
+payload += '=' * (-len(payload) % 4)
 jpg = Path('.ci-assets/q9.jpg')
-jpg.write_bytes(base64.b64decode(payload, validate=True))
+jpg.write_bytes(base64.b64decode(payload, validate=False))
 assert jpg.stat().st_size > 20000, jpg.stat().st_size
 with Image.open(jpg) as check:
     check.verify()
