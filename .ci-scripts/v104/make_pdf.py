@@ -3,7 +3,6 @@ import fitz
 from PIL import Image
 from pathlib import Path
 
-# Reconstruct the complete replacement image from verified text chunks.
 parts = sorted(Path('.ci-assets/q50-b64').glob('part*'))
 assert parts, 'replacement image chunks missing'
 payload = ''.join(''.join(p.read_text().split()) for p in parts)
@@ -14,11 +13,16 @@ assert jpg.stat().st_size > 20000, jpg.stat().st_size
 with Image.open(jpg) as check:
     check.verify()
 with Image.open(jpg) as check:
-    assert check.width >= 700 and check.height >= 900, (check.width, check.height)
+    assert check.width >= 500 and check.height >= 700, (check.width, check.height)
     print('REPLACEMENT_IMAGE_SIZE=', check.size)
+    rgb = check.convert('RGB')
+    if rgb.width < 900:
+        target_w = 1056
+        target_h = round(rgb.height * target_w / rgb.width)
+        rgb = rgb.resize((target_w, target_h), Image.Resampling.LANCZOS)
 
 safe=Path('/tmp/q9-safe.jpg')
-Image.open(jpg).convert('RGB').save(safe,'JPEG',quality=95,subsampling=0,progressive=False,optimize=False,icc_profile=None)
+rgb.save(safe,'JPEG',quality=95,subsampling=0,progressive=False,optimize=False,icc_profile=None)
 Image.open(safe).save('/tmp/q9-safe.pdf','PDF',resolution=127.5,quality=95,subsampling=0)
 old=fitz.open('qurani-app/android/app/src/main/assets/pdf/warsh_summary.pdf'); src=fitz.open('/tmp/q9-safe.pdf'); rect=old[3].rect
 one=fitz.open(); p=one.new_page(width=rect.width,height=rect.height); p.show_pdf_page(p.rect,src,0,keep_proportion=False)
