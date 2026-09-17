@@ -83,7 +83,7 @@ jobs:
           rep('src/data/sections.ts',"{id: 'handwritten', title: 'أصول وفروش ورش وقالون بخط اليد', subtitle: 'أصول وفروش قراءة الإمام نافع المدني',","{id: 'handwritten', title: 'أصول وفروش قراءة الامام نافع المدني برواية (ورش وقالون) بخط الايد', subtitle: '',")
           p=Path('src/features/home/SectionCard.tsx'); s=p.read_text()
           s=s.replace("export function SectionCard({section, width, onPress}: {section: SectionSeed; width: number; onPress: () => void}): React.JSX.Element {\n  return (","export function SectionCard({section, width, onPress}: {section: SectionSeed; width: number; onPress: () => void}): React.JSX.Element {\n  const isHandwritten = section.id === 'handwritten';\n  return (")
-          s=s.replace("style={({pressed}) => [styles.card, {width}, pressed && styles.pressed]}","style={({pressed}) => [styles.card, {width}, isHandwritten && styles.handwrittenCard, pressed && styles.pressed]")
+          s=s.replace("style={({pressed}) => [styles.card, {width}, pressed && styles.pressed]}","style={({pressed}) => [styles.card, {width}, isHandwritten && styles.handwrittenCard, pressed && styles.pressed]}")
           s=s.replace("<Text style={styles.title}>{section.title}</Text>\n        <Text style={styles.subtitle} numberOfLines={2}>{section.subtitle}</Text>","<Text style={[styles.title, isHandwritten && styles.handwrittenTitle]}>{section.title}</Text>\n        {section.subtitle ? <Text style={styles.subtitle} numberOfLines={2}>{section.subtitle}</Text> : null}")
           s=s.replace("  pressed: {opacity: 0.82","  handwrittenCard: {minHeight: 168},\n  pressed: {opacity: 0.82")
           s=s.replace("  subtitle: {fontSize: 12","  handwrittenTitle: {fontSize: 17, lineHeight: 27},\n  subtitle: {fontSize: 12")
