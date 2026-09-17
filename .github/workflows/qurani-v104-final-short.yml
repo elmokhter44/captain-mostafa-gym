@@ -89,3 +89,4 @@ jobs:
           set -euo pipefail
           gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" -y --cleanup-tag 2>/dev/null || true
           gh release create "$TAG" "/tmp/final/$APK_NAME" --repo "$GITHUB_REPOSITORY" --title 'المصحف المعلم بقراءة الامام نافع v1.0.4' --notes 'Replacement page rendering verified with Android PdfRenderer on Android 15.'
+# retrigger after renderer-safe image validation fix
