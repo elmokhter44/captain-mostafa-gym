@@ -1,0 +1,16 @@
+name: Trigger repaired Qurani v1.0.4
+on:
+  push:
+    branches: [qurani-build-temp]
+    paths: ['.github/workflows/trigger-qurani-v104.yml']
+permissions:
+  actions: write
+  contents: read
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch repaired v1.0.4 workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run qurani-v104-final-short.yml --repo "$GITHUB_REPOSITORY" --ref qurani-build-temp
