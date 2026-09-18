@@ -124,6 +124,7 @@ jobs:
           cd android
           gradle wrapper --gradle-version 9.3.1
           chmod +x gradlew
+          rm -rf app/.cxx .cxx
           ./gradlew clean assembleRelease --stacktrace | tee ../ci/ibnkathir-gradle-build.txt
 
       - name: Verify skeleton identity and runtime libraries
