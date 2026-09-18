@@ -1,4 +1,4 @@
-name: Publish IbnKathir Payloads to CNet Paste
+name: Text Release Probe
 on:
   push:
     branches: [qurani-ibnkathir-v100]
@@ -7,30 +7,32 @@ on:
 permissions:
   contents: write
 jobs:
-  publish:
+  probe:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - name: Publish base64 payloads
+      - name: Upload text/plain release asset and capture redirect
         shell: bash
         run: |
           set -euo pipefail
-          cat qurani-ibnkathir/payload-chunks/delta-[0-9][0-9] > /tmp/delta.b64
-          cat qurani-ibnkathir/payload-chunks/tools-[0-9][0-9] > /tmp/tools.b64
-          DURL="$(curl -fsS --retry 3 -H 'x-random;' -H 'X-FileName: delta.b64.txt' --data-binary @/tmp/delta.b64 https://paste.c-net.org/)"
-          TURL="$(curl -fsS --retry 3 -H 'x-random;' -H 'X-FileName: tools.b64.txt' --data-binary @/tmp/tools.b64 https://paste.c-net.org/)"
-          test -n "$DURL"; test -n "$TURL"
-          {
-            echo "DELTA_B64_URL=$DURL"
-            echo "TOOLS_B64_URL=$TURL"
-            cat qurani-ibnkathir/payload-chunks/manifest.txt
-          } | tee qurani-ibnkathir/cnet-payload-urls.txt
-      - name: Persist URLs
+          printf 'ibnkathir-text-probe\n' > /tmp/textprobe.txt
+          RID="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/ibnkathir-transfer-v100" --jq .id)"
+          OLD="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RID/assets" --jq '.[] | select(.name=="textprobe.txt") | .id' || true)"
+          [ -z "$OLD" ] || gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$OLD"
+          RESP="$(curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H 'Content-Type: text/plain' --data-binary @/tmp/textprobe.txt "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RID/assets?name=textprobe.txt")"
+          AID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["id"])' "$RESP")"
+          API="https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$AID"
+          LOC="$(curl -fsSI -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/octet-stream' "$API" | tr -d '\r' | awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/^location:[[:space:]]*/,"");print;exit}')"
+          test -n "$LOC"
+          printf '%s\n' "$LOC" | tee qurani-ibnkathir/text-release-probe-url.txt
+      - name: Persist
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add qurani-ibnkathir/cnet-payload-urls.txt
-          git commit -m 'ci: publish payloads to cnet paste' || true
+          git add qurani-ibnkathir/text-release-probe-url.txt
+          git commit -m 'ci: record text release probe URL' || true
           git push origin HEAD:qurani-ibnkathir-v100
