@@ -22,9 +22,8 @@ jobs:
           set -euo pipefail
           sudo apt-get update >/dev/null
           sudo apt-get install -y poppler-utils >/dev/null
-          URL='https://bhr-q.com/media/attachments/qran/02/Albazi.pdf'
-          curl -fL --retry 4 --retry-delay 3 --connect-timeout 30 --max-time 900 \
-            -A 'Mozilla/5.0' "$URL" -o /tmp/ibnkathir-source.pdf
+          URL='https://bhr-q.com/media/attachments/qran/02/Abdullah-bin-kather.pdf'
+          curl -fL --retry 4 --retry-delay 3 --connect-timeout 30 --max-time 900 -A 'Mozilla/5.0' "$URL" -o /tmp/ibnkathir-source.pdf
           ACTUAL_SHA="$(sha256sum /tmp/ibnkathir-source.pdf | awk '{print $1}')"
           echo "ACTUAL_SHA=$ACTUAL_SHA"
           echo "SIZE_BYTES=$(stat -c%s /tmp/ibnkathir-source.pdf)"
