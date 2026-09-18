@@ -1,0 +1,57 @@
+diff --git a/__tests__/ibnkathirConfig.node.test.ts b/__tests__/ibnkathirConfig.node.test.ts
+--- a/__tests__/ibnkathirConfig.node.test.ts
++++ b/__tests__/ibnkathirConfig.node.test.ts
+@@ -7,17 +7,18 @@ import {mushafToSourcePage, sourceToMushafPage} from '../src/utils/pageMapping.
+ 
+ const expected = [
+   ['quran', 'المصحف', '', 5, 608, 'quran.pdf', true],
++  ['ibn-kathir-reading', 'قراءة عبدالله بن كثير برواية البزي وقنبل', '', 1, 4, 'ibn_kathir_reading.pdf', undefined],
+   ['index', 'الفهرس', '', 609, 610, 'quran_index.pdf', undefined],
+   ['dua', 'الدعاء', '', 611, 611, 'dua.pdf', undefined],
+   ['waqf-symbols', 'علامات الوقف ومصطلحات الضبط ودلالات الرمز والترميز اللوني للقراءات العشر في مصاحف السلسلة الفراتية', '', 612, 616, 'waqf_symbols.pdf', undefined],
+   ['furati-intro', 'من بين يدي السلسلة الفراتية', '', 617, 620, 'furati_intro.pdf', undefined],
+-  ['ibn-kathir-usul', 'شرح اصول قراءة الامام بن كثير المكي', '', 621, 632, 'ibn_kathir_usul.pdf', undefined],
++  ['ibn-kathir-usul', 'شرح أصول قراءة الامام بن كثير المكي برواية البزي وقنبل', '', 621, 632, 'ibn_kathir_usul.pdf', undefined],
+ ] as const;
+ 
+-test('Ibn Kathir app exposes exactly the six approved cards and source ranges with no subtitles', () => {
++test('Ibn Kathir app exposes exactly the seven approved cards and source ranges with no subtitles', () => {
+   assert.deepEqual(SECTIONS.map(s => [s.id, s.title, s.subtitle, s.sourceStartPage, s.sourceEndPage, s.assetName, s.featured]), expected);
+ });
+@@ -39,7 +40,7 @@ test('home and index preserve the master UI behavior while using Ibn Kathir labe
+   const home = readFileSync('src/features/home/HomeScreen.tsx', 'utf8');
+   const card = readFileSync('src/features/home/SectionCard.tsx', 'utf8');
+   const index = readFileSync('src/features/index/IndexScreen.tsx', 'utf8');
+-  assert.match(home, /المصحف المعلّم بقراءة الإمام ابن كثير المكي/);
++  assert.match(home, /المصحف المعلم بقراءة الامام بن كثير برواية البزي وقنبل/);
+   assert.doesNotMatch(home, /featuredSubtitle/);
+   assert.doesNotMatch(home, /featuredEyebrow/);
+   assert.doesNotMatch(home, /featuredPill/);
+diff --git a/__tests__/sections.node.test.ts b/__tests__/sections.node.test.ts
+--- a/__tests__/sections.node.test.ts
++++ b/__tests__/sections.node.test.ts
+@@ -4,6 +4,7 @@ import {SECTIONS} from '../src/data/sections.ts';
+ test('covers the approved Ibn Kathir source ranges exactly', () => {
+   assert.deepEqual(SECTIONS.map(s => [s.id, s.sourceStartPage, s.sourceEndPage]), [
+     ['quran', 5, 608],
++    ['ibn-kathir-reading', 1, 4],
+     ['index', 609, 610],
+     ['dua', 611, 611],
+     ['waqf-symbols', 612, 616],
+diff --git a/__tests__/navigationModels.node.test.ts b/__tests__/navigationModels.node.test.ts
+--- a/__tests__/navigationModels.node.test.ts
++++ b/__tests__/navigationModels.node.test.ts
+@@ -5,11 +5,12 @@ import {readerPageMeta} from '../src/features/reader/readerModel.ts';
+ import {SECTIONS} from '../src/data/sections.ts';
+ 
+-test('home model makes the mushaf the featured primary action while preserving all six sections', () => {
++test('home model keeps the mushaf featured and makes the new reading card the first section icon', () => {
+   const cards = buildHomeCards(SECTIONS);
+-  assert.equal(cards.length, 6);
++  assert.equal(cards.length, 7);
+   assert.equal(cards[0]?.id, 'quran');
+   assert.equal(cards[0]?.featured, true);
++  assert.equal(cards[1]?.id, 'ibn-kathir-reading');
+ });
+ 
+ test('surah target always opens the quran at its mushaf page', () => {
