@@ -1,0 +1,36 @@
+name: Artifact Inventory
+
+on:
+  push:
+    branches: [qurani-ibnkathir-v100]
+    paths: ['.github/workflows/artifact-inventory.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: List repository artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | [.id,.name,.size_in_bytes,.created_at,.expired,.workflow_run.id] | @tsv' \
+            > qurani-ibnkathir/artifact-inventory.tsv
+          cat qurani-ibnkathir/artifact-inventory.tsv
+      - name: Commit inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnkathir/artifact-inventory.tsv
+          git commit -m 'ci: record artifact inventory' || true
+          git push origin HEAD:qurani-ibnkathir-v100
