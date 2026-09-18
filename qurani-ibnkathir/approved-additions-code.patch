@@ -1,0 +1,36 @@
+diff --git a/src/data/sections.ts b/src/data/sections.ts
+--- a/src/data/sections.ts
++++ b/src/data/sections.ts
+@@ -1,5 +1,6 @@
+ export type SectionId =
+   | 'quran'
++  | 'ibn-kathir-reading'
+   | 'index'
+   | 'dua'
+   | 'waqf-symbols'
+@@ -17,11 +18,12 @@ export type SectionSeed = Readonly<{
+ 
+ export const SECTIONS: readonly SectionSeed[] = [
+   {id: 'quran', title: 'المصحف', subtitle: '', sourceStartPage: 5, sourceEndPage: 608, assetName: 'quran.pdf', featured: true},
++  {id: 'ibn-kathir-reading', title: 'قراءة عبدالله بن كثير برواية البزي وقنبل', subtitle: '', sourceStartPage: 1, sourceEndPage: 4, assetName: 'ibn_kathir_reading.pdf'},
+   {id: 'index', title: 'الفهرس', subtitle: '', sourceStartPage: 609, sourceEndPage: 610, assetName: 'quran_index.pdf'},
+   {id: 'dua', title: 'الدعاء', subtitle: '', sourceStartPage: 611, sourceEndPage: 611, assetName: 'dua.pdf'},
+   {id: 'waqf-symbols', title: 'علامات الوقف ومصطلحات الضبط ودلالات الرمز والترميز اللوني للقراءات العشر في مصاحف السلسلة الفراتية', subtitle: '', sourceStartPage: 612, sourceEndPage: 616, assetName: 'waqf_symbols.pdf'},
+   {id: 'furati-intro', title: 'من بين يدي السلسلة الفراتية', subtitle: '', sourceStartPage: 617, sourceEndPage: 620, assetName: 'furati_intro.pdf'},
+-  {id: 'ibn-kathir-usul', title: 'شرح اصول قراءة الامام بن كثير المكي', subtitle: '', sourceStartPage: 621, sourceEndPage: 632, assetName: 'ibn_kathir_usul.pdf'},
++  {id: 'ibn-kathir-usul', title: 'شرح أصول قراءة الامام بن كثير المكي برواية البزي وقنبل', subtitle: '', sourceStartPage: 621, sourceEndPage: 632, assetName: 'ibn_kathir_usul.pdf'},
+ ] as const;
+ 
+ export function sectionPageCount(section: SectionSeed): number {
+diff --git a/src/features/home/HomeScreen.tsx b/src/features/home/HomeScreen.tsx
+--- a/src/features/home/HomeScreen.tsx
++++ b/src/features/home/HomeScreen.tsx
+@@ -37,7 +37,7 @@ export function HomeScreen(): React.JSX.Element {
+         <Image source={require('../../../assets/branding/qurani-icon.png')} style={styles.logo} resizeMode="cover" />
+         <View style={styles.heroText}>
+           <Text style={styles.appName}>قرآني</Text>
+-          <Text style={styles.tagline}>المصحف المعلّم بقراءة الإمام ابن كثير المكي</Text>
++          <Text style={styles.tagline}>المصحف المعلم بقراءة الامام بن كثير برواية البزي وقنبل</Text>
+           <Text style={styles.subtag}>البزي وقنبل • يعمل بالكامل دون إنترنت</Text>
+         </View>
+       </View>
