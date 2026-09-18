@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 jobs:
@@ -197,50 +197,20 @@ jobs:
           zip -qr android-build-tools-36-minimal.zip android-build-tools-36
           sha256sum android-build-tools-36-minimal.zip
 
-      - name: Upload skeleton and signing tools to temporary transfer endpoint
+      - name: Stage local-finalization payload
         shell: bash
         run: |
           set -euo pipefail
-          upload_file() {
-            local file="$1"
-            local name
-            name="$(basename "$file")"
-            local json url
-            json="$(curl -fsS --retry 3 --retry-delay 2 -F "file=@${file}" https://tmpfiles.org/api/v1/upload || true)"
-            url="$(python3 - <<'PY' "$json"
-          import json,sys
-          try:
-              d=json.loads(sys.argv[1])
-              u=d.get('data',{}).get('url','')
-              if u.startswith('https://tmpfiles.org/'):
-                  u=u.replace('https://tmpfiles.org/','https://tmpfiles.org/dl/',1)
-              print(u)
-          except Exception:
-              print('')
-          PY
-            )"
-            if [ -z "$url" ]; then
-              url="$(curl -fsS --retry 3 --retry-delay 2 --upload-file "$file" "https://transfer.sh/${name}" || true)"
-            fi
-            test -n "$url"
-            printf '%s' "$url"
-          }
-          APK_URL="$(upload_file qurani-app/IbnKathir-skeleton-v1.0.0.apk)"
-          TOOLS_URL="$(upload_file /tmp/android-build-tools-36-minimal.zip)"
-          {
-            echo "APK_URL=$APK_URL"
-            echo "TOOLS_URL=$TOOLS_URL"
-            echo "APK_SHA256=$(sha256sum qurani-app/IbnKathir-skeleton-v1.0.0.apk | awk '{print $1}')"
-            echo "TOOLS_SHA256=$(sha256sum /tmp/android-build-tools-36-minimal.zip | awk '{print $1}')"
-          } | tee qurani-ibnkathir/transfer-urls.txt
+          mkdir -p /tmp/ibnkathir-local-finalization
+          cp qurani-app/IbnKathir-skeleton-v1.0.0.apk /tmp/ibnkathir-local-finalization/
+          cp /tmp/android-build-tools-36-minimal.zip /tmp/ibnkathir-local-finalization/
+          cp qurani-app/ci/ibnkathir-*.txt /tmp/ibnkathir-local-finalization/
 
-      - name: Persist transfer URLs on isolated branch
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git pull --rebase origin qurani-ibnkathir-v100
-          git add qurani-ibnkathir/transfer-urls.txt
-          git commit -m 'ci: record temporary Ibn Kathir build transfer URLs' || true
-          git push origin HEAD:qurani-ibnkathir-v100
+      - name: Upload local-finalization payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ibnkathir-local-finalization-v1.0.0
+          retention-days: 2
+          if-no-files-found: error
+          compression-level: 0
+          path: /tmp/ibnkathir-local-finalization/
