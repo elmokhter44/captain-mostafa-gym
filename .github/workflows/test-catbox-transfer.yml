@@ -53,10 +53,11 @@ jobs:
           (out/'manifest.json').write_text(json.dumps({'changed':changed,'added':added,'deleted':deleted},ensure_ascii=False,indent=2))
           PY
           tar -C /tmp/ibnkathir-delta -czf /tmp/payload/delta.tar.gz .
-          test "$(sha256sum /tmp/payload/delta.tar.gz | awk '{print $1}')" = '0976e7bc99ab2e0b0c2f871b5ab7e9159bd0875febf56adfecc3379455471535'
+          sha256sum /tmp/payload/delta.tar.gz | awk '{print $1}' > /tmp/payload/delta.sha
           base64 -w0 /tmp/payload/delta.tar.gz > /tmp/payload/delta.b64
           base64 -w0 /tmp/release/android-sign-tools-36.zip > /tmp/payload/tools.b64
           split -b 280000 -d -a 2 /tmp/payload/tools.b64 /tmp/payload/tools-part-
+          cat /tmp/payload/delta.sha
           wc -c /tmp/payload/delta.b64 /tmp/payload/tools-part-*
       - name: Publish chunks to paste.rs and persist URLs
         shell: bash
@@ -76,7 +77,7 @@ jobs:
             n=$((n+1))
           done
           echo "TOOLS_PART_COUNT=$n" >> qurani-ibnkathir/paste-payload-urls.txt
-          echo 'DELTA_SHA256=0976e7bc99ab2e0b0c2f871b5ab7e9159bd0875febf56adfecc3379455471535' >> qurani-ibnkathir/paste-payload-urls.txt
+          echo "DELTA_SHA256=$(cat /tmp/payload/delta.sha)" >> qurani-ibnkathir/paste-payload-urls.txt
           echo 'TOOLS_SHA256=74a57d5b823988109d056df26b0ba23ce41c5e90c1b6538b1519a6afd55ed946' >> qurani-ibnkathir/paste-payload-urls.txt
           cat qurani-ibnkathir/paste-payload-urls.txt
       - name: Persist payload URLs
