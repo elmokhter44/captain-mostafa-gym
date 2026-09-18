@@ -1,0 +1,33 @@
+name: IbnKathir Public PDF Page Hashes
+
+on:
+  push:
+    branches: [qurani-ibnkathir-v100]
+    paths:
+      - '.github/workflows/ibnkathir-public-hashes.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hash:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download public PDF and hash rendered pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 4 --retry-delay 3 --connect-timeout 30 --max-time 900 -A 'Mozilla/5.0' \
+            'https://bhr-q.com/media/attachments/qran/02/Albazi.pdf' -o /tmp/public.pdf
+          python3 -m pip install --quiet 'PyMuPDF==1.26.4'
+          python3 - <<'PY'
+          import fitz, hashlib
+          d=fitz.open('/tmp/public.pdf')
+          print(f'PUBLIC_PAGE_COUNT={d.page_count}')
+          for i,p in enumerate(d):
+              pix=p.get_pixmap(matrix=fitz.Matrix(1,1),alpha=False)
+              print(f'PUBHASH {i+1} {hashlib.sha256(pix.samples).hexdigest()}')
+          PY
