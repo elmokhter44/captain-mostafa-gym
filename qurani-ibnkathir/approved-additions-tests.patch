@@ -1,7 +1,7 @@
 diff --git a/__tests__/ibnkathirConfig.node.test.ts b/__tests__/ibnkathirConfig.node.test.ts
 --- a/__tests__/ibnkathirConfig.node.test.ts
 +++ b/__tests__/ibnkathirConfig.node.test.ts
-@@ -7,17 +7,18 @@ import {mushafToSourcePage, sourceToMushafPage} from '../src/utils/pageMapping.
+@@ -7,13 +7,14 @@ import {mushafToSourcePage, sourceToMushafPage} from '../src/utils/pageMapping.
  
  const expected = [
    ['quran', 'المصحف', '', 5, 608, 'quran.pdf', true],
@@ -41,7 +41,7 @@ diff --git a/__tests__/sections.node.test.ts b/__tests__/sections.node.test.ts
 diff --git a/__tests__/navigationModels.node.test.ts b/__tests__/navigationModels.node.test.ts
 --- a/__tests__/navigationModels.node.test.ts
 +++ b/__tests__/navigationModels.node.test.ts
-@@ -5,11 +5,12 @@ import {readerPageMeta} from '../src/features/reader/readerModel.ts';
+@@ -5,10 +5,11 @@ import {readerPageMeta} from '../src/features/reader/readerModel.ts';
  import {SECTIONS} from '../src/data/sections.ts';
  
 -test('home model makes the mushaf the featured primary action while preserving all six sections', () => {
