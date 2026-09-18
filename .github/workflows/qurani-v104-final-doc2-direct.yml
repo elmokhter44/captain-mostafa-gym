@@ -173,8 +173,7 @@ jobs:
           disable-animations: true
           script: |
             set -e
-            cd qurani-app/android
-            ./gradlew :app:connectedDebugAndroidTest --stacktrace
+            ./qurani-app/android/gradlew -p qurani-app/android :app:connectedDebugAndroidTest --stacktrace
             adb uninstall com.qurani.app || true
             adb install /tmp/v103/al-mushaf-al-muallam-nafi-v1.0.3.apk
             adb shell am start -W -n com.qurani.app/.MainActivity
