@@ -1,0 +1,51 @@
+name: IbnKathir Transfer Mirror
+
+on:
+  push:
+    branches: [qurani-ibnkathir-v100]
+    paths:
+      - '.github/workflows/ibnkathir-transfer-mirror.yml'
+      - 'qurani-ibnkathir/transfer-urls.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ibnkathir-transfer-v1.0.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and verify transfer files
+        shell: bash
+        run: |
+          set -euo pipefail
+          source qurani-ibnkathir/transfer-urls.txt
+          curl -fL --retry 5 --retry-delay 2 -o IbnKathir-skeleton-v1.0.0.apk "$APK_URL"
+          curl -fL --retry 5 --retry-delay 2 -o android-build-tools-36-minimal.zip "$TOOLS_URL"
+          echo "$APK_SHA256  IbnKathir-skeleton-v1.0.0.apk" | sha256sum -c -
+          echo "$TOOLS_SHA256  android-build-tools-36-minimal.zip" | sha256sum -c -
+
+      - name: Publish transfer release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release delete "$TAG" --cleanup-tag -y --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title 'IbnKathir temporary build transfer' \
+            --notes 'Temporary verified build-transfer assets used only to assemble the final Ibn Kathir APK.' \
+            IbnKathir-skeleton-v1.0.0.apk \
+            android-build-tools-36-minimal.zip
+
+      - name: Verify published release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,assets,url
