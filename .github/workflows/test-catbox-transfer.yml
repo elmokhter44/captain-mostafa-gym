@@ -1,4 +1,4 @@
-name: Publish IbnKathir Local Payload Text Chunks
+name: Persist IbnKathir Payload Chunks
 on:
   push:
     branches: [qurani-ibnkathir-v100]
@@ -8,13 +8,13 @@ permissions:
   contents: write
   actions: read
 jobs:
-  publish:
+  persist:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare compact delta and signing-tools text chunks
+      - name: Build compact payload chunks
         shell: bash
         run: |
           set -euo pipefail
@@ -24,8 +24,8 @@ jobs:
           test "$(sha256sum /tmp/release/android-sign-tools-36.zip | awk '{print $1}')" = '74a57d5b823988109d056df26b0ba23ce41c5e90c1b6538b1519a6afd55ed946'
           OLD=/tmp/master/final-delivery/Qurani-v1.0.1.apk
           NEW=/tmp/release/IbnKathir-skeleton-v1.0.0.apk
-          rm -rf /tmp/delta-old /tmp/delta-new /tmp/ibnkathir-delta /tmp/payload
-          mkdir -p /tmp/delta-old /tmp/delta-new /tmp/ibnkathir-delta/patches /tmp/ibnkathir-delta/raw /tmp/payload
+          rm -rf /tmp/delta-old /tmp/delta-new /tmp/ibnkathir-delta qurani-ibnkathir/payload-chunks
+          mkdir -p /tmp/delta-old /tmp/delta-new /tmp/ibnkathir-delta/patches /tmp/ibnkathir-delta/raw qurani-ibnkathir/payload-chunks
           unzip -q "$OLD" -d /tmp/delta-old
           unzip -q "$NEW" -d /tmp/delta-new
           rm -rf /tmp/delta-old/META-INF /tmp/delta-new/META-INF /tmp/delta-old/assets/pdf /tmp/delta-new/assets/pdf
@@ -52,40 +52,28 @@ jobs:
           (out/'deleted.txt').write_text('\n'.join(deleted)+'\n')
           (out/'manifest.json').write_text(json.dumps({'changed':changed,'added':added,'deleted':deleted},ensure_ascii=False,indent=2))
           PY
-          tar -C /tmp/ibnkathir-delta -czf /tmp/payload/delta.tar.gz .
-          sha256sum /tmp/payload/delta.tar.gz | awk '{print $1}' > /tmp/payload/delta.sha
-          base64 -w0 /tmp/payload/delta.tar.gz > /tmp/payload/delta.b64
-          base64 -w0 /tmp/release/android-sign-tools-36.zip > /tmp/payload/tools.b64
-          split -b 280000 -d -a 2 /tmp/payload/tools.b64 /tmp/payload/tools-part-
-          cat /tmp/payload/delta.sha
-          wc -c /tmp/payload/delta.b64 /tmp/payload/tools-part-*
-      - name: Publish chunks to paste.rs and persist URLs
-        shell: bash
-        run: |
-          set -euo pipefail
-          : > qurani-ibnkathir/paste-payload-urls.txt
-          publish() {
-            local key="$1" file="$2" url
-            url="$(curl -fsS --retry 3 --data-binary @"$file" https://paste.rs/)"
-            test -n "$url"
-            printf '%s=%s\n' "$key" "$url" >> qurani-ibnkathir/paste-payload-urls.txt
-          }
-          publish DELTA_B64 /tmp/payload/delta.b64
-          n=0
-          for f in /tmp/payload/tools-part-*; do
-            publish "TOOLS_B64_PART_$(printf '%02d' "$n")" "$f"
-            n=$((n+1))
-          done
-          echo "TOOLS_PART_COUNT=$n" >> qurani-ibnkathir/paste-payload-urls.txt
-          echo "DELTA_SHA256=$(cat /tmp/payload/delta.sha)" >> qurani-ibnkathir/paste-payload-urls.txt
-          echo 'TOOLS_SHA256=74a57d5b823988109d056df26b0ba23ce41c5e90c1b6538b1519a6afd55ed946' >> qurani-ibnkathir/paste-payload-urls.txt
-          cat qurani-ibnkathir/paste-payload-urls.txt
-      - name: Persist payload URLs
+          tar -C /tmp/ibnkathir-delta -czf /tmp/delta.tar.gz .
+          base64 -w0 /tmp/delta.tar.gz > /tmp/delta.b64
+          base64 -w0 /tmp/release/android-sign-tools-36.zip > /tmp/tools.b64
+          split -b 100000 -d -a 2 /tmp/delta.b64 qurani-ibnkathir/payload-chunks/delta-
+          split -b 100000 -d -a 2 /tmp/tools.b64 qurani-ibnkathir/payload-chunks/tools-
+          DCOUNT=$(find qurani-ibnkathir/payload-chunks -name 'delta-*' | wc -l)
+          TCOUNT=$(find qurani-ibnkathir/payload-chunks -name 'tools-*' | wc -l)
+          {
+            echo "DELTA_PARTS=$DCOUNT"
+            echo "TOOLS_PARTS=$TCOUNT"
+            echo "DELTA_SHA256=$(sha256sum /tmp/delta.tar.gz | awk '{print $1}')"
+            echo 'TOOLS_SHA256=74a57d5b823988109d056df26b0ba23ce41c5e90c1b6538b1519a6afd55ed946'
+            echo 'SKELETON_SHA256=46de4c53ad5df6210f06c194ca0f0304fd7934d47022d87b86e4ffcead479c50'
+          } > qurani-ibnkathir/payload-chunks/manifest.txt
+          cat qurani-ibnkathir/payload-chunks/manifest.txt
+          du -sh qurani-ibnkathir/payload-chunks
+      - name: Commit payload chunks
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add qurani-ibnkathir/paste-payload-urls.txt
-          git commit -m 'ci: publish Ibn Kathir local payload text chunks' || true
+          git add qurani-ibnkathir/payload-chunks
+          git commit -m 'ci: persist compact Ibn Kathir payload chunks'
           git push origin HEAD:qurani-ibnkathir-v100
