@@ -1,0 +1,51 @@
+name: IbnKathir Template Inspect
+
+on:
+  push:
+    branches: [qurani-ibnkathir-v100]
+    paths:
+      - '.github/workflows/ibnkathir-template-inspect.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and inspect master source payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/qurani-app
+          cat qurani-ci/text/part-* > /tmp/qurani-src.b64
+          base64 -d /tmp/qurani-src.b64 > /tmp/qurani-src.tar.gz
+          echo '8419ab562a4783684b34e1bc62a96be4dc3da00f8a85e5e0d298182ab1e79192  /tmp/qurani-src.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/qurani-src.tar.gz -C /tmp/qurani-app
+          echo '=== TOP TREE ==='
+          find /tmp/qurani-app -maxdepth 4 -type f | sed 's#^/tmp/qurani-app/##' | sort | head -300
+          for f in \
+            package.json app.json \
+            android/app/build.gradle \
+            android/app/src/main/AndroidManifest.xml \
+            android/app/src/main/res/values/strings.xml \
+            src/data/sections.ts \
+            src/features/home/SectionCard.tsx \
+            src/features/index/IndexScreen.tsx \
+            src/features/reader/PdfPage.tsx \
+            src/features/reader/ZoomablePdfPage.tsx \
+            src/features/reader/zoomModel.ts \
+            src/navigation/AppNavigator.tsx \
+            src/features/search/SearchScreen.tsx; do
+              if [ -f "/tmp/qurani-app/$f" ]; then
+                echo "=== FILE:$f ==="
+                sed -n '1,260p' "/tmp/qurani-app/$f"
+              else
+                echo "=== MISSING:$f ==="
+              fi
+          done
+          echo '=== SEARCH MAPPING FILES ==='
+          grep -RIl --exclude-dir=node_modules -E '6236|Al-Fatihah|الفاتحة|surah|ayah' /tmp/qurani-app/src | head -50 || true
