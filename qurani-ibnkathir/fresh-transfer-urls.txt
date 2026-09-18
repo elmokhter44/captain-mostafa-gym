@@ -1,0 +1,4 @@
+APK_URL=https://tmpfiles.org/dl/wawANi9IsaKo/ibnkathir-skeleton-v1.0.0.apk
+TOOLS_URL=https://tmpfiles.org/dl/w3weNW9lsMcq/android-build-tools-36-minimal.zip
+APK_SHA256=96fecd1d72febfa73147739750d49079c8e9207da9e264c3a5a2619d346021b0
+TOOLS_SHA256=8a83b328bb5fc05e252bc803a4a71208ee36a95aa0e50a3f6177e666ce8187ec
