@@ -1,0 +1,903 @@
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/__tests__/hotspots.node.test.ts nafi-source-v101/__tests__/hotspots.node.test.ts
+--- base-v101/__tests__/hotspots.node.test.ts	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/__tests__/hotspots.node.test.ts	2026-09-18 13:15:08.444175719 +0000
+@@ -2,12 +2,12 @@
+ import assert from 'node:assert/strict';
+ import {INDEX_HOTSPOTS} from '../src/data/indexHotspots.ts';
+ 
+-test('has one bounded clickable hotspot for every surah on source index pages 621-622', () => {
++test('has one bounded clickable hotspot for every surah on source index pages 609-610', () => {
+   assert.equal(INDEX_HOTSPOTS.length, 114);
+   const ids = new Set(INDEX_HOTSPOTS.map(h => h.surahId));
+   assert.equal(ids.size, 114);
+   for (const h of INDEX_HOTSPOTS) {
+-    assert.ok(h.indexPdfPage === 621 || h.indexPdfPage === 622);
++    assert.ok(h.indexPdfPage === 609 || h.indexPdfPage === 610);
+     for (const value of [h.x, h.y, h.width, h.height]) assert.ok(value >= 0 && value <= 1);
+     assert.ok(h.x + h.width <= 1.001);
+     assert.ok(h.y + h.height <= 1.001);
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/__tests__/ibnkathirConfig.node.test.ts nafi-source-v101/__tests__/ibnkathirConfig.node.test.ts
+--- base-v101/__tests__/ibnkathirConfig.node.test.ts	1970-01-01 00:00:00.000000000 +0000
++++ nafi-source-v101/__tests__/ibnkathirConfig.node.test.ts	2026-09-18 13:14:09.164388311 +0000
+@@ -0,0 +1,53 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import {readFileSync} from 'node:fs';
++import {SECTIONS} from '../src/data/sections.ts';
++import {INDEX_HOTSPOTS} from '../src/data/indexHotspots.ts';
++import {mushafToSourcePage, sourceToMushafPage} from '../src/utils/pageMapping.ts';
++
++const expected = [
++  ['quran', 'المصحف', '', 5, 608, 'quran.pdf', true],
++  ['index', 'الفهرس', '', 609, 610, 'quran_index.pdf', undefined],
++  ['dua', 'الدعاء', '', 611, 611, 'dua.pdf', undefined],
++  ['waqf-symbols', 'علامات الوقف ومصطلحات الضبط ودلالات الرمز والترميز اللوني للقراءات العشر في مصاحف السلسلة الفراتية', '', 612, 616, 'waqf_symbols.pdf', undefined],
++  ['furati-intro', 'من بين يدي السلسلة الفراتية', '', 617, 620, 'furati_intro.pdf', undefined],
++  ['ibn-kathir-usul', 'شرح اصول قراءة الامام بن كثير المكي', '', 621, 632, 'ibn_kathir_usul.pdf', undefined],
++] as const;
++
++test('Ibn Kathir app exposes exactly the six approved cards and source ranges with no subtitles', () => {
++  assert.deepEqual(SECTIONS.map(s => [s.id, s.title, s.subtitle, s.sourceStartPage, s.sourceEndPage, s.assetName, s.featured]), expected);
++});
++
++test('604 mushaf pages map exactly to source PDF pages 5 through 608', () => {
++  assert.equal(mushafToSourcePage(1), 5);
++  assert.equal(mushafToSourcePage(604), 608);
++  assert.equal(sourceToMushafPage(5), 1);
++  assert.equal(sourceToMushafPage(608), 604);
++  assert.throws(() => sourceToMushafPage(609));
++});
++
++test('index has one bounded hotspot per surah on source pages 609 and 610', () => {
++  assert.equal(INDEX_HOTSPOTS.length, 114);
++  assert.equal(new Set(INDEX_HOTSPOTS.map(h => h.surahId)).size, 114);
++  assert.deepEqual([...new Set(INDEX_HOTSPOTS.map(h => h.indexPdfPage))].sort(), [609, 610]);
++  for (const h of INDEX_HOTSPOTS) {
++    assert.ok(h.x >= 0 && h.y >= 0 && h.width > 0 && h.height > 0);
++    assert.ok(h.x + h.width <= 1.001);
++    assert.ok(h.y + h.height <= 1.001);
++  }
++});
++
++test('home and index preserve the master UI behavior while using Ibn Kathir labels and no card descriptions', () => {
++  const home = readFileSync('src/features/home/HomeScreen.tsx', 'utf8');
++  const card = readFileSync('src/features/home/SectionCard.tsx', 'utf8');
++  const index = readFileSync('src/features/index/IndexScreen.tsx', 'utf8');
++  assert.match(home, /المصحف المعلّم بقراءة الإمام ابن كثير المكي/);
++  assert.doesNotMatch(home, /featuredSubtitle/);
++  assert.doesNotMatch(home, /featuredEyebrow/);
++  assert.doesNotMatch(home, /featuredPill/);
++  assert.match(card, /section\.subtitle \?/);
++  assert.match(index, /ZoomablePdfPage/);
++  assert.match(index, /pageWidthForScreen/);
++  assert.match(index, /scrollEnabled=\{!pageZoomed\}/);
++  assert.match(index, /ScreenHeader title="الفهرس"/);
++});
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/__tests__/ibnkathirIdentity.node.test.ts nafi-source-v101/__tests__/ibnkathirIdentity.node.test.ts
+--- base-v101/__tests__/ibnkathirIdentity.node.test.ts	1970-01-01 00:00:00.000000000 +0000
++++ nafi-source-v101/__tests__/ibnkathirIdentity.node.test.ts	2026-09-18 13:24:18.476365605 +0000
+@@ -0,0 +1,22 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import {readFileSync} from 'node:fs';
++import {PACKAGE_NAME, VERSION_CODE, VERSION_NAME} from '../src/app/constants.ts';
++
++test('Ibn Kathir app has an independent Android identity and release version', () => {
++  assert.equal(PACKAGE_NAME, 'com.qurani.ibnkathir');
++  assert.equal(VERSION_NAME, '1.0.0');
++  assert.equal(VERSION_CODE, 1);
++  const gradle = readFileSync('android/app/build.gradle', 'utf8');
++  assert.match(gradle, /namespace "com\.qurani\.ibnkathir"/);
++  assert.match(gradle, /applicationId "com\.qurani\.ibnkathir"/);
++  assert.match(gradle, /versionCode 1/);
++  assert.match(gradle, /versionName "1\.0\.0"/);
++});
++
++test('Android launcher label and React display name use the approved Ibn Kathir title', () => {
++  const strings = readFileSync('android/app/src/main/res/values/strings.xml', 'utf8');
++  const appJson = readFileSync('app.json', 'utf8');
++  assert.match(strings, /المصحف المعلم\\nبقراءة الإمام ابن كثير المكي/);
++  assert.match(appJson, /المصحف المعلم بقراءة الإمام ابن كثير المكي/);
++});
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/__tests__/navigationModels.node.test.ts nafi-source-v101/__tests__/navigationModels.node.test.ts
+--- base-v101/__tests__/navigationModels.node.test.ts	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/__tests__/navigationModels.node.test.ts	2026-09-18 13:15:08.967450759 +0000
+@@ -5,9 +5,9 @@
+ import {readerPageMeta} from '../src/features/reader/readerModel.ts';
+ import {SECTIONS} from '../src/data/sections.ts';
+ 
+-test('home model makes the mushaf the featured primary action while preserving all eight sections', () => {
++test('home model makes the mushaf the featured primary action while preserving all six sections', () => {
+   const cards = buildHomeCards(SECTIONS);
+-  assert.equal(cards.length, 8);
++  assert.equal(cards.length, 6);
+   assert.equal(cards[0]?.id, 'quran');
+   assert.equal(cards[0]?.featured, true);
+ });
+@@ -18,7 +18,7 @@
+ 
+ test('reader meta maps quran logical page to canonical source page and visible mushaf number', () => {
+   const quran = SECTIONS.find(s => s.id === 'quran')!;
+-  assert.deepEqual(readerPageMeta(quran, 1), {logicalPage: 1, sourcePdfPage: 13, displayPage: 1, totalPages: 604});
+-  assert.deepEqual(readerPageMeta(quran, 604), {logicalPage: 604, sourcePdfPage: 616, displayPage: 604, totalPages: 604});
++  assert.deepEqual(readerPageMeta(quran, 1), {logicalPage: 1, sourcePdfPage: 5, displayPage: 1, totalPages: 604});
++  assert.deepEqual(readerPageMeta(quran, 604), {logicalPage: 604, sourcePdfPage: 608, displayPage: 604, totalPages: 604});
+   assert.throws(() => readerPageMeta(quran, 605));
+ });
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/__tests__/pageMapping.node.test.ts nafi-source-v101/__tests__/pageMapping.node.test.ts
+--- base-v101/__tests__/pageMapping.node.test.ts	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/__tests__/pageMapping.node.test.ts	2026-09-18 13:15:08.445161519 +0000
+@@ -2,11 +2,11 @@
+ import assert from 'node:assert/strict';
+ import {mushafToSourcePage, sourceToMushafPage} from '../src/utils/pageMapping.ts';
+ 
+-test('maps all Quran pages to the canonical source PDF offset', () => {
+-  assert.equal(mushafToSourcePage(1), 13);
+-  assert.equal(mushafToSourcePage(604), 616);
+-  assert.equal(sourceToMushafPage(13), 1);
+-  assert.equal(sourceToMushafPage(616), 604);
++test('maps all Quran pages to source PDF pages 5-608', () => {
++  assert.equal(mushafToSourcePage(1), 5);
++  assert.equal(mushafToSourcePage(604), 608);
++  assert.equal(sourceToMushafPage(5), 1);
++  assert.equal(sourceToMushafPage(608), 604);
+   assert.throws(() => mushafToSourcePage(0));
+-  assert.throws(() => sourceToMushafPage(617));
++  assert.throws(() => sourceToMushafPage(609));
+ });
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/__tests__/sections.node.test.ts nafi-source-v101/__tests__/sections.node.test.ts
+--- base-v101/__tests__/sections.node.test.ts	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/__tests__/sections.node.test.ts	2026-09-18 13:15:08.442585759 +0000
+@@ -2,15 +2,13 @@
+ import assert from 'node:assert/strict';
+ import {SECTIONS} from '../src/data/sections.ts';
+ 
+-test('covers the approved 681-page source ranges exactly', () => {
++test('covers the approved Ibn Kathir source ranges exactly', () => {
+   assert.deepEqual(SECTIONS.map(s => [s.id, s.sourceStartPage, s.sourceEndPage]), [
+-    ['intro', 1, 5],
+-    ['warsh-summary', 6, 9],
+-    ['warsh-lines', 10, 12],
+-    ['quran', 13, 616],
+-    ['index', 617, 622],
+-    ['warsh-usul', 623, 638],
+-    ['qalun-usul', 639, 649],
+-    ['handwritten', 650, 681],
++    ['quran', 5, 608],
++    ['index', 609, 610],
++    ['dua', 611, 611],
++    ['waqf-symbols', 612, 616],
++    ['furati-intro', 617, 620],
++    ['ibn-kathir-usul', 621, 632],
+   ]);
+ });
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/__tests__/surahs.node.test.ts nafi-source-v101/__tests__/surahs.node.test.ts
+--- base-v101/__tests__/surahs.node.test.ts	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/__tests__/surahs.node.test.ts	2026-09-18 13:15:40.530179026 +0000
+@@ -4,8 +4,8 @@
+ 
+ test('contains the full verified 114-surah index', () => {
+   assert.equal(SURAH_INDEX.length, 114);
+-  assert.deepEqual(SURAH_INDEX[0], {id: 1, nameArabic: 'الفاتحة', mushafStartPage: 1, sourcePdfPage: 13});
+-  assert.deepEqual(SURAH_INDEX[113], {id: 114, nameArabic: 'الناس', mushafStartPage: 604, sourcePdfPage: 616});
++  assert.deepEqual(SURAH_INDEX[0], {id: 1, nameArabic: 'الفاتحة', mushafStartPage: 1, sourcePdfPage: 5});
++  assert.deepEqual(SURAH_INDEX[113], {id: 114, nameArabic: 'الناس', mushafStartPage: 604, sourcePdfPage: 608});
+   for (let i = 0; i < SURAH_INDEX.length; i += 1) {
+     assert.equal(SURAH_INDEX[i]?.id, i + 1);
+     assert.ok((SURAH_INDEX[i]?.mushafStartPage ?? 0) >= 1 && (SURAH_INDEX[i]?.mushafStartPage ?? 0) <= 604);
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/android/app/build.gradle nafi-source-v101/android/app/build.gradle
+--- base-v101/android/app/build.gradle	2026-09-16 12:59:12.000000000 +0000
++++ nafi-source-v101/android/app/build.gradle	2026-09-18 13:15:08.299541489 +0000
+@@ -16,14 +16,14 @@
+     ndkVersion rootProject.ext.ndkVersion
+     buildToolsVersion rootProject.ext.buildToolsVersion
+     compileSdk rootProject.ext.compileSdkVersion
+-    namespace "com.qurani.app"
++    namespace "com.qurani.ibnkathir"
+ 
+     defaultConfig {
+-        applicationId "com.qurani.app"
++        applicationId "com.qurani.ibnkathir"
+         minSdkVersion rootProject.ext.minSdkVersion
+         targetSdkVersion rootProject.ext.targetSdkVersion
+-        versionCode 2
+-        versionName "1.0.1"
++        versionCode 1
++        versionName "1.0.0"
+     }
+ 
+     signingConfigs {
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/android/app/src/main/java/com/qurani/app/MainActivity.kt nafi-source-v101/android/app/src/main/java/com/qurani/app/MainActivity.kt
+--- base-v101/android/app/src/main/java/com/qurani/app/MainActivity.kt	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/android/app/src/main/java/com/qurani/app/MainActivity.kt	1970-01-01 00:00:00.000000000 +0000
+@@ -1,19 +0,0 @@
+-package com.qurani.app
+-
+-import android.os.Bundle
+-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+-import com.facebook.react.ReactActivity
+-import com.facebook.react.ReactActivityDelegate
+-import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
+-import com.facebook.react.defaults.DefaultReactActivityDelegate
+-
+-class MainActivity : ReactActivity() {
+-  override fun onCreate(savedInstanceState: Bundle?) {
+-    installSplashScreen()
+-    super.onCreate(savedInstanceState)
+-  }
+-
+-  override fun getMainComponentName(): String = "Qurani"
+-  override fun createReactActivityDelegate(): ReactActivityDelegate =
+-      DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
+-}
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/android/app/src/main/java/com/qurani/app/MainApplication.kt nafi-source-v101/android/app/src/main/java/com/qurani/app/MainApplication.kt
+--- base-v101/android/app/src/main/java/com/qurani/app/MainApplication.kt	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/android/app/src/main/java/com/qurani/app/MainApplication.kt	1970-01-01 00:00:00.000000000 +0000
+@@ -1,22 +0,0 @@
+-package com.qurani.app
+-
+-import android.app.Application
+-import com.facebook.react.PackageList
+-import com.facebook.react.ReactApplication
+-import com.facebook.react.ReactHost
+-import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
+-import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+-import com.qurani.app.pdf.PdfAssetPackage
+-
+-class MainApplication : Application(), ReactApplication {
+-  override val reactHost: ReactHost by lazy {
+-    getDefaultReactHost(
+-      context = applicationContext,
+-      packageList = PackageList(this).packages.apply { add(PdfAssetPackage()) },
+-    )
+-  }
+-  override fun onCreate() {
+-    super.onCreate()
+-    loadReactNative(this)
+-  }
+-}
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/android/app/src/main/java/com/qurani/app/pdf/PdfAssetModule.kt nafi-source-v101/android/app/src/main/java/com/qurani/app/pdf/PdfAssetModule.kt
+--- base-v101/android/app/src/main/java/com/qurani/app/pdf/PdfAssetModule.kt	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/android/app/src/main/java/com/qurani/app/pdf/PdfAssetModule.kt	1970-01-01 00:00:00.000000000 +0000
+@@ -1,137 +0,0 @@
+-package com.qurani.app.pdf
+-
+-import android.graphics.Bitmap
+-import android.graphics.Color
+-import android.graphics.pdf.PdfRenderer
+-import android.net.Uri
+-import android.os.ParcelFileDescriptor
+-import com.facebook.react.bridge.Promise
+-import com.facebook.react.bridge.ReactApplicationContext
+-import com.facebook.react.bridge.ReactContextBaseJavaModule
+-import com.facebook.react.bridge.ReactMethod
+-import java.io.File
+-import java.io.FileOutputStream
+-import java.io.IOException
+-import java.util.concurrent.Executors
+-import kotlin.math.roundToInt
+-
+-class PdfAssetModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
+-  private val executor = Executors.newSingleThreadExecutor()
+-  private val validAsset = Regex("^[a-z0-9_]+\\.pdf$")
+-
+-  override fun getName(): String = "PdfAsset"
+-
+-  private fun validateAsset(assetName: String) {
+-    require(validAsset.matches(assetName)) { "Invalid asset name" }
+-  }
+-
+-  @Synchronized
+-  private fun ensureAsset(assetName: String): File {
+-    validateAsset(assetName)
+-    val dir = File(context.filesDir, "pdf")
+-    if (!dir.exists() && !dir.mkdirs()) throw IOException("Could not create PDF directory")
+-    val target = File(dir, assetName)
+-    if (target.exists() && target.length() > 0) return target
+-
+-    val temp = File(dir, "$assetName.tmp")
+-    context.assets.open("pdf/$assetName").use { input ->
+-      FileOutputStream(temp).use { output -> input.copyTo(output, 128 * 1024) }
+-    }
+-    if (!temp.renameTo(target)) {
+-      temp.copyTo(target, overwrite = true)
+-      temp.delete()
+-    }
+-    return target
+-  }
+-
+-  private inline fun <T> withRenderer(file: File, block: (PdfRenderer) -> T): T {
+-    val descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+-    val renderer = PdfRenderer(descriptor)
+-    return try { block(renderer) } finally {
+-      renderer.close()
+-      descriptor.close()
+-    }
+-  }
+-
+-  @ReactMethod
+-  fun prepareAsset(assetName: String, promise: Promise) {
+-    executor.execute {
+-      try {
+-        val file = ensureAsset(assetName)
+-        promise.resolve(file.absolutePath)
+-      } catch (e: IllegalArgumentException) {
+-        promise.reject("E_PDF_ASSET_INVALID", e.message, e)
+-      } catch (e: Exception) {
+-        promise.reject("E_PDF_ASSET_COPY", "تعذر تجهيز ملف المصحف", e)
+-      }
+-    }
+-  }
+-
+-  @ReactMethod
+-  fun getPageCount(assetName: String, promise: Promise) {
+-    executor.execute {
+-      try {
+-        val file = ensureAsset(assetName)
+-        val count = withRenderer(file) { it.pageCount }
+-        promise.resolve(count)
+-      } catch (e: IllegalArgumentException) {
+-        promise.reject("E_PDF_ASSET_INVALID", e.message, e)
+-      } catch (e: Exception) {
+-        promise.reject("E_PDF_OPEN", "تعذر فتح ملف المصحف", e)
+-      }
+-    }
+-  }
+-
+-  @ReactMethod
+-  fun renderPage(assetName: String, pageIndex: Int, widthPx: Int, promise: Promise) {
+-    executor.execute {
+-      try {
+-        validateAsset(assetName)
+-        require(pageIndex >= 0) { "Invalid page index" }
+-        require(widthPx in 240..2400) { "Invalid render width" }
+-
+-        val safeStem = assetName.removeSuffix(".pdf")
+-        val cacheDir = File(context.cacheDir, "qurani-pages/$safeStem")
+-        if (!cacheDir.exists() && !cacheDir.mkdirs()) throw IOException("Could not create page cache")
+-        val output = File(cacheDir, "$pageIndex-$widthPx.png")
+-        if (output.exists() && output.length() > 0) {
+-          promise.resolve(Uri.fromFile(output).toString())
+-          return@execute
+-        }
+-
+-        val file = ensureAsset(assetName)
+-        withRenderer(file) { renderer ->
+-          require(pageIndex < renderer.pageCount) { "Page index out of range" }
+-          val page = renderer.openPage(pageIndex)
+-          try {
+-            val scale = widthPx.toFloat() / page.width.toFloat()
+-            val heightPx = (page.height * scale).roundToInt().coerceAtLeast(1)
+-            val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+-            bitmap.eraseColor(Color.WHITE)
+-            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+-            val temp = File(cacheDir, "$pageIndex-$widthPx.tmp")
+-            FileOutputStream(temp).use { stream ->
+-              if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
+-                throw IOException("PNG compression failed")
+-              }
+-            }
+-            bitmap.recycle()
+-            if (!temp.renameTo(output)) {
+-              temp.copyTo(output, overwrite = true)
+-              temp.delete()
+-            }
+-          } finally {
+-            page.close()
+-          }
+-        }
+-        promise.resolve(Uri.fromFile(output).toString())
+-      } catch (e: IllegalArgumentException) {
+-        promise.reject("E_PDF_PAGE_INVALID", e.message, e)
+-      } catch (e: SecurityException) {
+-        promise.reject("E_PDF_SECURITY", "تعذر الوصول إلى ملف المصحف", e)
+-      } catch (e: Exception) {
+-        promise.reject("E_PDF_RENDER", "تعذر عرض الصفحة. حاول مرة أخرى.", e)
+-      }
+-    }
+-  }
+-}
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/android/app/src/main/java/com/qurani/app/pdf/PdfAssetPackage.kt nafi-source-v101/android/app/src/main/java/com/qurani/app/pdf/PdfAssetPackage.kt
+--- base-v101/android/app/src/main/java/com/qurani/app/pdf/PdfAssetPackage.kt	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/android/app/src/main/java/com/qurani/app/pdf/PdfAssetPackage.kt	1970-01-01 00:00:00.000000000 +0000
+@@ -1,13 +0,0 @@
+-package com.qurani.app.pdf
+-
+-import com.facebook.react.ReactPackage
+-import com.facebook.react.bridge.NativeModule
+-import com.facebook.react.bridge.ReactApplicationContext
+-import com.facebook.react.uimanager.ViewManager
+-
+-class PdfAssetPackage : ReactPackage {
+-  override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> =
+-    listOf(PdfAssetModule(reactContext))
+-
+-  override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> = emptyList()
+-}
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/android/app/src/main/java/com/qurani/ibnkathir/MainActivity.kt nafi-source-v101/android/app/src/main/java/com/qurani/ibnkathir/MainActivity.kt
+--- base-v101/android/app/src/main/java/com/qurani/ibnkathir/MainActivity.kt	1970-01-01 00:00:00.000000000 +0000
++++ nafi-source-v101/android/app/src/main/java/com/qurani/ibnkathir/MainActivity.kt	2026-09-18 13:15:08.300710099 +0000
+@@ -0,0 +1,19 @@
++package com.qurani.ibnkathir
++
++import android.os.Bundle
++import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
++import com.facebook.react.ReactActivity
++import com.facebook.react.ReactActivityDelegate
++import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
++import com.facebook.react.defaults.DefaultReactActivityDelegate
++
++class MainActivity : ReactActivity() {
++  override fun onCreate(savedInstanceState: Bundle?) {
++    installSplashScreen()
++    super.onCreate(savedInstanceState)
++  }
++
++  override fun getMainComponentName(): String = "Qurani"
++  override fun createReactActivityDelegate(): ReactActivityDelegate =
++      DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
++}
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/android/app/src/main/java/com/qurani/ibnkathir/MainApplication.kt nafi-source-v101/android/app/src/main/java/com/qurani/ibnkathir/MainApplication.kt
+--- base-v101/android/app/src/main/java/com/qurani/ibnkathir/MainApplication.kt	1970-01-01 00:00:00.000000000 +0000
++++ nafi-source-v101/android/app/src/main/java/com/qurani/ibnkathir/MainApplication.kt	2026-09-18 13:15:08.300882910 +0000
+@@ -0,0 +1,22 @@
++package com.qurani.ibnkathir
++
++import android.app.Application
++import com.facebook.react.PackageList
++import com.facebook.react.ReactApplication
++import com.facebook.react.ReactHost
++import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
++import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
++import com.qurani.ibnkathir.pdf.PdfAssetPackage
++
++class MainApplication : Application(), ReactApplication {
++  override val reactHost: ReactHost by lazy {
++    getDefaultReactHost(
++      context = applicationContext,
++      packageList = PackageList(this).packages.apply { add(PdfAssetPackage()) },
++    )
++  }
++  override fun onCreate() {
++    super.onCreate()
++    loadReactNative(this)
++  }
++}
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/android/app/src/main/java/com/qurani/ibnkathir/pdf/PdfAssetModule.kt nafi-source-v101/android/app/src/main/java/com/qurani/ibnkathir/pdf/PdfAssetModule.kt
+--- base-v101/android/app/src/main/java/com/qurani/ibnkathir/pdf/PdfAssetModule.kt	1970-01-01 00:00:00.000000000 +0000
++++ nafi-source-v101/android/app/src/main/java/com/qurani/ibnkathir/pdf/PdfAssetModule.kt	2026-09-18 13:15:08.301217884 +0000
+@@ -0,0 +1,137 @@
++package com.qurani.ibnkathir.pdf
++
++import android.graphics.Bitmap
++import android.graphics.Color
++import android.graphics.pdf.PdfRenderer
++import android.net.Uri
++import android.os.ParcelFileDescriptor
++import com.facebook.react.bridge.Promise
++import com.facebook.react.bridge.ReactApplicationContext
++import com.facebook.react.bridge.ReactContextBaseJavaModule
++import com.facebook.react.bridge.ReactMethod
++import java.io.File
++import java.io.FileOutputStream
++import java.io.IOException
++import java.util.concurrent.Executors
++import kotlin.math.roundToInt
++
++class PdfAssetModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
++  private val executor = Executors.newSingleThreadExecutor()
++  private val validAsset = Regex("^[a-z0-9_]+\\.pdf$")
++
++  override fun getName(): String = "PdfAsset"
++
++  private fun validateAsset(assetName: String) {
++    require(validAsset.matches(assetName)) { "Invalid asset name" }
++  }
++
++  @Synchronized
++  private fun ensureAsset(assetName: String): File {
++    validateAsset(assetName)
++    val dir = File(context.filesDir, "pdf")
++    if (!dir.exists() && !dir.mkdirs()) throw IOException("Could not create PDF directory")
++    val target = File(dir, assetName)
++    if (target.exists() && target.length() > 0) return target
++
++    val temp = File(dir, "$assetName.tmp")
++    context.assets.open("pdf/$assetName").use { input ->
++      FileOutputStream(temp).use { output -> input.copyTo(output, 128 * 1024) }
++    }
++    if (!temp.renameTo(target)) {
++      temp.copyTo(target, overwrite = true)
++      temp.delete()
++    }
++    return target
++  }
++
++  private inline fun <T> withRenderer(file: File, block: (PdfRenderer) -> T): T {
++    val descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
++    val renderer = PdfRenderer(descriptor)
++    return try { block(renderer) } finally {
++      renderer.close()
++      descriptor.close()
++    }
++  }
++
++  @ReactMethod
++  fun prepareAsset(assetName: String, promise: Promise) {
++    executor.execute {
++      try {
++        val file = ensureAsset(assetName)
++        promise.resolve(file.absolutePath)
++      } catch (e: IllegalArgumentException) {
++        promise.reject("E_PDF_ASSET_INVALID", e.message, e)
++      } catch (e: Exception) {
++        promise.reject("E_PDF_ASSET_COPY", "تعذر تجهيز ملف المصحف", e)
++      }
++    }
++  }
++
++  @ReactMethod
++  fun getPageCount(assetName: String, promise: Promise) {
++    executor.execute {
++      try {
++        val file = ensureAsset(assetName)
++        val count = withRenderer(file) { it.pageCount }
++        promise.resolve(count)
++      } catch (e: IllegalArgumentException) {
++        promise.reject("E_PDF_ASSET_INVALID", e.message, e)
++      } catch (e: Exception) {
++        promise.reject("E_PDF_OPEN", "تعذر فتح ملف المصحف", e)
++      }
++    }
++  }
++
++  @ReactMethod
++  fun renderPage(assetName: String, pageIndex: Int, widthPx: Int, promise: Promise) {
++    executor.execute {
++      try {
++        validateAsset(assetName)
++        require(pageIndex >= 0) { "Invalid page index" }
++        require(widthPx in 240..2400) { "Invalid render width" }
++
++        val safeStem = assetName.removeSuffix(".pdf")
++        val cacheDir = File(context.cacheDir, "qurani-pages/$safeStem")
++        if (!cacheDir.exists() && !cacheDir.mkdirs()) throw IOException("Could not create page cache")
++        val output = File(cacheDir, "$pageIndex-$widthPx.png")
++        if (output.exists() && output.length() > 0) {
++          promise.resolve(Uri.fromFile(output).toString())
++          return@execute
++        }
++
++        val file = ensureAsset(assetName)
++        withRenderer(file) { renderer ->
++          require(pageIndex < renderer.pageCount) { "Page index out of range" }
++          val page = renderer.openPage(pageIndex)
++          try {
++            val scale = widthPx.toFloat() / page.width.toFloat()
++            val heightPx = (page.height * scale).roundToInt().coerceAtLeast(1)
++            val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
++            bitmap.eraseColor(Color.WHITE)
++            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
++            val temp = File(cacheDir, "$pageIndex-$widthPx.tmp")
++            FileOutputStream(temp).use { stream ->
++              if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
++                throw IOException("PNG compression failed")
++              }
++            }
++            bitmap.recycle()
++            if (!temp.renameTo(output)) {
++              temp.copyTo(output, overwrite = true)
++              temp.delete()
++            }
++          } finally {
++            page.close()
++          }
++        }
++        promise.resolve(Uri.fromFile(output).toString())
++      } catch (e: IllegalArgumentException) {
++        promise.reject("E_PDF_PAGE_INVALID", e.message, e)
++      } catch (e: SecurityException) {
++        promise.reject("E_PDF_SECURITY", "تعذر الوصول إلى ملف المصحف", e)
++      } catch (e: Exception) {
++        promise.reject("E_PDF_RENDER", "تعذر عرض الصفحة. حاول مرة أخرى.", e)
++      }
++    }
++  }
++}
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/android/app/src/main/java/com/qurani/ibnkathir/pdf/PdfAssetPackage.kt nafi-source-v101/android/app/src/main/java/com/qurani/ibnkathir/pdf/PdfAssetPackage.kt
+--- base-v101/android/app/src/main/java/com/qurani/ibnkathir/pdf/PdfAssetPackage.kt	1970-01-01 00:00:00.000000000 +0000
++++ nafi-source-v101/android/app/src/main/java/com/qurani/ibnkathir/pdf/PdfAssetPackage.kt	2026-09-18 13:15:08.301103572 +0000
+@@ -0,0 +1,13 @@
++package com.qurani.ibnkathir.pdf
++
++import com.facebook.react.ReactPackage
++import com.facebook.react.bridge.NativeModule
++import com.facebook.react.bridge.ReactApplicationContext
++import com.facebook.react.uimanager.ViewManager
++
++class PdfAssetPackage : ReactPackage {
++  override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> =
++    listOf(PdfAssetModule(reactContext))
++
++  override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> = emptyList()
++}
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/android/app/src/main/res/values/strings.xml nafi-source-v101/android/app/src/main/res/values/strings.xml
+--- base-v101/android/app/src/main/res/values/strings.xml	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/android/app/src/main/res/values/strings.xml	2026-09-18 13:15:08.299483742 +0000
+@@ -1 +1 @@
+-<resources><string name="app_name">قرآني</string></resources>
++<resources><string name="app_name">المصحف المعلم\nبقراءة الإمام ابن كثير المكي</string></resources>
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/app.json nafi-source-v101/app.json
+--- base-v101/app.json	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/app.json	2026-09-18 13:15:08.299413296 +0000
+@@ -1 +1 @@
+-{"name":"Qurani","displayName":"قرآني"}
++{"name":"Qurani","displayName":"المصحف المعلم بقراءة الإمام ابن كثير المكي"}
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/package.json nafi-source-v101/package.json
+--- base-v101/package.json	2026-09-16 12:59:12.000000000 +0000
++++ nafi-source-v101/package.json	2026-09-18 13:15:08.299298583 +0000
+@@ -1,6 +1,6 @@
+ {
+   "name": "Qurani",
+-  "version": "1.0.1",
++  "version": "1.0.0",
+   "private": true,
+   "scripts": {
+     "android": "react-native run-android",
+@@ -38,5 +38,7 @@
+     "react-test-renderer": "19.2.3",
+     "typescript": "5.9.2"
+   },
+-  "engines": {"node": ">=22.11.0"}
++  "engines": {
++    "node": ">=22.11.0"
++  }
+ }
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/src/app/constants.ts nafi-source-v101/src/app/constants.ts
+--- base-v101/src/app/constants.ts	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/src/app/constants.ts	2026-09-18 13:24:24.621512587 +0000
+@@ -1,4 +1,4 @@
+ export const APP_NAME = 'قرآني' as const;
+-export const PACKAGE_NAME = 'com.qurani.app' as const;
++export const PACKAGE_NAME = 'com.qurani.ibnkathir' as const;
+ export const VERSION_NAME = '1.0.0' as const;
+ export const VERSION_CODE = 1 as const;
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/src/data/indexHotspots.ts nafi-source-v101/src/data/indexHotspots.ts
+--- base-v101/src/data/indexHotspots.ts	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/src/data/indexHotspots.ts	2026-09-18 13:15:08.299622631 +0000
+@@ -1,6 +1,6 @@
+ export type IndexHotspotSeed = Readonly<{
+   id: string;
+-  indexPdfPage: 621 | 622;
++  indexPdfPage: 609 | 610;
+   surahId: number;
+   x: number;
+   y: number;
+@@ -9,7 +9,7 @@
+ }>;
+ 
+ function columnRows(
+-  page: 621 | 622,
++  page: 609 | 610,
+   startSurah: number,
+   count: number,
+   x: number,
+@@ -29,11 +29,11 @@
+   }));
+ }
+ 
+-// Coordinates are normalized against the exact A4 source page. They cover each
+-// surah's half-row in the two-column printed tables while leaving the title area untouched.
++// Normalized coordinates measured from the two original index pages (609-610).
++// Each hotspot spans the full row on its printed table half for comfortable tapping.
+ export const INDEX_HOTSPOTS: readonly IndexHotspotSeed[] = [
+-  ...columnRows(621, 1, 28, 0.445, 0.335, 0.199, 0.850),
+-  ...columnRows(621, 29, 28, 0.120, 0.320, 0.199, 0.850),
+-  ...columnRows(622, 57, 29, 0.515, 0.315, 0.199, 0.850),
+-  ...columnRows(622, 86, 29, 0.238, 0.272, 0.199, 0.850),
++  ...columnRows(609, 1, 28, 0.487, 0.393, 0.177, 0.924),
++  ...columnRows(609, 29, 28, 0.052, 0.393, 0.177, 0.924),
++  ...columnRows(610, 57, 29, 0.487, 0.393, 0.177, 0.924),
++  ...columnRows(610, 86, 29, 0.052, 0.393, 0.177, 0.924),
+ ] as const;
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/src/data/sections.ts nafi-source-v101/src/data/sections.ts
+--- base-v101/src/data/sections.ts	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/src/data/sections.ts	2026-09-18 13:15:08.299572776 +0000
+@@ -1,12 +1,10 @@
+ export type SectionId =
+-  | 'intro'
+-  | 'warsh-summary'
+-  | 'warsh-lines'
+   | 'quran'
+   | 'index'
+-  | 'warsh-usul'
+-  | 'qalun-usul'
+-  | 'handwritten';
++  | 'dua'
++  | 'waqf-symbols'
++  | 'furati-intro'
++  | 'ibn-kathir-usul';
+ 
+ export type SectionSeed = Readonly<{
+   id: SectionId;
+@@ -19,14 +17,12 @@
+ }>;
+ 
+ export const SECTIONS: readonly SectionSeed[] = [
+-  {id: 'intro', title: 'مقدمة', subtitle: 'التعريف بالمصحف وطريقة الاستفادة منه', sourceStartPage: 1, sourceEndPage: 5, assetName: 'intro.pdf'},
+-  {id: 'warsh-summary', title: 'شرح مختصر أصول الإمام ورش', subtitle: 'ملخص مبسط لأصول القراءة', sourceStartPage: 6, sourceEndPage: 9, assetName: 'warsh_summary.pdf'},
+-  {id: 'warsh-lines', title: 'شرح استخدامات الخطوط لاختلافات ورش', subtitle: 'دليل العلامات والخطوط داخل المصحف', sourceStartPage: 10, sourceEndPage: 12, assetName: 'warsh_lines_guide.pdf'},
+-  {id: 'quran', title: 'المصحف كامل', subtitle: 'المصحف المعلم بقراءة الإمام نافع – ورش وقالون', sourceStartPage: 13, sourceEndPage: 616, assetName: 'quran.pdf', featured: true},
+-  {id: 'index', title: 'تعريف وفهرس المصحف', subtitle: 'الفهرس الأصلي مع انتقال مباشر للسور', sourceStartPage: 617, sourceEndPage: 622, assetName: 'quran_index.pdf'},
+-  {id: 'warsh-usul', title: 'أصول قراءة الإمام نافع برواية ورش', subtitle: 'الأصول كما وردت في المصدر', sourceStartPage: 623, sourceEndPage: 638, assetName: 'warsh_usul.pdf'},
+-  {id: 'qalun-usul', title: 'أصول قراءة الإمام نافع برواية قالون', subtitle: 'يشمل الصفحات 639 إلى 649', sourceStartPage: 639, sourceEndPage: 649, assetName: 'qalun_usul.pdf'},
+-  {id: 'handwritten', title: 'أصول وفروش ورش وقالون بخط اليد', subtitle: 'أصول وفروش قراءة الإمام نافع المدني', sourceStartPage: 650, sourceEndPage: 681, assetName: 'handwritten_warsh_qalun.pdf'},
++  {id: 'quran', title: 'المصحف', subtitle: '', sourceStartPage: 5, sourceEndPage: 608, assetName: 'quran.pdf', featured: true},
++  {id: 'index', title: 'الفهرس', subtitle: '', sourceStartPage: 609, sourceEndPage: 610, assetName: 'quran_index.pdf'},
++  {id: 'dua', title: 'الدعاء', subtitle: '', sourceStartPage: 611, sourceEndPage: 611, assetName: 'dua.pdf'},
++  {id: 'waqf-symbols', title: 'علامات الوقف ومصطلحات الضبط ودلالات الرمز والترميز اللوني للقراءات العشر في مصاحف السلسلة الفراتية', subtitle: '', sourceStartPage: 612, sourceEndPage: 616, assetName: 'waqf_symbols.pdf'},
++  {id: 'furati-intro', title: 'من بين يدي السلسلة الفراتية', subtitle: '', sourceStartPage: 617, sourceEndPage: 620, assetName: 'furati_intro.pdf'},
++  {id: 'ibn-kathir-usul', title: 'شرح اصول قراءة الامام بن كثير المكي', subtitle: '', sourceStartPage: 621, sourceEndPage: 632, assetName: 'ibn_kathir_usul.pdf'},
+ ] as const;
+ 
+ export function sectionPageCount(section: SectionSeed): number {
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/src/features/home/HomeScreen.tsx nafi-source-v101/src/features/home/HomeScreen.tsx
+--- base-v101/src/features/home/HomeScreen.tsx	2026-09-16 12:59:11.000000000 +0000
++++ nafi-source-v101/src/features/home/HomeScreen.tsx	2026-09-18 13:15:08.299809973 +0000
+@@ -41,8 +41,8 @@
+         <Image source={require('../../../assets/branding/qurani-icon.png')} style={styles.logo} resizeMode="cover" />
+         <View style={styles.heroText}>
+           <Text style={styles.appName}>قرآني</Text>
+-          <Text style={styles.tagline}>المصحف المعلّم بقراءة الإمام نافع</Text>
+-          <Text style={styles.subtag}>ورش وقالون • يعمل بالكامل دون إنترنت</Text>
++          <Text style={styles.tagline}>المصحف المعلّم بقراءة الإمام ابن كثير المكي</Text>
++          <Text style={styles.subtag}>البزي وقنبل • يعمل بالكامل دون إنترنت</Text>
+         </View>
+       </View>
+ 
+@@ -55,13 +55,10 @@
+       {lastPage ? <ContinueReadingCard page={lastPage} onPress={() => navigation.navigate('Reader', {sectionId: 'quran', logicalPage: lastPage})} /> : null}
+ 
+       <Text style={styles.sectionHeading}>ابدأ القراءة</Text>
+-      <Pressable accessibilityLabel="فتح المصحف كامل" onPress={() => openSection(featured.id)} style={({pressed}) => [styles.featured, pressed && {opacity: 0.9}]}>
++      <Pressable accessibilityLabel="فتح المصحف" onPress={() => openSection(featured.id)} style={({pressed}) => [styles.featured, pressed && {opacity: 0.9}]}>
+         <View style={styles.featuredDecor}><Text style={styles.featuredDecorText}>۞</Text></View>
+         <View style={{flex: 1}}>
+-          <Text style={styles.featuredEyebrow}>المصحف الشريف</Text>
+           <Text style={styles.featuredTitle}>{featured.title}</Text>
+-          <Text style={styles.featuredSubtitle}>{featured.subtitle}</Text>
+-          <View style={styles.featuredPill}><Text style={styles.featuredPillText}>604 صفحة</Text></View>
+         </View>
+         <View style={styles.featuredArrow}><Text style={styles.featuredArrowText}>‹</Text></View>
+       </Pressable>
+@@ -94,11 +91,7 @@
+   featured: {...SHADOW, minHeight: 184, backgroundColor: COLORS.emerald950, borderRadius: RADIUS.hero, padding: SPACING.xl, borderWidth: 1, borderColor: COLORS.gold500, flexDirection: 'row-reverse', alignItems: 'center', overflow: 'hidden'},
+   featuredDecor: {position: 'absolute', left: -18, top: -24, width: 132, height: 132, borderRadius: 66, borderWidth: 1, borderColor: '#356E5D', alignItems: 'center', justifyContent: 'center'},
+   featuredDecorText: {fontSize: 58, color: '#1E5A46', opacity: 0.9},
+-  featuredEyebrow: {color: COLORS.gold300, fontSize: 12, fontWeight: '800', textAlign: 'right'},
+   featuredTitle: {color: COLORS.white, fontSize: 25, lineHeight: 34, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl', marginTop: 4},
+-  featuredSubtitle: {maxWidth: '84%', color: '#D5E4DF', fontSize: 12, lineHeight: 20, textAlign: 'right', writingDirection: 'rtl', marginTop: 5},
+-  featuredPill: {alignSelf: 'flex-end', marginTop: SPACING.md, backgroundColor: '#114E3B', borderWidth: 1, borderColor: '#3E7765', borderRadius: RADIUS.pill, paddingVertical: 5, paddingHorizontal: 10},
+-  featuredPillText: {color: COLORS.gold300, fontSize: 11, fontWeight: '700'},
+   featuredArrow: {width: 46, height: 46, borderRadius: 23, backgroundColor: COLORS.gold500, alignItems: 'center', justifyContent: 'center', marginRight: SPACING.md},
+   featuredArrowText: {color: COLORS.emerald950, fontSize: 32, lineHeight: 34, fontWeight: '500'},
+   grid: {flexDirection: 'row-reverse', flexWrap: 'wrap'},
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/src/features/home/SectionCard.tsx nafi-source-v101/src/features/home/SectionCard.tsx
+--- base-v101/src/features/home/SectionCard.tsx	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/src/features/home/SectionCard.tsx	2026-09-18 13:15:08.299904446 +0000
+@@ -4,12 +4,13 @@
+ import {COLORS, RADIUS, SHADOW, SPACING, TOUCH_TARGET} from '../../app/theme';
+ 
+ export function SectionCard({section, width, onPress}: {section: SectionSeed; width: number; onPress: () => void}): React.JSX.Element {
++  const isLongTitle = section.id === 'waqf-symbols';
+   return (
+-    <Pressable onPress={onPress} accessibilityLabel={`فتح ${section.title}`} style={({pressed}) => [styles.card, {width}, pressed && styles.pressed]} accessibilityRole="button">
++    <Pressable onPress={onPress} accessibilityLabel={`فتح ${section.title}`} style={({pressed}) => [styles.card, {width}, isLongTitle && styles.longCard, pressed && styles.pressed]} accessibilityRole="button">
+       <View style={styles.marker}><Text style={styles.markerText}>◆</Text></View>
+       <View style={styles.textWrap}>
+-        <Text style={styles.title}>{section.title}</Text>
+-        <Text style={styles.subtitle} numberOfLines={2}>{section.subtitle}</Text>
++        <Text style={[styles.title, isLongTitle && styles.longTitle]}>{section.title}</Text>
++        {section.subtitle ? <Text style={styles.subtitle} numberOfLines={2}>{section.subtitle}</Text> : null}
+       </View>
+       <Text style={styles.arrow}>‹</Text>
+     </Pressable>
+@@ -18,11 +19,13 @@
+ 
+ const styles = StyleSheet.create({
+   card: {...SHADOW, minHeight: 132, backgroundColor: COLORS.paper, borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLORS.line, padding: SPACING.lg, justifyContent: 'space-between'},
++  longCard: {minHeight: 188},
+   pressed: {opacity: 0.82, transform: [{scale: 0.985}]},
+   marker: {width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.emerald100, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-end'},
+   markerText: {color: COLORS.gold700, fontSize: 12},
+   textWrap: {marginTop: SPACING.md},
+   title: {fontSize: 16, lineHeight: 24, color: COLORS.emerald950, fontWeight: '800', textAlign: 'right', writingDirection: 'rtl'},
++  longTitle: {fontSize: 15, lineHeight: 23},
+   subtitle: {fontSize: 12, lineHeight: 19, color: COLORS.muted, marginTop: 3, textAlign: 'right', writingDirection: 'rtl'},
+   arrow: {position: 'absolute', left: SPACING.md, bottom: SPACING.sm, color: COLORS.gold700, fontSize: 26, minWidth: TOUCH_TARGET, textAlign: 'center'},
+ });
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/src/features/index/IndexScreen.tsx nafi-source-v101/src/features/index/IndexScreen.tsx
+--- base-v101/src/features/index/IndexScreen.tsx	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/src/features/index/IndexScreen.tsx	2026-09-18 13:15:08.299939218 +0000
+@@ -1,4 +1,4 @@
+-import React, {useMemo} from 'react';
++import React, {useMemo, useState} from 'react';
+ import {FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions} from 'react-native';
+ import {useNavigation} from '@react-navigation/native';
+ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+@@ -7,19 +7,20 @@
+ import {useAppServices} from '../../app/AppServicesContext';
+ import {toSurahTarget} from '../../services/ReaderNavigationService';
+ import {ScreenHeader} from '../common/ScreenHeader';
+-import {PdfPage} from '../reader/PdfPage';
++import {ZoomablePdfPage} from '../reader/ZoomablePdfPage';
++import {pageWidthForScreen} from '../reader/zoomModel';
+ 
+ export function IndexScreen(): React.JSX.Element {
+   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+   const services = useAppServices();
+   const {width: screenWidth} = useWindowDimensions();
+-  const pageWidth = Math.max(280, screenWidth - SPACING.md * 2);
++  const [pageZoomed, setPageZoomed] = useState(false);
++  const pageWidth = pageWidthForScreen(screenWidth);
+   const pageHeight = pageWidth * A4_ASPECT;
+   const rowLength = pageHeight + SPACING.md;
+-  const pages = useMemo(() => [617, 618, 619, 620, 621, 622], []);
++  const pages = useMemo(() => [609, 610], []);
+ 
+   const overlaysFor = (sourcePage: number) => {
+-    if (sourcePage !== 621 && sourcePage !== 622) return undefined;
+     const hotspots = services.hotspots.forSourcePage(sourcePage);
+     return hotspots.map(hotspot => {
+       const surah = services.surahs.get(hotspot.surahId);
+@@ -38,20 +39,21 @@
+ 
+   return (
+     <View style={styles.root}>
+-      <ScreenHeader title="تعريف وفهرس المصحف" />
++      <ScreenHeader title="الفهرس" />
+       <View style={styles.notice}><Text style={styles.noticeText}>صفحات الفهرس الأصلية تفاعلية — اضغط على اسم أي سورة للانتقال إليها.</Text></View>
+       <FlatList
+         data={pages}
+         keyExtractor={item => String(item)}
+         renderItem={({item, index}) => (
+           <View style={{height: rowLength}}>
+-            <PdfPage assetName="quran_index.pdf" pageIndex={index} width={pageWidth} overlay={overlaysFor(item)} />
++            <ZoomablePdfPage assetName="quran_index.pdf" pageIndex={index} width={pageWidth} overlay={overlaysFor(item)} onZoomStateChange={setPageZoomed} />
+           </View>
+         )}
+         getItemLayout={(_, index) => ({length: rowLength, offset: rowLength * index, index})}
+         initialNumToRender={2}
+         maxToRenderPerBatch={2}
+         windowSize={4}
++        scrollEnabled={!pageZoomed}
+         contentContainerStyle={styles.list}
+         showsVerticalScrollIndicator={false}
+       />
+diff -ruN '--exclude=node_modules' '--exclude=.gradle' '--exclude=build' '--exclude=.kotlin' '--exclude=*.pdf' base-v101/src/utils/pageMapping.ts nafi-source-v101/src/utils/pageMapping.ts
+--- base-v101/src/utils/pageMapping.ts	2026-09-16 02:06:10.000000000 +0000
++++ nafi-source-v101/src/utils/pageMapping.ts	2026-09-18 13:15:08.299598936 +0000
+@@ -1,6 +1,6 @@
+ export const MUSHAF_PAGE_COUNT = 604 as const;
+-export const QURAN_SOURCE_START_PAGE = 13 as const;
+-export const QURAN_SOURCE_END_PAGE = 616 as const;
++export const QURAN_SOURCE_START_PAGE = 5 as const;
++export const QURAN_SOURCE_END_PAGE = 608 as const;
+ 
+ function assertIntegerInRange(value: number, min: number, max: number, label: string): void {
+   if (!Number.isInteger(value) || value < min || value > max) {
+@@ -10,12 +10,12 @@
+ 
+ export function mushafToSourcePage(mushafPage: number): number {
+   assertIntegerInRange(mushafPage, 1, MUSHAF_PAGE_COUNT, 'mushafPage');
+-  return mushafPage + 12;
++  return mushafPage + 4;
+ }
+ 
+ export function sourceToMushafPage(sourcePage: number): number {
+   assertIntegerInRange(sourcePage, QURAN_SOURCE_START_PAGE, QURAN_SOURCE_END_PAGE, 'sourcePage');
+-  return sourcePage - 12;
++  return sourcePage - 4;
+ }
+ 
+ export function mushafToQuranAssetIndex(mushafPage: number): number {
