@@ -1,4 +1,4 @@
-name: Test External Transfer
+name: Publish Transfer URLs to Paste
 on:
   push:
     branches: [qurani-ibnkathir-v100]
@@ -11,27 +11,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Probe transfer hosts
+      - name: Publish fresh build URLs to paste.rs
         shell: bash
         run: |
-          set -u
-          printf 'ibnkathir-transfer-ok\n' > /tmp/probe.txt
-          : > qurani-ibnkathir/transfer-probes-2.txt
-          probe() { echo "=== $1 ===" >> qurani-ibnkathir/transfer-probes-2.txt; shift; "$@" >> qurani-ibnkathir/transfer-probes-2.txt 2>&1 || true; echo >> qurani-ibnkathir/transfer-probes-2.txt; }
-          BIN="ibnkathir-$(date +%s)-$RANDOM"
-          probe FILEBIN curl -sSL --max-time 30 -T /tmp/probe.txt "https://filebin.net/$BIN/probe.txt"
-          probe UGUU curl -sSL --max-time 30 -F 'files[]=@/tmp/probe.txt' https://uguu.se/upload.php
-          probe ZEROXZERO curl -sSL --max-time 30 -F 'file=@/tmp/probe.txt' https://0x0.st
-          probe TEMPSH curl -sSL --max-time 30 -T /tmp/probe.txt https://temp.sh/probe.txt
-          probe LITTERBOX curl -sSL --max-time 30 -F 'reqtype=fileupload' -F 'time=24h' -F 'fileToUpload=@/tmp/probe.txt' https://litterbox.catbox.moe/resources/internals/api.php
-          probe GOFILE curl -sSL --max-time 30 -F 'file=@/tmp/probe.txt' https://upload.gofile.io/uploadfile
-          cat qurani-ibnkathir/transfer-probes-2.txt
-      - name: Persist results
+          set -euo pipefail
+          test -s qurani-ibnkathir/fresh-transfer-urls.txt
+          URL="$(curl -fsS --retry 3 --data-binary @qurani-ibnkathir/fresh-transfer-urls.txt https://paste.rs/)"
+          test -n "$URL"
+          echo "$URL" | tee qurani-ibnkathir/paste-url.txt
+      - name: Persist paste URL
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add qurani-ibnkathir/transfer-probes-2.txt
-          git commit -m 'ci: probe alternate transfer hosts' || true
+          git add qurani-ibnkathir/paste-url.txt
+          git commit -m 'ci: publish transfer URLs via paste.rs' || true
           git push origin HEAD:qurani-ibnkathir-v100
