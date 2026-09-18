@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 jobs:
@@ -197,20 +197,34 @@ jobs:
           zip -qr android-build-tools-36-minimal.zip android-build-tools-36
           sha256sum android-build-tools-36-minimal.zip
 
-      - name: Stage local-finalization payload
+      - name: Upload fresh local-finalization payload to tmpfiles
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/ibnkathir-local-finalization
-          cp qurani-app/IbnKathir-skeleton-v1.0.0.apk /tmp/ibnkathir-local-finalization/
-          cp /tmp/android-build-tools-36-minimal.zip /tmp/ibnkathir-local-finalization/
-          cp qurani-app/ci/ibnkathir-*.txt /tmp/ibnkathir-local-finalization/
+          upload_tmpfiles() {
+            local file="$1"
+            local json url
+            json="$(curl -fsS --retry 3 --retry-delay 2 -F "file=@${file}" https://tmpfiles.org/api/v1/upload)"
+            url="$(python3 -c 'import json,sys; u=json.loads(sys.argv[1])["data"]["url"]; print(u.replace("https://tmpfiles.org/","https://tmpfiles.org/dl/",1))' "$json")"
+            test -n "$url"
+            printf '%s' "$url"
+          }
+          APK_URL="$(upload_tmpfiles qurani-app/IbnKathir-skeleton-v1.0.0.apk)"
+          TOOLS_URL="$(upload_tmpfiles /tmp/android-build-tools-36-minimal.zip)"
+          {
+            echo "APK_URL=$APK_URL"
+            echo "TOOLS_URL=$TOOLS_URL"
+            echo "APK_SHA256=$(sha256sum qurani-app/IbnKathir-skeleton-v1.0.0.apk | awk '{print $1}')"
+            echo "TOOLS_SHA256=$(sha256sum /tmp/android-build-tools-36-minimal.zip | awk '{print $1}')"
+          } | tee qurani-ibnkathir/fresh-transfer-urls.txt
 
-      - name: Upload local-finalization payload
-        uses: actions/upload-artifact@v4
-        with:
-          name: ibnkathir-local-finalization-v1.0.0
-          retention-days: 2
-          if-no-files-found: error
-          compression-level: 0
-          path: /tmp/ibnkathir-local-finalization/
+      - name: Persist fresh transfer URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin qurani-ibnkathir-v100
+          git add qurani-ibnkathir/fresh-transfer-urls.txt
+          git commit -m 'ci: record fresh Ibn Kathir build URLs' || true
+          git push origin HEAD:qurani-ibnkathir-v100
