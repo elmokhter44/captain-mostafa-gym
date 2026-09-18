@@ -1,0 +1,36 @@
+name: IbnKathir Source Verify
+
+on:
+  push:
+    branches: [qurani-ibnkathir-v100]
+    paths:
+      - '.github/workflows/ibnkathir-source-verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify exact approved 632-page source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update >/dev/null
+          sudo apt-get install -y poppler-utils >/dev/null
+          URL='https://bhr-q.com/media/attachments/qran/02/Albazi.pdf'
+          curl -fL --retry 4 --retry-delay 3 --connect-timeout 30 --max-time 900 \
+            -A 'Mozilla/5.0' "$URL" -o /tmp/ibnkathir-source.pdf
+          ACTUAL_SHA="$(sha256sum /tmp/ibnkathir-source.pdf | awk '{print $1}')"
+          echo "ACTUAL_SHA=$ACTUAL_SHA"
+          echo "SIZE_BYTES=$(stat -c%s /tmp/ibnkathir-source.pdf)"
+          pdfinfo /tmp/ibnkathir-source.pdf | tee /tmp/pdfinfo.txt
+          PAGES="$(awk '/^Pages:/ {print $2}' /tmp/pdfinfo.txt)"
+          echo "PAGES=$PAGES"
+          test "$ACTUAL_SHA" = 'a2403f7af06c1e17fe35d6f24fd87a715e7fd31fd7f34fc57541bf3313cd07a3'
+          test "$PAGES" = '632'
+          echo 'IBNKATHIR_SOURCE_EXACT_MATCH=1'
