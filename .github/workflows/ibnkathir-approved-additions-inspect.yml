@@ -29,7 +29,7 @@ jobs:
           base64 -d qurani-ibnkathir/ibnkathir-code.patch.gz.b64 | gzip -dc > /tmp/ibnkathir.patch
           cd /tmp/app
           patch --batch -p1 < /tmp/ibnkathir.patch >/dev/null
-          for f in src/app/constants.ts src/data/sections.ts src/features/home/HomeScreen.tsx __tests__/ibnkathirConfig.node.test.ts __tests__/ibnkathirIdentity.node.test.ts __tests__/sections.node.test.ts; do
+          for f in src/app/constants.ts src/data/sections.ts src/features/home/HomeScreen.tsx src/features/home/homeModel.ts __tests__/ibnkathirConfig.node.test.ts __tests__/ibnkathirIdentity.node.test.ts __tests__/sections.node.test.ts __tests__/navigationModels.node.test.ts; do
             echo "===== $f ====="
-            sed -n '1,260p' "$f"
+            sed -n '1,300p' "$f"
           done
