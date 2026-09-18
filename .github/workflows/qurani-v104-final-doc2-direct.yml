@@ -87,29 +87,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m venv /tmp/pdfvenv
-          /tmp/pdfvenv/bin/pip install --quiet 'PyMuPDF==1.26.4'
-          /tmp/pdfvenv/bin/python - <<'PY'
-          import fitz, hashlib
-          from pathlib import Path
-          src=Path('qurani-app/android/app/src/main/assets/pdf/warsh_summary.pdf')
-          replacement=Path('.ci-assets/Doc2.pdf')
-          dst=Path('qurani-app/android/app/src/main/assets/pdf/warsh_summary_v104.pdf')
-          old=fitz.open(src); new=fitz.open(replacement)
-          assert old.page_count==4, old.page_count
-          assert new.page_count==1, new.page_count
-          before=[hashlib.sha256(old[i].get_pixmap(alpha=False).samples).hexdigest() for i in range(3)]
-          out=fitz.open(); out.insert_pdf(old,from_page=0,to_page=2); out.insert_pdf(new,from_page=0,to_page=0)
-          out.save(dst,garbage=4,deflate=True); out.close()
-          chk=fitz.open(dst); assert chk.page_count==4
-          after=[hashlib.sha256(chk[i].get_pixmap(alpha=False).samples).hexdigest() for i in range(3)]
-          assert before==after, 'first three pages changed'
-          pix=chk[3].get_pixmap(matrix=fitz.Matrix(1.5,1.5),alpha=False)
-          vals=bytes(pix.samples)
-          assert len(set(vals[::97]))>20, 'page 4 rendered blank/flat'
-          pix.save('/tmp/page4-doc2-reference.png')
-          print('DOC2_DIRECT_PDF_PAGE_OK=1')
-          chk.close(); old.close(); new.close()
-          PY
+          /tmp/pdfvenv/bin/pip install --quiet 'PyMuPDF==1.26.4' 'pikepdf==9.11.0'
+          /tmp/pdfvenv/bin/python .ci-scripts/v104/merge_doc2_pikepdf.py
 
       - name: Unit tests and typecheck
         shell: bash
