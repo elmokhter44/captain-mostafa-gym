@@ -1,4 +1,4 @@
-name: Wrap IbnKathir Payload Chunks
+name: Publish IbnKathir Payloads to CNet Paste
 on:
   push:
     branches: [qurani-ibnkathir-v100]
@@ -7,24 +7,30 @@ on:
 permissions:
   contents: write
 jobs:
-  wrap:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Wrap persisted base64 at 1000 chars per line
+      - name: Publish base64 payloads
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p qurani-ibnkathir/payload-wrapped
-          cat qurani-ibnkathir/payload-chunks/delta-[0-9][0-9] | fold -w 1000 > qurani-ibnkathir/payload-wrapped/delta.b64.txt
-          cat qurani-ibnkathir/payload-chunks/tools-[0-9][0-9] | fold -w 1000 > qurani-ibnkathir/payload-wrapped/tools.b64.txt
-          wc -l -c qurani-ibnkathir/payload-wrapped/*.txt
-      - name: Commit wrapped payloads
+          cat qurani-ibnkathir/payload-chunks/delta-[0-9][0-9] > /tmp/delta.b64
+          cat qurani-ibnkathir/payload-chunks/tools-[0-9][0-9] > /tmp/tools.b64
+          DURL="$(curl -fsS --retry 3 -H 'x-random;' -H 'X-FileName: delta.b64.txt' --data-binary @/tmp/delta.b64 https://paste.c-net.org/)"
+          TURL="$(curl -fsS --retry 3 -H 'x-random;' -H 'X-FileName: tools.b64.txt' --data-binary @/tmp/tools.b64 https://paste.c-net.org/)"
+          test -n "$DURL"; test -n "$TURL"
+          {
+            echo "DELTA_B64_URL=$DURL"
+            echo "TOOLS_B64_URL=$TURL"
+            cat qurani-ibnkathir/payload-chunks/manifest.txt
+          } | tee qurani-ibnkathir/cnet-payload-urls.txt
+      - name: Persist URLs
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add qurani-ibnkathir/payload-wrapped
-          git commit -m 'ci: wrap payloads for connector transfer'
+          git add qurani-ibnkathir/cnet-payload-urls.txt
+          git commit -m 'ci: publish payloads to cnet paste' || true
           git push origin HEAD:qurani-ibnkathir-v100
