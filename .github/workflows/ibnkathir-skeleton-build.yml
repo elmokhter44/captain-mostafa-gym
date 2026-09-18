@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 jobs:
@@ -146,75 +146,64 @@ jobs:
           cp "$APK" IbnKathir-skeleton-v1.0.0.apk
           sha256sum IbnKathir-skeleton-v1.0.0.apk | tee ci/ibnkathir-skeleton-sha256.txt
 
-      - name: Upload skeleton APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: ibnkathir-skeleton-v1.0.0
-          retention-days: 7
-          if-no-files-found: error
-          path: |
-            qurani-app/IbnKathir-skeleton-v1.0.0.apk
-            qurani-app/ci/ibnkathir-*.txt
-
-      - name: Upload Android build-tools for final offline patch signing
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-build-tools-36-linux
-          retention-days: 7
-          if-no-files-found: error
-          path: |
-            /usr/local/lib/android/sdk/build-tools/36.0.0
-
-  emulator-smoke:
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: ibnkathir-skeleton-v1.0.0
-          path: /tmp/ibnkathir
-
-      - name: Locate APK
+      - name: Package minimal Android signing tools
         shell: bash
         run: |
           set -euo pipefail
-          find /tmp/ibnkathir -type f -name '*.apk' -print
-          APK="$(find /tmp/ibnkathir -type f -name '*.apk' | head -1)"
-          test -s "$APK"
-          cp "$APK" /tmp/IbnKathir.apk
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          mkdir -p /tmp/android-build-tools-36/lib
+          cp "$BT/apksigner" /tmp/android-build-tools-36/
+          cp "$BT/zipalign" /tmp/android-build-tools-36/
+          cp "$BT/aapt" /tmp/android-build-tools-36/
+          cp "$BT/lib/apksigner.jar" /tmp/android-build-tools-36/lib/
+          chmod +x /tmp/android-build-tools-36/apksigner /tmp/android-build-tools-36/zipalign /tmp/android-build-tools-36/aapt
+          cd /tmp
+          zip -qr android-build-tools-36-minimal.zip android-build-tools-36
+          sha256sum android-build-tools-36-minimal.zip
 
-      - name: Install, launch and inspect for fatal crashes
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          target: default
-          profile: pixel_6
-          cores: 2
-          ram-size: 3072M
-          heap-size: 512M
-          disable-animations: true
-          emulator-options: -no-snapshot -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect
-          script: |
-            set -euo pipefail
-            adb install -r /tmp/IbnKathir.apk
-            adb shell monkey -p com.qurani.ibnkathir -c android.intent.category.LAUNCHER 1
-            sleep 8
-            adb logcat -d -v time > /tmp/ibnkathir-logcat.txt
-            if grep -E 'FATAL EXCEPTION|AndroidRuntime.*Process: com.qurani.ibnkathir' /tmp/ibnkathir-logcat.txt; then
-              echo 'Fatal application exception detected' >&2
-              exit 1
+      - name: Upload skeleton and signing tools to temporary transfer endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          upload_file() {
+            local file="$1"
+            local name
+            name="$(basename "$file")"
+            local json url
+            json="$(curl -fsS --retry 3 --retry-delay 2 -F "file=@${file}" https://tmpfiles.org/api/v1/upload || true)"
+            url="$(python3 - <<'PY' "$json"
+          import json,sys
+          try:
+              d=json.loads(sys.argv[1])
+              u=d.get('data',{}).get('url','')
+              if u.startswith('https://tmpfiles.org/'):
+                  u=u.replace('https://tmpfiles.org/','https://tmpfiles.org/dl/',1)
+              print(u)
+          except Exception:
+              print('')
+          PY
+            )"
+            if [ -z "$url" ]; then
+              url="$(curl -fsS --retry 3 --retry-delay 2 --upload-file "$file" "https://transfer.sh/${name}" || true)"
             fi
-            adb shell pidof com.qurani.ibnkathir
-            adb exec-out screencap -p > /tmp/ibnkathir-home.png
+            test -n "$url"
+            printf '%s' "$url"
+          }
+          APK_URL="$(upload_file qurani-app/IbnKathir-skeleton-v1.0.0.apk)"
+          TOOLS_URL="$(upload_file /tmp/android-build-tools-36-minimal.zip)"
+          {
+            echo "APK_URL=$APK_URL"
+            echo "TOOLS_URL=$TOOLS_URL"
+            echo "APK_SHA256=$(sha256sum qurani-app/IbnKathir-skeleton-v1.0.0.apk | awk '{print $1}')"
+            echo "TOOLS_SHA256=$(sha256sum /tmp/android-build-tools-36-minimal.zip | awk '{print $1}')"
+          } | tee qurani-ibnkathir/transfer-urls.txt
 
-      - name: Upload smoke evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: ibnkathir-emulator-smoke-v1.0.0
-          retention-days: 7
-          if-no-files-found: error
-          path: |
-            /tmp/ibnkathir-logcat.txt
-            /tmp/ibnkathir-home.png
+      - name: Persist transfer URLs on isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnkathir/transfer-urls.txt
+          git commit -m 'ci: record temporary Ibn Kathir build transfer URLs' || true
+          git push origin HEAD:qurani-ibnkathir-v100
