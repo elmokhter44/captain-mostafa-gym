@@ -1,4 +1,4 @@
-name: Build Compact Skeleton Delta
+name: Capture IbnKathir Release Redirects
 on:
   push:
     branches: [qurani-ibnkathir-v100]
@@ -6,69 +6,33 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
-  actions: read
 jobs:
-  delta:
+  capture:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - name: Build compact delta from Nafi APK to verified Ibn Kathir skeleton
+      - name: Capture signed release asset redirects
         shell: bash
         run: |
           set -euo pipefail
-          gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n QURANI-FINAL-v1.0.1-R2-1 -D /tmp/master
-          OLD=/tmp/master/final-delivery/Qurani-v1.0.1.apk
-          URL="$(grep '^APK_URL=' qurani-ibnkathir/fresh-transfer-urls.txt | cut -d= -f2-)"
-          EXPECTED="$(grep '^APK_SHA256=' qurani-ibnkathir/fresh-transfer-urls.txt | cut -d= -f2)"
-          curl -fsSL --retry 3 "$URL" -o /tmp/new.apk
-          test "$(sha256sum /tmp/new.apk | awk '{print $1}')" = "$EXPECTED"
-          rm -rf /tmp/old /tmp/new /tmp/delta
-          mkdir -p /tmp/old /tmp/new /tmp/delta/patches /tmp/delta/raw
-          unzip -q "$OLD" -d /tmp/old
-          unzip -q /tmp/new.apk -d /tmp/new
-          rm -rf /tmp/old/META-INF /tmp/new/META-INF /tmp/old/assets/pdf /tmp/new/assets/pdf
-          python3 -m pip install --quiet bsdiff4
-          python3 - <<'PY'
-          import hashlib, pathlib, bsdiff4, json, shutil
-          old=pathlib.Path('/tmp/old'); new=pathlib.Path('/tmp/new'); out=pathlib.Path('/tmp/delta')
-          old_files={str(p.relative_to(old)):p for p in old.rglob('*') if p.is_file()}
-          new_files={str(p.relative_to(new)):p for p in new.rglob('*') if p.is_file()}
-          def sha(p):
-              h=hashlib.sha256()
-              with open(p,'rb') as f:
-                  for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
-              return h.hexdigest()
-          changed=[]; added=[]
-          for name,p in sorted(new_files.items()):
-              if name not in old_files:
-                  dst=out/'raw'/name; dst.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(p,dst); added.append((name,p.stat().st_size))
-              elif sha(p)!=sha(old_files[name]):
-                  data=bsdiff4.diff(old_files[name].read_bytes(),p.read_bytes())
-                  dst=out/'patches'/(name+'.bsdiff'); dst.parent.mkdir(parents=True,exist_ok=True); dst.write_bytes(data)
-                  changed.append((name,old_files[name].stat().st_size,p.stat().st_size,len(data),sha(p)))
-          deleted=sorted(set(old_files)-set(new_files))
-          (out/'deleted.txt').write_text('\n'.join(deleted)+'\n')
-          (out/'manifest.json').write_text(json.dumps({'changed':changed,'added':added,'deleted':deleted},ensure_ascii=False,indent=2))
-          PY
-          tar -C /tmp/delta -czf /tmp/ibnkathir-skeleton-delta.tar.gz .
-          SIZE="$(stat -c%s /tmp/ibnkathir-skeleton-delta.tar.gz)"
-          {
-            echo "DELTA_SIZE=$SIZE"
-            echo "DELTA_SHA256=$(sha256sum /tmp/ibnkathir-skeleton-delta.tar.gz | awk '{print $1}')"
-            echo '---MANIFEST---'
-            cat /tmp/delta/manifest.json
-          } > qurani-ibnkathir/delta-report.txt
-          cat qurani-ibnkathir/delta-report.txt
-          test "$SIZE" -le 8000000
-          base64 -w 76 /tmp/ibnkathir-skeleton-delta.tar.gz > qurani-ibnkathir/skeleton-delta.tar.gz.b64
-      - name: Persist compact delta
+          TAG='ibnkathir-transfer-v100'
+          : > qurani-ibnkathir/release-redirects.txt
+          for NAME in IbnKathir-skeleton-v1.0.0.apk android-sign-tools-36.zip; do
+            API_URL="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq ".assets[] | select(.name == \"$NAME\") | .apiUrl")"
+            test -n "$API_URL"
+            LOC="$(curl -fsSI -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/octet-stream' "$API_URL" | tr -d '\r' | awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/^location:[[:space:]]*/,"");print;exit}')"
+            test -n "$LOC"
+            printf '%s_URL=%s\n' "$(echo "$NAME" | tr 'a-z.-' 'A-Z__')" "$LOC" >> qurani-ibnkathir/release-redirects.txt
+          done
+          cat qurani-ibnkathir/release-redirects.txt
+      - name: Persist redirects
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add qurani-ibnkathir/delta-report.txt qurani-ibnkathir/skeleton-delta.tar.gz.b64
-          git commit -m 'ci: persist compact verified skeleton delta'
+          git add qurani-ibnkathir/release-redirects.txt
+          git commit -m 'ci: capture signed Ibn Kathir release redirects' || true
           git push origin HEAD:qurani-ibnkathir-v100
