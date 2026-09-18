@@ -1,65 +1,34 @@
-name: Compact IbnKathir Transfer Artifact
+name: Capture Fresh Android Signing Tools URL
 on:
   push:
     branches: [qurani-ibnkathir-v100]
     paths: ['.github/workflows/test-catbox-transfer.yml']
   workflow_dispatch:
 permissions:
-  contents: read
-  actions: read
+  contents: write
 jobs:
-  transfer:
+  capture:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - name: Build compact local-transfer payload
+      - name: Capture fresh signed redirect
         shell: bash
         run: |
           set -euo pipefail
-          gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n QURANI-FINAL-v1.0.1-R2-1 -D /tmp/master
-          gh release download ibnkathir-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'IbnKathir-skeleton-v1.0.0.apk' -p 'android-sign-tools-36.zip' -D /tmp/release
-          test "$(sha256sum /tmp/release/IbnKathir-skeleton-v1.0.0.apk | awk '{print $1}')" = '46de4c53ad5df6210f06c194ca0f0304fd7934d47022d87b86e4ffcead479c50'
-          test "$(sha256sum /tmp/release/android-sign-tools-36.zip | awk '{print $1}')" = '74a57d5b823988109d056df26b0ba23ce41c5e90c1b6538b1519a6afd55ed946'
-          OLD=/tmp/master/final-delivery/Qurani-v1.0.1.apk
-          NEW=/tmp/release/IbnKathir-skeleton-v1.0.0.apk
-          rm -rf /tmp/delta-old /tmp/delta-new /tmp/delta /tmp/transfer
-          mkdir -p /tmp/delta-old /tmp/delta-new /tmp/delta/patches /tmp/delta/raw /tmp/transfer
-          unzip -q "$OLD" -d /tmp/delta-old
-          unzip -q "$NEW" -d /tmp/delta-new
-          rm -rf /tmp/delta-old/META-INF /tmp/delta-new/META-INF /tmp/delta-old/assets/pdf /tmp/delta-new/assets/pdf
-          python3 -m pip install --quiet bsdiff4
-          python3 - <<'PY'
-          import hashlib, pathlib, bsdiff4, json, shutil
-          old=pathlib.Path('/tmp/delta-old'); new=pathlib.Path('/tmp/delta-new'); out=pathlib.Path('/tmp/delta')
-          old_files={str(p.relative_to(old)):p for p in old.rglob('*') if p.is_file()}
-          new_files={str(p.relative_to(new)):p for p in new.rglob('*') if p.is_file()}
-          def sha(p):
-              h=hashlib.sha256()
-              with open(p,'rb') as f:
-                  for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
-              return h.hexdigest()
-          changed=[]; added=[]
-          for name,p in sorted(new_files.items()):
-              if name not in old_files:
-                  dst=out/'raw'/name; dst.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(p,dst); added.append([name,p.stat().st_size,sha(p)])
-              elif sha(p)!=sha(old_files[name]):
-                  data=bsdiff4.diff(old_files[name].read_bytes(),p.read_bytes())
-                  dst=out/'patches'/(name+'.bsdiff'); dst.parent.mkdir(parents=True,exist_ok=True); dst.write_bytes(data)
-                  changed.append([name,old_files[name].stat().st_size,p.stat().st_size,len(data),sha(p)])
-          deleted=sorted(set(old_files)-set(new_files))
-          (out/'deleted.txt').write_text('\n'.join(deleted)+'\n')
-          (out/'manifest.json').write_text(json.dumps({'changed':changed,'added':added,'deleted':deleted},ensure_ascii=False,indent=2))
-          PY
-          tar -C /tmp/delta -czf /tmp/transfer/skeleton-delta.tar.gz .
-          cp /tmp/release/android-sign-tools-36.zip /tmp/transfer/
-          sha256sum /tmp/transfer/*
-          du -sh /tmp/transfer
-      - name: Upload compact transfer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ibnkathir-local-transfer
-          path: /tmp/transfer/*
-          retention-days: 1
-          compression-level: 0
+          TAG='ibnkathir-transfer-v100'
+          NAME='android-sign-tools-36.zip'
+          API_URL="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq ".assets[] | select(.name == \"$NAME\") | .apiUrl")"
+          LOC="$(curl -fsSI -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/octet-stream' "$API_URL" | tr -d '\r' | awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/^location:[[:space:]]*/,"");print;exit}')"
+          test -n "$LOC"
+          printf '%s\n' "$LOC" > qurani-ibnkathir/fresh-tools-url.txt
+      - name: Persist URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnkathir/fresh-tools-url.txt
+          git commit -m 'ci: capture fresh signing tools URL' || true
+          git push origin HEAD:qurani-ibnkathir-v100
