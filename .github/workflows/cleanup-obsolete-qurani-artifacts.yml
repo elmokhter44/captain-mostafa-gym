@@ -1,0 +1,27 @@
+name: Cleanup obsolete Qurani build artifacts
+
+on:
+  push:
+    branches: [qurani-ibnkathir-v100]
+    paths: ['.github/workflows/cleanup-obsolete-qurani-artifacts.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete only obsolete intermediate Qurani artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for id in 10448044347 10430458171 10429648883; do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id"
+            echo "DELETED_ARTIFACT_ID=$id"
+          done
+          echo 'KEPT_FINAL_ARTIFACT_ID=10448144661'
