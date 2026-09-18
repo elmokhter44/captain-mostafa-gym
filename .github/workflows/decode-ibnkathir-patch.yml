@@ -1,0 +1,23 @@
+name: Decode IbnKathir Patch
+on:
+  push:
+    branches: [qurani-ibnkathir-v100]
+    paths: ['.github/workflows/decode-ibnkathir-patch.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode patch and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d qurani-ibnkathir/ibnkathir-code.patch.gz.b64 | gzip -dc > qurani-ibnkathir/ibnkathir-code.patch
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnkathir/ibnkathir-code.patch
+          git commit -m 'ci: expose decoded Ibn Kathir patch' || true
+          git push origin HEAD:qurani-ibnkathir-v100
