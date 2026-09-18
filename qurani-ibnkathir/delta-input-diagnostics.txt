@@ -1,0 +1,32 @@
+=== MASTER DOWNLOAD ===
+
+real	0m7.735s
+user	0m0.669s
+sys	0m0.422s
+MASTER_EXIT=0
+/tmp/master/Qurani-APK-v1.0.1.zip 109954094
+/tmp/master/final-delivery/BUILD-INFO.txt 249
+/tmp/master/final-delivery/Qurani-source-v1.0.1.zip 108098149
+/tmp/master/final-delivery/Qurani-v1.0.1.apk 155753064
+/tmp/master/final-delivery/reports/verse-index-report.txt 118
+/tmp/master/final-delivery/reports/business-tests.txt 11851
+/tmp/master/final-delivery/reports/android-emulator-smoke.txt 521
+/tmp/master/final-delivery/reports/pdf-split-report.txt 320
+/tmp/master/final-delivery/reports/apksigner.txt 982
+/tmp/master/final-delivery/reports/apk-contents.txt 48402
+/tmp/master/final-delivery/reports/emulator-final.png 1499252
+/tmp/master/final-delivery/reports/android-logcat-final.txt 586847
+/tmp/master/final-delivery/reports/source-pdf-sha256.txt 89
+/tmp/master/final-delivery/reports/typecheck.txt 0
+/tmp/master/final-delivery/reports/android-logcat.txt 603678
+/tmp/master/final-delivery/reports/apk-badging.txt 4798
+/tmp/master/final-delivery/reports/realm-native-libs.txt 167
+/tmp/master/final-delivery/reports/apk-sha256.txt 120
+/tmp/master/final-delivery/reports/gradle-release-build.txt 36722
+/tmp/master/final-delivery/Qurani-signing-backup-v1.0.1.zip 4879
+/tmp/master/final-delivery/APK-SHA256.txt 84
+=== SKELETON DOWNLOAD ===
+curl: (3) URL rejected: Malformed input to a URL function
+
+HTTP=000 SIZE=0
+CURL_EXIT=3
