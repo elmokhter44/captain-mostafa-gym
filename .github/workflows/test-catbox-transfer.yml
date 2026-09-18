@@ -1,4 +1,4 @@
-name: Publish Transfer URLs to Paste
+name: Inspect Artifact Storage
 on:
   push:
     branches: [qurani-ibnkathir-v100]
@@ -6,25 +6,28 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  actions: write
 jobs:
-  transfer:
+  inspect:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Publish fresh build URLs to paste.rs
+      - name: List repository artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          test -s qurani-ibnkathir/fresh-transfer-urls.txt
-          URL="$(curl -fsS --retry 3 --data-binary @qurani-ibnkathir/fresh-transfer-urls.txt https://paste.rs/)"
-          test -n "$URL"
-          echo "$URL" | tee qurani-ibnkathir/paste-url.txt
-      - name: Persist paste URL
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | [.id,.name,.size_in_bytes,.created_at,.expired,.workflow_run.id] | @tsv' \
+            > qurani-ibnkathir/artifacts-list.tsv
+          cat qurani-ibnkathir/artifacts-list.tsv
+      - name: Persist list
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add qurani-ibnkathir/paste-url.txt
-          git commit -m 'ci: publish transfer URLs via paste.rs' || true
+          git add qurani-ibnkathir/artifacts-list.tsv
+          git commit -m 'ci: inspect artifact storage' || true
           git push origin HEAD:qurani-ibnkathir-v100
