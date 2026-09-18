@@ -1,0 +1,30 @@
+name: Test Catbox Transfer
+on:
+  push:
+    branches: [qurani-ibnkathir-v100]
+    paths: ['.github/workflows/test-catbox-transfer.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'ibnkathir-transfer-ok\n' > /tmp/probe.txt
+          URL="$(curl -fsS --retry 3 -F 'reqtype=fileupload' -F 'fileToUpload=@/tmp/probe.txt' https://catbox.moe/user/api.php)"
+          test -n "$URL"
+          echo "$URL" | tee qurani-ibnkathir/catbox-probe-url.txt
+      - name: Persist URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnkathir/catbox-probe-url.txt
+          git commit -m 'ci: record transfer probe URL' || true
+          git push origin HEAD:qurani-ibnkathir-v100
