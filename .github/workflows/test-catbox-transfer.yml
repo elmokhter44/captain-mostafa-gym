@@ -1,33 +1,21 @@
-name: Inspect Artifact Storage
+name: Probe Artifact Quota
 on:
   push:
     branches: [qurani-ibnkathir-v100]
     paths: ['.github/workflows/test-catbox-transfer.yml']
   workflow_dispatch:
 permissions:
-  contents: write
-  actions: write
+  contents: read
 jobs:
-  inspect:
+  probe:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: List repository artifacts
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
-            --jq '.artifacts[] | [.id,.name,.size_in_bytes,.created_at,.expired,.workflow_run.id] | @tsv' \
-            > qurani-ibnkathir/artifacts-list.tsv
-          cat qurani-ibnkathir/artifacts-list.tsv
-      - name: Persist list
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git add qurani-ibnkathir/artifacts-list.tsv
-          git commit -m 'ci: inspect artifact storage' || true
-          git push origin HEAD:qurani-ibnkathir-v100
+      - name: Make tiny probe
+        run: printf 'artifact-quota-probe\n' > /tmp/probe.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ibn-kathir-quota-probe
+          retention-days: 1
+          compression-level: 0
+          path: /tmp/probe.txt
