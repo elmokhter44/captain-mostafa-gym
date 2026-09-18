@@ -1,21 +1,43 @@
-name: Probe Artifact Quota
+name: Probe Release Asset Bridge
 on:
   push:
     branches: [qurani-ibnkathir-v100]
     paths: ['.github/workflows/test-catbox-transfer.yml']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   probe:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - name: Make tiny probe
-        run: printf 'artifact-quota-probe\n' > /tmp/probe.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ibn-kathir-quota-probe
-          retention-days: 1
-          compression-level: 0
-          path: /tmp/probe.txt
+      - name: Publish tiny release asset and capture signed redirect
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'release-asset-bridge-ok\n' > /tmp/probe.txt
+          TAG='ibnkathir-transfer-v100'
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target qurani-ibnkathir-v100 --title 'Ibn Kathir transfer' --notes 'Temporary transfer assets for final APK assembly.'
+          gh release upload "$TAG" /tmp/probe.txt --clobber --repo "$GITHUB_REPOSITORY"
+          ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.assets[] | select(.name=="probe.txt") | .id')"
+          test -n "$ID"
+          set +e
+          curl -sS -D /tmp/headers -o /dev/null --max-redirs 0 \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/octet-stream' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$ID"
+          set -e
+          sed -n 's/^[Ll]ocation: //p' /tmp/headers | tr -d '\r' | head -1 > qurani-ibnkathir/release-asset-redirect.txt
+          test -s qurani-ibnkathir/release-asset-redirect.txt
+          cat qurani-ibnkathir/release-asset-redirect.txt
+      - name: Persist redirect
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnkathir/release-asset-redirect.txt
+          git commit -m 'ci: capture release asset redirect' || true
+          git push origin HEAD:qurani-ibnkathir-v100
