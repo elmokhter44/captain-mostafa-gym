@@ -1,0 +1,228 @@
+name: Qurani v1.0.4 Final Doc2 Direct
+
+on:
+  push:
+    branches: [qurani-build-temp]
+    paths:
+      - '.github/workflows/qurani-v104-final-doc2-direct.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build-test-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REALM_DISABLE_ANALYTICS: '1'
+      FINAL_NAME: al-mushaf-al-muallam-nafi-v1.0.4.apk
+      RELEASE_TAG: qurani-v1.0.4-nafi-final
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+          cache-read-only: true
+
+      - name: RED evidence and reconstruct exact uploaded Doc2.pdf
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e .ci-assets/Doc2.pdf
+          parts=(.ci-assets/doc2-upload-b64/part*)
+          test "${#parts[@]}" -eq 9
+          cat "${parts[@]}" | tr -d '\r\n\t ' | base64 --decode > .ci-assets/Doc2.pdf
+          test -s .ci-assets/Doc2.pdf
+          head -c 5 .ci-assets/Doc2.pdf | grep -q '%PDF-'
+          sha256sum .ci-assets/Doc2.pdf | tee /tmp/doc2-sha256.txt
+
+      - name: Restore verified source, signing key and v1.0.3 reference APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n QURANI-FINAL-v1.0.1-R2-1 -D /tmp/v101
+          test -s /tmp/v101/final-delivery/Qurani-source-v1.0.1.zip
+          test -s /tmp/v101/final-delivery/Qurani-signing-backup-v1.0.1.zip
+          mkdir -p qurani-app /tmp/signing /tmp/v103
+          unzip -q /tmp/v101/final-delivery/Qurani-source-v1.0.1.zip -d qurani-app
+          unzip -q /tmp/v101/final-delivery/Qurani-signing-backup-v1.0.1.zip -d /tmp/signing
+          cp /tmp/signing/qurani-release.keystore qurani-app/android/app/qurani-release.keystore
+          STORE_PASSWORD="$(sed -n 's/^Store password: //p' /tmp/signing/signing-credentials.txt)"
+          KEY_PASSWORD="$(sed -n 's/^Key password: //p' /tmp/signing/signing-credentials.txt)"
+          cat > qurani-app/android/keystore.properties <<EOF
+          storeFile=qurani-release.keystore
+          storePassword=$STORE_PASSWORD
+          keyAlias=qurani-release
+          keyPassword=$KEY_PASSWORD
+          EOF
+          chmod 600 qurani-app/android/keystore.properties qurani-app/android/app/qurani-release.keystore
+          gh release download qurani-v1.0.3-nafi-final --repo "$GITHUB_REPOSITORY" -p 'al-mushaf-al-muallam-nafi-v1.0.3.apk' -D /tmp/v103
+          test -s /tmp/v103/al-mushaf-al-muallam-nafi-v1.0.3.apk
+
+      - name: Apply only approved v1.0.4 app changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          npm version 1.0.4 --no-git-tag-version --allow-same-version
+          python3 "$GITHUB_WORKSPACE/.ci-scripts/v104/apply_v104.py"
+          mkdir -p android/app/src/androidTest/java/com/qurani/app
+          cp "$GITHUB_WORKSPACE/.ci-scripts/v104/PdfRenderTest.kt" android/app/src/androidTest/java/com/qurani/app/PdfRenderTest.kt
+
+      - name: Replace only page 4 with provided Doc2.pdf as a real PDF page
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/pdfvenv
+          /tmp/pdfvenv/bin/pip install --quiet 'PyMuPDF==1.26.4'
+          /tmp/pdfvenv/bin/python - <<'PY'
+          import fitz, hashlib
+          from pathlib import Path
+          src=Path('qurani-app/android/app/src/main/assets/pdf/warsh_summary.pdf')
+          replacement=Path('.ci-assets/Doc2.pdf')
+          dst=Path('qurani-app/android/app/src/main/assets/pdf/warsh_summary_v104.pdf')
+          old=fitz.open(src); new=fitz.open(replacement)
+          assert old.page_count==4, old.page_count
+          assert new.page_count==1, new.page_count
+          before=[hashlib.sha256(old[i].get_pixmap(alpha=False).samples).hexdigest() for i in range(3)]
+          out=fitz.open(); out.insert_pdf(old,from_page=0,to_page=2); out.insert_pdf(new,from_page=0,to_page=0)
+          out.save(dst,garbage=4,deflate=True); out.close()
+          chk=fitz.open(dst); assert chk.page_count==4
+          after=[hashlib.sha256(chk[i].get_pixmap(alpha=False).samples).hexdigest() for i in range(3)]
+          assert before==after, 'first three pages changed'
+          pix=chk[3].get_pixmap(matrix=fitz.Matrix(1.5,1.5),alpha=False)
+          vals=bytes(pix.samples)
+          assert len(set(vals[::97]))>20, 'page 4 rendered blank/flat'
+          pix.save('/tmp/page4-doc2-reference.png')
+          print('DOC2_DIRECT_PDF_PAGE_OK=1')
+          chk.close(); old.close(); new.close()
+          PY
+
+      - name: Unit tests and typecheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('src/data/sections.ts').read_text()
+          assert "assetName: 'warsh_summary_v104.pdf'" in s
+          assert s.count('الأصول كما وردت في مصاحف السلسلة الفراتية')==2
+          assert "أصول وفروش قراءة الامام نافع المدني برواية (ورش وقالون) بخط الايد" in s
+          g=Path('android/app/build.gradle').read_text(); assert 'versionCode 5' in g and 'versionName "1.0.4"' in g
+          PY
+          npm install --no-audit --no-fund
+          cat > __tests__/v104Regression.node.test.ts <<'EOF'
+          import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import {SECTIONS} from '../src/data/sections.ts';
+          test('warsh summary points at fresh v104 PDF asset',()=>{
+            const section=SECTIONS.find(x=>x.id==='warsh-summary');
+            assert.equal(section?.assetName,'warsh_summary_v104.pdf');
+          });
+          EOF
+          node --experimental-strip-types --test __tests__/*.node.test.ts
+          cat > tsconfig.app.json <<'EOF'
+          {"extends":"./tsconfig.json","exclude":["node_modules","android","__tests__","**/*.node.test.ts"]}
+          EOF
+          npx tsc --noEmit -p tsconfig.app.json
+
+      - name: Build and verify signed release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
+          rm -rf android/app/.cxx android/.cxx
+          cd android && chmod +x gradlew && ./gradlew clean assembleRelease --stacktrace && cd ..
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"; APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          test -s "$APK"
+          "$AAPT" dump badging "$APK" | tee ci/apk-badging-v104.txt
+          grep -q "package: name='com.qurani.app' versionCode='5' versionName='1.0.4'" ci/apk-badging-v104.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee ci/apksigner-v104.txt
+          "$APKSIGNER" verify --print-certs /tmp/v103/al-mushaf-al-muallam-nafi-v1.0.3.apk > /tmp/v103-cert.txt
+          test "$(grep 'Signer #1 certificate SHA-256 digest:' /tmp/v103-cert.txt | sed 's/.*: //')" = "$(grep 'Signer #1 certificate SHA-256 digest:' ci/apksigner-v104.txt | sed 's/.*: //')"
+          unzip -l "$APK" | grep -q 'assets/pdf/warsh_summary_v104.pdf'
+          unzip -p "$APK" assets/pdf/warsh_summary_v104.pdf > /tmp/from-apk.pdf
+          /tmp/pdfvenv/bin/python - <<'PY'
+          import fitz
+          p=fitz.open('/tmp/from-apk.pdf'); assert p.page_count==4
+          pix=p[3].get_pixmap(matrix=fitz.Matrix(1.5,1.5),alpha=False)
+          assert len(set(bytes(pix.samples)[::97]))>20
+          print('APK_EMBEDDED_PAGE4_OK=1')
+          PY
+          mkdir -p /tmp/final
+          cp "$APK" "/tmp/final/$FINAL_NAME"
+          sha256sum "/tmp/final/$FINAL_NAME" | tee ci/apk-sha256-v104.txt
+
+      - name: Free space for emulator
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android/sdk/ndk /usr/local/lib/android/sdk/cmake /opt/ghc /usr/share/dotnet || true
+          rm -rf ~/.gradle/caches || true
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm || true
+          sudo chmod 666 /dev/kvm 2>/dev/null || true
+
+      - name: Android 15 PdfRenderer + update install + relaunch verification
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            set -e
+            cd qurani-app/android
+            ./gradlew :app:connectedDebugAndroidTest --stacktrace
+            adb uninstall com.qurani.app || true
+            adb install /tmp/v103/al-mushaf-al-muallam-nafi-v1.0.3.apk
+            adb shell am start -W -n com.qurani.app/.MainActivity
+            sleep 5
+            adb shell am force-stop com.qurani.app
+            adb install -r "/tmp/final/$FINAL_NAME"
+            adb shell am start -W -n com.qurani.app/.MainActivity
+            sleep 8
+            test -n "$(adb shell pidof com.qurani.app | tr -d '\r')"
+            adb shell dumpsys package com.qurani.app | grep -q 'versionName=1.0.4'
+            adb shell dumpsys package com.qurani.app | grep -q 'versionCode=5'
+            adb shell am force-stop com.qurani.app
+            adb shell am start -W -n com.qurani.app/.MainActivity
+            sleep 6
+            test -n "$(adb shell pidof com.qurani.app | tr -d '\r')"
+
+      - name: Upload final APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qurani-v1.0.4-final-apk
+          path: /tmp/final/al-mushaf-al-muallam-nafi-v1.0.4.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish final GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" -y --cleanup-tag 2>/dev/null || true
+          gh release create "$RELEASE_TAG" "/tmp/final/$FINAL_NAME" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'المصحف المعلم بقراءة الامام نافع v1.0.4' --notes 'Doc2.pdf used directly as the fourth PDF page. Android PdfRenderer instrumentation test, signed update install over v1.0.3, launch and relaunch all passed.'
