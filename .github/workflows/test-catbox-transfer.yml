@@ -1,4 +1,4 @@
-name: Analyze Skeleton Delta
+name: Diagnose Delta Inputs
 on:
   push:
     branches: [qurani-ibnkathir-v100]
@@ -8,73 +8,36 @@ permissions:
   contents: write
   actions: read
 jobs:
-  delta:
+  diag:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - name: Build compact delta from Nafi APK to Ibn Kathir skeleton
+      - name: Check master artifact and fresh skeleton URL independently
         shell: bash
         run: |
-          set -euo pipefail
-          gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n QURANI-FINAL-v1.0.1-R2-1 -D /tmp/master
-          OLD=/tmp/master/final-delivery/Qurani-v1.0.1.apk
+          set +e
+          : > qurani-ibnkathir/delta-input-diagnostics.txt
+          echo '=== MASTER DOWNLOAD ===' >> qurani-ibnkathir/delta-input-diagnostics.txt
+          rm -rf /tmp/master
+          (time gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n QURANI-FINAL-v1.0.1-R2-1 -D /tmp/master) >> qurani-ibnkathir/delta-input-diagnostics.txt 2>&1
+          echo "MASTER_EXIT=$?" >> qurani-ibnkathir/delta-input-diagnostics.txt
+          find /tmp/master -maxdepth 3 -type f -printf '%p %s\n' >> qurani-ibnkathir/delta-input-diagnostics.txt 2>&1
+          echo '=== SKELETON DOWNLOAD ===' >> qurani-ibnkathir/delta-input-diagnostics.txt
           URL="$(grep '^SKELETON_URL=' qurani-ibnkathir/fresh-transfer-urls.txt | cut -d= -f2-)"
-          curl -fsSL --retry 3 "$URL" -o /tmp/new.apk
-          sha256sum /tmp/new.apk
-          grep -q '^SKELETON_SHA256=' qurani-ibnkathir/fresh-transfer-urls.txt
-          test "$(sha256sum /tmp/new.apk | awk '{print $1}')" = "$(grep '^SKELETON_SHA256=' qurani-ibnkathir/fresh-transfer-urls.txt | cut -d= -f2)"
-          rm -rf /tmp/old /tmp/new /tmp/delta
-          mkdir -p /tmp/old /tmp/new /tmp/delta/patches /tmp/delta/raw
-          unzip -q "$OLD" -d /tmp/old
-          unzip -q /tmp/new.apk -d /tmp/new
-          rm -rf /tmp/old/META-INF /tmp/new/META-INF /tmp/old/assets/pdf /tmp/new/assets/pdf
-          python3 -m pip install --quiet bsdiff4
-          python3 - <<'PY'
-          import os, hashlib, pathlib, bsdiff4, json
-          old=pathlib.Path('/tmp/old'); new=pathlib.Path('/tmp/new'); out=pathlib.Path('/tmp/delta')
-          old_files={str(p.relative_to(old)):p for p in old.rglob('*') if p.is_file()}
-          new_files={str(p.relative_to(new)):p for p in new.rglob('*') if p.is_file()}
-          def sha(p):
-              h=hashlib.sha256();
-              with open(p,'rb') as f:
-                  for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
-              return h.hexdigest()
-          changed=[]; added=[]; deleted=[]
-          for name,p in new_files.items():
-              if name not in old_files:
-                  dst=out/'raw'/name; dst.parent.mkdir(parents=True,exist_ok=True); dst.write_bytes(p.read_bytes()); added.append(name)
-              elif sha(p)!=sha(old_files[name]):
-                  data=bsdiff4.diff(old_files[name].read_bytes(),p.read_bytes())
-                  dst=out/'patches'/(name+'.bsdiff'); dst.parent.mkdir(parents=True,exist_ok=True); dst.write_bytes(data)
-                  changed.append((name,old_files[name].stat().st_size,p.stat().st_size,len(data)))
-          deleted=sorted(set(old_files)-set(new_files))
-          (out/'deleted.txt').write_text('\n'.join(deleted)+'\n')
-          (out/'manifest.json').write_text(json.dumps({'changed':changed,'added':added,'deleted':deleted},ensure_ascii=False,indent=2))
-          print('CHANGED')
-          for x in changed: print(*x,sep='\t')
-          print('ADDED',*added,sep='\n')
-          print('DELETED',*deleted,sep='\n')
-          PY
-          tar -C /tmp/delta -czf /tmp/ibnkathir-skeleton-delta.tar.gz .
-          {
-            echo "DELTA_SIZE=$(stat -c%s /tmp/ibnkathir-skeleton-delta.tar.gz)"
-            echo "DELTA_SHA256=$(sha256sum /tmp/ibnkathir-skeleton-delta.tar.gz | awk '{print $1}')"
-            echo '---MANIFEST---'
-            cat /tmp/delta/manifest.json
-          } > qurani-ibnkathir/delta-report.txt
-          cat qurani-ibnkathir/delta-report.txt
-          if [ "$(stat -c%s /tmp/ibnkathir-skeleton-delta.tar.gz)" -le 4000000 ]; then
-            base64 -w 76 /tmp/ibnkathir-skeleton-delta.tar.gz > qurani-ibnkathir/skeleton-delta.tar.gz.b64
-          fi
-      - name: Persist report and compact delta when small enough
+          EXPECTED="$(grep '^SKELETON_SHA256=' qurani-ibnkathir/fresh-transfer-urls.txt | cut -d= -f2)"
+          curl -sS -L --retry 2 --max-time 60 -w '\nHTTP=%{http_code} SIZE=%{size_download}\n' "$URL" -o /tmp/new.apk >> qurani-ibnkathir/delta-input-diagnostics.txt 2>&1
+          echo "CURL_EXIT=$?" >> qurani-ibnkathir/delta-input-diagnostics.txt
+          test -f /tmp/new.apk && { echo "ACTUAL_SIZE=$(stat -c%s /tmp/new.apk)"; echo "ACTUAL_SHA=$(sha256sum /tmp/new.apk | awk '{print $1}')"; echo "EXPECTED_SHA=$EXPECTED"; } >> qurani-ibnkathir/delta-input-diagnostics.txt 2>&1
+          cat qurani-ibnkathir/delta-input-diagnostics.txt
+          exit 0
+      - name: Persist diagnostics
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add qurani-ibnkathir/delta-report.txt
-          test ! -f qurani-ibnkathir/skeleton-delta.tar.gz.b64 || git add qurani-ibnkathir/skeleton-delta.tar.gz.b64
-          git commit -m 'ci: analyze compact skeleton delta' || true
+          git add qurani-ibnkathir/delta-input-diagnostics.txt
+          git commit -m 'ci: diagnose delta inputs' || true
           git push origin HEAD:qurani-ibnkathir-v100
