@@ -1,0 +1,35 @@
+name: IbnKathir Approved Additions Inspect
+
+on:
+  push:
+    branches: [qurani-ibnkathir-v100]
+    paths:
+      - '.github/workflows/ibnkathir-approved-additions-inspect.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore and patch current Ibn Kathir source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n QURANI-FINAL-v1.0.1-R2-1 -D /tmp/master
+          mkdir -p /tmp/app
+          unzip -q /tmp/master/final-delivery/Qurani-source-v1.0.1.zip -d /tmp/app
+          base64 -d qurani-ibnkathir/ibnkathir-code.patch.gz.b64 | gzip -dc > /tmp/ibnkathir.patch
+          cd /tmp/app
+          patch --batch -p1 < /tmp/ibnkathir.patch >/dev/null
+          for f in src/app/constants.ts src/data/sections.ts src/features/home/HomeScreen.tsx __tests__/ibnkathirConfig.node.test.ts __tests__/ibnkathirIdentity.node.test.ts __tests__/sections.node.test.ts; do
+            echo "===== $f ====="
+            sed -n '1,260p' "$f"
+          done
