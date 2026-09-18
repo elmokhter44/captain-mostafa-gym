@@ -1,0 +1,58 @@
+name: IbnKathir Retransfer Build Outputs
+
+on:
+  push:
+    branches: [qurani-ibnkathir-v100]
+    paths:
+      - '.github/workflows/ibnkathir-retransfer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  retransfer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download verified skeleton and tools from previous transfer
+        shell: bash
+        run: |
+          set -euo pipefail
+          source qurani-ibnkathir/transfer-urls.txt
+          curl -fL --retry 5 --retry-delay 2 "$APK_URL" -o /tmp/ibnkathir-skeleton-v1.0.0.apk
+          curl -fL --retry 5 --retry-delay 2 "$TOOLS_URL" -o /tmp/android-build-tools-36-minimal.zip
+          echo "$APK_SHA256  /tmp/ibnkathir-skeleton-v1.0.0.apk" | sha256sum -c -
+          echo "$TOOLS_SHA256  /tmp/android-build-tools-36-minimal.zip" | sha256sum -c -
+          ls -lh /tmp/ibnkathir-skeleton-v1.0.0.apk /tmp/android-build-tools-36-minimal.zip
+
+      - name: Upload to Catbox and file.io backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          CAT_APK="$(curl -fsS --retry 5 -F 'reqtype=fileupload' -F 'fileToUpload=@/tmp/ibnkathir-skeleton-v1.0.0.apk' https://catbox.moe/user/api.php)"
+          CAT_TOOLS="$(curl -fsS --retry 5 -F 'reqtype=fileupload' -F 'fileToUpload=@/tmp/android-build-tools-36-minimal.zip' https://catbox.moe/user/api.php)"
+          test -n "$CAT_APK"
+          test -n "$CAT_TOOLS"
+          FILEIO_APK="$(curl -fsS --retry 5 -F 'file=@/tmp/ibnkathir-skeleton-v1.0.0.apk' https://file.io/?expires=1w || true)"
+          FILEIO_TOOLS="$(curl -fsS --retry 5 -F 'file=@/tmp/android-build-tools-36-minimal.zip' https://file.io/?expires=1w || true)"
+          {
+            echo "CATBOX_APK_URL=$CAT_APK"
+            echo "CATBOX_TOOLS_URL=$CAT_TOOLS"
+            echo "FILEIO_APK_JSON=$FILEIO_APK"
+            echo "FILEIO_TOOLS_JSON=$FILEIO_TOOLS"
+            echo "APK_SHA256=$(sha256sum /tmp/ibnkathir-skeleton-v1.0.0.apk | awk '{print $1}')"
+            echo "TOOLS_SHA256=$(sha256sum /tmp/android-build-tools-36-minimal.zip | awk '{print $1}')"
+          } | tee qurani-ibnkathir/retransfer-urls.txt
+
+      - name: Persist accessible URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnkathir/retransfer-urls.txt
+          git commit -m 'ci: record accessible Ibn Kathir transfer URLs'
+          git push origin HEAD:qurani-ibnkathir-v100
