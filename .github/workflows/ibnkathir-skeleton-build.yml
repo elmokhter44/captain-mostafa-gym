@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/ibnkathir-skeleton-build.yml'
       - 'qurani-ibnkathir/ibnkathir-code.patch.gz.b64'
+      - 'qurani-ibnkathir/approved-additions-tests.patch'
+      - 'qurani-ibnkathir/approved-additions-code.patch'
   workflow_dispatch:
 
 permissions:
@@ -47,7 +49,7 @@ jobs:
           test -f qurani-app/package.json
           test -f qurani-app/android/app/build.gradle
 
-      - name: Apply isolated Ibn Kathir code patch
+      - name: Apply isolated Ibn Kathir base patch
         shell: bash
         run: |
           set -euo pipefail
@@ -55,9 +57,40 @@ jobs:
           cd qurani-app
           patch --batch -p1 < /tmp/ibnkathir.patch
           grep -q 'applicationId "com.qurani.ibnkathir"' android/app/build.gradle
-          grep -q 'المصحف المعلم' android/app/src/main/res/values/strings.xml
           test -f android/app/src/main/java/com/qurani/ibnkathir/MainActivity.kt
           test ! -f android/app/src/main/java/com/qurani/app/MainActivity.kt
+
+      - name: Red test - approved additions must fail before implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          patch --batch -p1 < ../qurani-ibnkathir/approved-additions-tests.patch
+          set +e
+          node --experimental-strip-types --test \
+            __tests__/ibnkathirConfig.node.test.ts \
+            __tests__/sections.node.test.ts \
+            __tests__/navigationModels.node.test.ts \
+            > ci/ibnkathir-approved-additions-red.txt 2>&1
+          STATUS=$?
+          set -e
+          cat ci/ibnkathir-approved-additions-red.txt
+          if [ "$STATUS" -eq 0 ]; then
+            echo 'Expected approved-additions tests to fail before implementation' >&2
+            exit 1
+          fi
+          grep -Eq '# fail [1-9][0-9]*' ci/ibnkathir-approved-additions-red.txt
+          echo 'RED_PHASE_CONFIRMED=1'
+
+      - name: Apply only the three approved Ibn Kathir additions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          patch --batch -p1 < ../qurani-ibnkathir/approved-additions-code.patch
+          grep -q "قراءة عبدالله بن كثير برواية البزي وقنبل" src/data/sections.ts
+          grep -q "شرح أصول قراءة الامام بن كثير المكي برواية البزي وقنبل" src/data/sections.ts
+          grep -q "المصحف المعلم بقراءة الامام بن كثير برواية البزي وقنبل" src/features/home/HomeScreen.tsx
 
       - name: Create tiny build-only PDF placeholders with approved page counts
         shell: bash
@@ -72,6 +105,7 @@ jobs:
           out=Path('qurani-app/android/app/src/main/assets/pdf')
           specs={
             'quran.pdf':604,
+            'ibn_kathir_reading.pdf':4,
             'quran_index.pdf':2,
             'dua.pdf':1,
             'waqf_symbols.pdf':5,
@@ -89,7 +123,7 @@ jobs:
           print('BUILD_ONLY_PLACEHOLDERS_OK=1')
           PY
 
-      - name: Run all business tests and TypeScript check
+      - name: Green test - run all business tests and TypeScript check
         working-directory: qurani-app
         shell: bash
         run: |
@@ -102,6 +136,7 @@ jobs:
           {"extends":"./tsconfig.json","exclude":["node_modules","android","__tests__","**/*.node.test.ts"]}
           EOF
           npx tsc --noEmit -p tsconfig.app.json | tee ci/ibnkathir-typecheck.txt
+          echo 'GREEN_PHASE_CONFIRMED=1'
 
       - name: Install Android SDK 36, NDK and CMake
         shell: bash
@@ -140,6 +175,7 @@ jobs:
           grep -q "package: name='com.qurani.ibnkathir' versionCode='1' versionName='1.0.0'" ci/ibnkathir-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee ci/ibnkathir-skeleton-apksigner.txt
           unzip -l "$APK" > ci/ibnkathir-apk-contents.txt
+          grep -q 'assets/pdf/ibn_kathir_reading.pdf' ci/ibnkathir-apk-contents.txt
           grep -q 'lib/arm64-v8a/librealm.so' ci/ibnkathir-apk-contents.txt
           grep -q 'lib/armeabi-v7a/librealm.so' ci/ibnkathir-apk-contents.txt
           grep -q 'lib/x86_64/librealm.so' ci/ibnkathir-apk-contents.txt
@@ -204,6 +240,7 @@ jobs:
           set -euo pipefail
           git config user.name github-actions
           git config user.email github-actions@github.com
+          git pull --rebase origin qurani-ibnkathir-v100
           git add qurani-ibnkathir/transfer-urls.txt
           git commit -m 'ci: record temporary Ibn Kathir build transfer URLs' || true
           git push origin HEAD:qurani-ibnkathir-v100
