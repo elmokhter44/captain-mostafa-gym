@@ -149,11 +149,11 @@ jobs:
           cp "$APK" "/tmp/final/$FINAL_NAME"
           sha256sum "/tmp/final/$FINAL_NAME" | tee ci/apk-sha256-v104.txt
 
-      - name: Free space for emulator
+      - name: Free space for emulator without deleting Gradle or Android build caches needed by tests
         shell: bash
         run: |
-          sudo rm -rf /usr/local/lib/android/sdk/ndk /usr/local/lib/android/sdk/cmake /opt/ghc /usr/share/dotnet || true
-          rm -rf ~/.gradle/caches || true
+          sudo rm -rf /opt/ghc /usr/share/dotnet || true
+          df -h /
 
       - name: Enable KVM
         shell: bash
