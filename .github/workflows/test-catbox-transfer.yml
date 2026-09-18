@@ -17,14 +17,14 @@ jobs:
           set -u
           printf 'ibnkathir-transfer-ok\n' > /tmp/probe.txt
           : > qurani-ibnkathir/transfer-probes.txt
-          echo 'TRANSFER_SH:' >> qurani-ibnkathir/transfer-probes.txt
-          curl -sS --max-time 30 --upload-file /tmp/probe.txt https://transfer.sh/ibnkathir-probe.txt >> qurani-ibnkathir/transfer-probes.txt 2>&1 || true
+          echo 'PIXELDRAIN:' >> qurani-ibnkathir/transfer-probes.txt
+          curl -sSL --max-time 30 -T /tmp/probe.txt https://pixeldrain.com/api/file/ >> qurani-ibnkathir/transfer-probes.txt 2>&1 || true
           echo >> qurani-ibnkathir/transfer-probes.txt
-          echo 'BASHUPLOAD:' >> qurani-ibnkathir/transfer-probes.txt
-          curl -sS --max-time 30 -T /tmp/probe.txt https://bashupload.com/ibnkathir-probe.txt >> qurani-ibnkathir/transfer-probes.txt 2>&1 || true
+          echo 'FILEIO_FOLLOW:' >> qurani-ibnkathir/transfer-probes.txt
+          curl -sSL --max-time 30 -F 'file=@/tmp/probe.txt' https://file.io >> qurani-ibnkathir/transfer-probes.txt 2>&1 || true
           echo >> qurani-ibnkathir/transfer-probes.txt
-          echo 'FILEIO:' >> qurani-ibnkathir/transfer-probes.txt
-          curl -sS --max-time 30 -F 'file=@/tmp/probe.txt' https://file.io >> qurani-ibnkathir/transfer-probes.txt 2>&1 || true
+          echo 'TMPFILES:' >> qurani-ibnkathir/transfer-probes.txt
+          curl -sSL --max-time 30 -F 'file=@/tmp/probe.txt' https://tmpfiles.org/api/v1/upload >> qurani-ibnkathir/transfer-probes.txt 2>&1 || true
           echo >> qurani-ibnkathir/transfer-probes.txt
           cat qurani-ibnkathir/transfer-probes.txt
       - name: Persist results
