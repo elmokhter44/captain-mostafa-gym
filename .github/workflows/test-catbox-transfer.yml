@@ -1,4 +1,4 @@
-name: Test Catbox Transfer
+name: Test External Transfer
 on:
   push:
     branches: [qurani-ibnkathir-v100]
@@ -11,20 +11,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Upload probe
+      - name: Probe transfer hosts
         shell: bash
         run: |
-          set -euo pipefail
+          set -u
           printf 'ibnkathir-transfer-ok\n' > /tmp/probe.txt
-          URL="$(curl -fsS --retry 3 -F 'reqtype=fileupload' -F 'fileToUpload=@/tmp/probe.txt' https://catbox.moe/user/api.php)"
-          test -n "$URL"
-          echo "$URL" | tee qurani-ibnkathir/catbox-probe-url.txt
-      - name: Persist URL
+          : > qurani-ibnkathir/transfer-probes.txt
+          echo 'TRANSFER_SH:' >> qurani-ibnkathir/transfer-probes.txt
+          curl -sS --max-time 30 --upload-file /tmp/probe.txt https://transfer.sh/ibnkathir-probe.txt >> qurani-ibnkathir/transfer-probes.txt 2>&1 || true
+          echo >> qurani-ibnkathir/transfer-probes.txt
+          echo 'BASHUPLOAD:' >> qurani-ibnkathir/transfer-probes.txt
+          curl -sS --max-time 30 -T /tmp/probe.txt https://bashupload.com/ibnkathir-probe.txt >> qurani-ibnkathir/transfer-probes.txt 2>&1 || true
+          echo >> qurani-ibnkathir/transfer-probes.txt
+          echo 'FILEIO:' >> qurani-ibnkathir/transfer-probes.txt
+          curl -sS --max-time 30 -F 'file=@/tmp/probe.txt' https://file.io >> qurani-ibnkathir/transfer-probes.txt 2>&1 || true
+          echo >> qurani-ibnkathir/transfer-probes.txt
+          cat qurani-ibnkathir/transfer-probes.txt
+      - name: Persist results
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add qurani-ibnkathir/catbox-probe-url.txt
-          git commit -m 'ci: record transfer probe URL' || true
+          git add qurani-ibnkathir/transfer-probes.txt
+          git commit -m 'ci: record transfer probe results' || true
           git push origin HEAD:qurani-ibnkathir-v100
