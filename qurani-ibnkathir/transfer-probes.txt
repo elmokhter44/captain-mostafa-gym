@@ -1,0 +1,15 @@
+TRANSFER_SH:
+curl: (7) Failed to connect to transfer.sh port 443 after 287 ms: Couldn't connect to server
+
+BASHUPLOAD:
+curl: (6) Could not resolve host: bashupload.com
+
+FILEIO:
+<html>
+<head><title>301 Moved Permanently</title></head>
+<body>
+<center><h1>301 Moved Permanently</h1></center>
+<hr><center>cloudflare</center>
+</body>
+</html>
+
