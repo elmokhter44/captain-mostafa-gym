@@ -69,15 +69,15 @@ jobs:
           import {SECTIONS} from '../src/data/sections.ts';
           import {mushafToSourcePage, sourceToMushafPage} from '../src/utils/pageMapping.ts';
 
-          const exactTitle = 'المصحف المعلم بقراءة الإمام أبي عمر البصري براوييه السوسي والدوري';
+          const exactTitle = 'المصحف المعلم بقراءة الإمام أبي عمر البصري براوييه السوسي وبالحاشية ماخالفة فيه الدوري';
           const expected = [
             ['quran','المصحف','',5,608,'quran.pdf',true],
-            ['abu-amr-reading','قراءة أبي عمر البصري برواية السوسي والدوري','',1,4,'abu_amr_reading.pdf',undefined],
+            ['abu-amr-reading','قراءة أبي عمر البصري برواية السوسي وبالحاشية ماخالفة فيه الدوري','',1,4,'abu_amr_reading.pdf',undefined],
             ['index','الفهرس','',609,610,'quran_index.pdf',undefined],
             ['dua','الدعاء','',611,611,'dua.pdf',undefined],
             ['waqf-symbols','علامات الوقف ومصطلحات الضبط ودلالات الرمز والترميز اللوني للقراءات العشر في مصاحف السلسلة الفراتية','',612,616,'waqf_symbols.pdf',undefined],
             ['furati-intro','من بين يدي السلسلة الفراتية','',617,620,'furati_intro.pdf',undefined],
-            ['abu-amr-usul','شرح أصول قراءة الامام أبي عمر البصري برواية السوسي والدوري','',621,638,'abu_amr_usul.pdf',undefined],
+            ['abu-amr-usul','شرح أصول قراءة الامام أبي عمر البصري برواية السوسي وبالحاشية ماخالفة فيه الدوري','',621,638,'abu_amr_usul.pdf',undefined],
           ] as const;
 
           test('Abu Amr app uses exactly the approved seven cards, order, ranges and no subtitles', () => {
@@ -127,14 +127,14 @@ jobs:
           from pathlib import Path
           import re, shutil
 
-          exact_title='المصحف المعلم بقراءة الإمام أبي عمر البصري براوييه السوسي والدوري'
+          exact_title='المصحف المعلم بقراءة الإمام أبي عمر البصري براوييه السوسي وبالحاشية ماخالفة فيه الدوري'
           sections=Path('src/data/sections.ts')
           s=sections.read_text()
           s=s.replace("'ibn-kathir-reading'", "'abu-amr-reading'")
           s=s.replace("'ibn-kathir-usul'", "'abu-amr-usul'")
-          s=s.replace("قراءة عبدالله بن كثير برواية البزي وقنبل", "قراءة أبي عمر البصري برواية السوسي والدوري")
+          s=s.replace("قراءة عبدالله بن كثير برواية البزي وقنبل", "قراءة أبي عمر البصري برواية السوسي وبالحاشية ماخالفة فيه الدوري")
           s=s.replace("sourceStartPage: 1, sourceEndPage: 4, assetName: 'ibn_kathir_reading.pdf'", "sourceStartPage: 1, sourceEndPage: 4, assetName: 'abu_amr_reading.pdf'")
-          s=s.replace("شرح أصول قراءة الامام بن كثير المكي برواية البزي وقنبل", "شرح أصول قراءة الامام أبي عمر البصري برواية السوسي والدوري")
+          s=s.replace("شرح أصول قراءة الامام بن كثير المكي برواية البزي وقنبل", "شرح أصول قراءة الامام أبي عمر البصري برواية السوسي وبالحاشية ماخالفة فيه الدوري")
           s=s.replace("sourceStartPage: 621, sourceEndPage: 632, assetName: 'ibn_kathir_usul.pdf'", "sourceStartPage: 621, sourceEndPage: 638, assetName: 'abu_amr_usul.pdf'")
           sections.write_text(s)
 
@@ -178,7 +178,9 @@ jobs:
           strings.write_text(x)
           PY
           grep -q 'applicationId "com.qurani.abuamr"' android/app/build.gradle
-          grep -q 'المصحف المعلم بقراءة الإمام أبي عمر البصري براوييه السوسي والدوري' src/features/home/HomeScreen.tsx
+          grep -q 'المصحف المعلم بقراءة الإمام أبي عمر البصري براوييه السوسي وبالحاشية ماخالفة فيه الدوري' src/features/home/HomeScreen.tsx
+          grep -q 'قراءة أبي عمر البصري برواية السوسي وبالحاشية ماخالفة فيه الدوري' src/data/sections.ts
+          grep -q 'شرح أصول قراءة الامام أبي عمر البصري برواية السوسي وبالحاشية ماخالفة فيه الدوري' src/data/sections.ts
           grep -q "sourceStartPage: 1, sourceEndPage: 4, assetName: 'abu_amr_reading.pdf'" src/data/sections.ts
           grep -q 'sourceEndPage: 638' src/data/sections.ts
 
