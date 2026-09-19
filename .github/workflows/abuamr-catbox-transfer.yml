@@ -1,4 +1,4 @@
-name: AbuAmr Catbox Transfer
+name: AbuAmr Public Transfer
 
 on:
   push:
@@ -29,12 +29,16 @@ jobs:
             -D /tmp/abuamr-transfer
           echo '4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181  /tmp/abuamr-transfer/AbuAmr-skeleton-v1.0.0.apk' | sha256sum -c -
           echo '009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550  /tmp/abuamr-transfer/android-apk-tools-36.zip' | sha256sum -c -
-      - name: Upload to Catbox
+      - name: Upload to file.io
         shell: bash
         run: |
           set -euo pipefail
-          APK_URL="$(curl -fsS --retry 5 -F 'reqtype=fileupload' -F 'fileToUpload=@/tmp/abuamr-transfer/AbuAmr-skeleton-v1.0.0.apk' https://catbox.moe/user/api.php)"
-          TOOLS_URL="$(curl -fsS --retry 5 -F 'reqtype=fileupload' -F 'fileToUpload=@/tmp/abuamr-transfer/android-apk-tools-36.zip' https://catbox.moe/user/api.php)"
+          APK_JSON="$(curl -fsS --retry 5 -F 'file=@/tmp/abuamr-transfer/AbuAmr-skeleton-v1.0.0.apk' 'https://file.io/?expires=1w')"
+          TOOLS_JSON="$(curl -fsS --retry 5 -F 'file=@/tmp/abuamr-transfer/android-apk-tools-36.zip' 'https://file.io/?expires=1w')"
+          printf '%s\n' "$APK_JSON" > /tmp/apk.json
+          printf '%s\n' "$TOOLS_JSON" > /tmp/tools.json
+          APK_URL="$(printf '%s' "$APK_JSON" | jq -r '.link // empty')"
+          TOOLS_URL="$(printf '%s' "$TOOLS_JSON" | jq -r '.link // empty')"
           test -n "$APK_URL"
           test -n "$TOOLS_URL"
           {
@@ -42,13 +46,13 @@ jobs:
             echo "TOOLS_URL=$TOOLS_URL"
             echo 'APK_SHA256=4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181'
             echo 'TOOLS_SHA256=009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550'
-          } | tee qurani-abuamr/catbox-transfer-urls.txt
+          } | tee qurani-abuamr/public-transfer-urls.txt
       - name: Persist transfer URLs
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add qurani-abuamr/catbox-transfer-urls.txt
-          git commit -m 'ci: record accessible Abu Amr finalization inputs'
+          git add qurani-abuamr/public-transfer-urls.txt
+          git commit -m 'ci: record accessible Abu Amr finalization URLs'
           git push origin HEAD:qurani-abuamr-v100
