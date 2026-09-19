@@ -1,0 +1,54 @@
+name: AbuAmr Repack BSDiff
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths: ['.github/workflows/abuamr-repack-bsdiff.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  repack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recompress BSDIFF40 streams with LZMA
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/d && mkdir -p /tmp/d
+          base64 -d qurani-abuamr/local-delta/delta.tar.gz.b64 > /tmp/delta.tar.gz
+          tar -xzf /tmp/delta.tar.gz -C /tmp/d
+          python3 - <<'PY'
+          import pathlib,bz2,lzma,struct,json,hashlib
+          root=pathlib.Path('/tmp/d/patches')
+          outdir=pathlib.Path('qurani-abuamr/repacked-patches'); outdir.mkdir(parents=True,exist_ok=True)
+          def offtin(b):
+              y=b[7]&0x7f
+              for i in range(6,-1,-1): y=y*256+b[i]
+              return -y if b[7]&0x80 else y
+          report=[]
+          for p in root.rglob('*.bsdiff'):
+              data=p.read_bytes(); assert data[:8]==b'BSDIFF40'
+              cl=offtin(data[8:16]); dl=offtin(data[16:24]); ns=offtin(data[24:32])
+              ctrl=bz2.decompress(data[32:32+cl]); diff=bz2.decompress(data[32+cl:32+cl+dl]); extra=bz2.decompress(data[32+cl+dl:])
+              c1=lzma.compress(ctrl,format=lzma.FORMAT_XZ,preset=9|lzma.PRESET_EXTREME)
+              c2=lzma.compress(diff,format=lzma.FORMAT_XZ,preset=9|lzma.PRESET_EXTREME)
+              c3=lzma.compress(extra,format=lzma.FORMAT_XZ,preset=9|lzma.PRESET_EXTREME)
+              custom=b'BSDXZM01'+struct.pack('<QQQQQQQ',ns,len(ctrl),len(diff),len(extra),len(c1),len(c2),len(c3))+c1+c2+c3
+              rel=str(p.relative_to(root))
+              safe=rel.replace('/','__')+'.xzpatch'
+              op=outdir/safe; op.write_bytes(custom)
+              b64=outdir/(safe+'.b64'); b64.write_text(__import__('base64').b64encode(custom).decode())
+              report.append({'source':rel,'bsdiff':len(data),'custom':len(custom),'b64':b64.stat().st_size,'sha256':hashlib.sha256(custom).hexdigest()})
+          (outdir/'sizes.json').write_text(json.dumps(report,indent=2))
+          print(json.dumps(report,indent=2))
+          PY
+      - name: Commit repacked patches
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/repacked-patches/
+          git commit -m 'ci: persist LZMA-repacked Abu Amr patches'
+          git pull --rebase origin qurani-abuamr-v100
+          git push origin HEAD:qurani-abuamr-v100
