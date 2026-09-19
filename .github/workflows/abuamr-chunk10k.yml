@@ -1,0 +1,28 @@
+name: AbuAmr 10K Patch Chunks
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths: ['.github/workflows/abuamr-chunk10k.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  chunk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Split bundle base64 into 10K text chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-abuamr/bundle10k && mkdir -p qurani-abuamr/bundle10k
+          split -b 10000 -d -a 3 --additional-suffix=.txt qurani-abuamr/repacked-patches/assets__index.android.bundle.bsdiff.xzpatch.b64 qurani-abuamr/bundle10k/part-
+          find qurani-abuamr/bundle10k -type f | sort | wc -l > qurani-abuamr/bundle10k/parts.count
+      - name: Commit
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/bundle10k/
+          git commit -m 'ci: persist 10K bundle patch chunks'
+          git pull --rebase origin qurani-abuamr-v100
+          git push origin HEAD:qurani-abuamr-v100
