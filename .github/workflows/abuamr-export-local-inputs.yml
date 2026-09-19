@@ -1,0 +1,39 @@
+name: AbuAmr Export Local Finalization Inputs
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-export-local-inputs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download latest verified skeleton and Android packaging tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/abuamr-local-inputs
+          gh release download abuamr-transfer-v100 --repo "$GITHUB_REPOSITORY" \
+            -p 'AbuAmr-skeleton-v1.0.0.apk' \
+            -p 'android-apk-tools-36.zip' \
+            -D /tmp/abuamr-local-inputs
+          test -s /tmp/abuamr-local-inputs/AbuAmr-skeleton-v1.0.0.apk
+          test -s /tmp/abuamr-local-inputs/android-apk-tools-36.zip
+          sha256sum /tmp/abuamr-local-inputs/* | tee /tmp/abuamr-local-inputs/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ABUAMR-LOCAL-FINALIZE-INPUTS
+          retention-days: 7
+          compression-level: 0
+          path: /tmp/abuamr-local-inputs/
