@@ -1,0 +1,37 @@
+[
+  {
+    "source": "classes.dex.bsdiff",
+    "bsdiff": 11720,
+    "custom": 12600,
+    "b64": 16800,
+    "sha256": "bf602a6746315495936d688dca7410394db203a17ae681c7cff62ba5ca8ce92d"
+  },
+  {
+    "source": "resources.arsc.bsdiff",
+    "bsdiff": 949,
+    "custom": 1380,
+    "b64": 1840,
+    "sha256": "c2b0a66ddc21e762d293eb7a40ce7c52f4108da24a1b11af51159de7830d584e"
+  },
+  {
+    "source": "AndroidManifest.xml.bsdiff",
+    "bsdiff": 282,
+    "custom": 404,
+    "b64": 540,
+    "sha256": "75cb296ebffc11b3fe1a5b89293c56715b463c5f1091f5389483ade41b4de122"
+  },
+  {
+    "source": "assets/index.android.bundle.bsdiff",
+    "bsdiff": 165741,
+    "custom": 131428,
+    "b64": 175240,
+    "sha256": "c78a88225b4a2d87e1c1de2bd16475c5e884b8ef1d84ab17784742c45bdc71d4"
+  },
+  {
+    "source": "assets/dexopt/baseline.prof.bsdiff",
+    "bsdiff": 1942,
+    "custom": 1716,
+    "b64": 2288,
+    "sha256": "43270ba7d005e3491a5526199441d0bd305383ecd67c6ebaeed511891c886432"
+  }
+]
