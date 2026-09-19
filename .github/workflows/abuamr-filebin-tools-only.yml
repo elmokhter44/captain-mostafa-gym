@@ -1,0 +1,42 @@
+name: AbuAmr Filebin Tools Only
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths: ['.github/workflows/abuamr-filebin-tools-only.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload signing tools base64 text
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -w 76 qurani-abuamr/local-binaries/android-sign-tools-36.zip > /tmp/android-tools.b64.txt
+          BIN="abuamrtools$(date +%s)$RANDOM"
+          URL="https://filebin.net/$BIN/android-tools.b64.txt"
+          curl -fsS --max-time 120 --retry 2 -H 'Content-Type: text/plain' --data-binary @/tmp/android-tools.b64.txt "$URL" >/tmp/resp
+          curl -fsSI "$URL" >/tmp/head
+          {
+            echo "TOOLS_B64_URL=$URL"
+            echo "TOOLS_B64_BYTES=$(stat -c%s /tmp/android-tools.b64.txt)"
+            echo 'TOOLS_SHA256=74a57d5b823988109d056df26b0ba23ce41c5e90c1b6538b1519a6afd55ed946'
+            echo "HEAD=$(grep -i '^content-type:' /tmp/head | tr -d '\r' | head -1)"
+          } > qurani-abuamr/filebin-tools-only.txt
+      - name: Persist URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/filebin-tools-only.txt
+          git commit -m 'ci: persist Filebin tools URL'
+          git pull --rebase origin qurani-abuamr-v100
+          git push origin HEAD:qurani-abuamr-v100
