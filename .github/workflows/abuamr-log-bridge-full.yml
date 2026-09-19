@@ -1,0 +1,63 @@
+name: AbuAmr Log Bridge Full
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths: ['.github/workflows/abuamr-log-bridge-full.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tools:
+    name: tools-${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dump tools chunk
+        shell: bash
+        run: |
+          set -euo pipefail
+          f="qurani-ibnkathir/payload-chunks/tools-${{ matrix.n }}"
+          echo "CHUNK=tools-${{ matrix.n }}"
+          echo "BYTES=$(wc -c < "$f")"
+          echo "SHA256=$(sha256sum "$f" | awk '{print $1}')"
+          echo '===BEGIN-B64==='
+          cat "$f"
+          echo
+          echo '===END-B64==='
+
+  delta:
+    name: delta-${{ matrix.g }}
+    strategy:
+      fail-fast: false
+      matrix:
+        g: ['0','1','2','3','4']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dump delta chunk group
+        shell: bash
+        run: |
+          set -euo pipefail
+          case '${{ matrix.g }}' in
+            0) seq -w 0 9 | sed 's/^/qurani-abuamr\/delta-chunks\/part-0/;s/$/.txt/' > /tmp/list ;;
+            1) seq -w 10 19 | sed 's/^/qurani-abuamr\/delta-chunks\/part-0/;s/$/.txt/' > /tmp/list ;;
+            2) seq -w 20 29 | sed 's/^/qurani-abuamr\/delta-chunks\/part-0/;s/$/.txt/' > /tmp/list ;;
+            3) seq -w 30 39 | sed 's/^/qurani-abuamr\/delta-chunks\/part-0/;s/$/.txt/' > /tmp/list ;;
+            4) seq -w 40 48 | sed 's/^/qurani-abuamr\/delta-chunks\/part-0/;s/$/.txt/' > /tmp/list ;;
+          esac
+          : > /tmp/group
+          while read -r f; do cat "$f" >> /tmp/group; done < /tmp/list
+          echo "CHUNK=delta-${{ matrix.g }}"
+          echo "BYTES=$(wc -c < /tmp/group)"
+          echo "SHA256=$(sha256sum /tmp/group | awk '{print $1}')"
+          echo '===BEGIN-B64==='
+          cat /tmp/group
+          echo
+          echo '===END-B64==='
