@@ -1,0 +1,64 @@
+name: AbuAmr BSDiff Local Delta
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-bsdiff-delta.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  delta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exact base and target APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/master /tmp/abu /tmp/old /tmp/new /tmp/delta
+          mkdir -p /tmp/master /tmp/abu /tmp/old /tmp/new /tmp/delta/patches
+          gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n 'QURANI-FINAL-v1.0.1-R2-1' -D /tmp/master
+          gh release download abuamr-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'AbuAmr-skeleton-v1.0.0.apk' -D /tmp/abu
+          unzip -q /tmp/master/final-delivery/Qurani-v1.0.1.apk -d /tmp/old
+          unzip -q /tmp/abu/AbuAmr-skeleton-v1.0.0.apk -d /tmp/new
+          python3 -m pip install --quiet bsdiff4
+      - name: Build BSDIFF40 patches only for the five verified changed app entries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,bsdiff4,hashlib,json
+          old=pathlib.Path('/tmp/old'); new=pathlib.Path('/tmp/new'); out=pathlib.Path('/tmp/delta/patches')
+          names=['assets/dexopt/baseline.prof','classes.dex','assets/index.android.bundle','AndroidManifest.xml','resources.arsc']
+          rep=[]
+          for name in names:
+              a=(old/name).read_bytes(); b=(new/name).read_bytes(); p=bsdiff4.diff(a,b)
+              dst=out/(name+'.bsdiff'); dst.parent.mkdir(parents=True,exist_ok=True); dst.write_bytes(p)
+              rep.append({'name':name,'old':len(a),'new':len(b),'patch':len(p),'new_sha256':hashlib.sha256(b).hexdigest()})
+          pathlib.Path('/tmp/delta/manifest.json').write_text(json.dumps(rep,indent=2))
+          print(json.dumps(rep,indent=2))
+          PY
+          tar -C /tmp/delta -czf /tmp/abuamr-bsdiff-delta.tar.gz .
+          mkdir -p qurani-abuamr/local-delta
+          cp /tmp/delta/manifest.json qurani-abuamr/local-delta/manifest.json
+          sha256sum /tmp/abuamr-bsdiff-delta.tar.gz | tee qurani-abuamr/local-delta/delta-sha256.txt
+          stat -c 'DELTA_BYTES=%s' /tmp/abuamr-bsdiff-delta.tar.gz | tee qurani-abuamr/local-delta/delta-size.txt
+          base64 -w 76 /tmp/abuamr-bsdiff-delta.tar.gz > qurani-abuamr/local-delta/delta.tar.gz.b64
+          wc -c qurani-abuamr/local-delta/delta.tar.gz.b64
+      - name: Persist compact delta text transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/local-delta/
+          git commit -m 'ci: persist compact Abu Amr BSDIFF40 local delta'
+          git push origin HEAD:qurani-abuamr-v100
