@@ -20,7 +20,7 @@ jobs:
       - name: Download candidate public source and verify against uploaded PDF fingerprint
         shell: bash
         run: |
-          set -u -o pipefail
+          set -euo pipefail
           mkdir -p qurani-abuamr /tmp/abuamr
           URL='https://bhr-q.com/media/attachments/qran/03/Qra%27a-ALbasari.pdf'
           EXPECTED_SHA='a95be4076c733428c88d07a87999f8bf8d467122995d13e12e8b92f93832ef57'
@@ -29,26 +29,25 @@ jobs:
           curl -fL --retry 4 --retry-delay 3 --connect-timeout 20 --max-time 900 "$URL" -o /tmp/abuamr/source.pdf
           CURL_STATUS=$?
           set -e
+          ACTUAL_SHA='missing'
+          ACTUAL_SIZE='0'
+          EXACT_MATCH='0'
+          if [ "$CURL_STATUS" -eq 0 ] && [ -s /tmp/abuamr/source.pdf ]; then
+            ACTUAL_SHA="$(sha256sum /tmp/abuamr/source.pdf | awk '{print $1}')"
+            ACTUAL_SIZE="$(stat -c%s /tmp/abuamr/source.pdf)"
+            if [ "$ACTUAL_SHA" = "$EXPECTED_SHA" ] && [ "$ACTUAL_SIZE" = "$EXPECTED_SIZE" ]; then
+              EXACT_MATCH='1'
+            fi
+          fi
           {
             echo "URL=$URL"
             echo "CURL_STATUS=$CURL_STATUS"
-            if [ "$CURL_STATUS" -eq 0 ] && [ -s /tmp/abuamr/source.pdf ]; then
-              ACTUAL_SHA="$(sha256sum /tmp/abuamr/source.pdf | awk '{print $1}')"
-              ACTUAL_SIZE="$(stat -c%s /tmp/abuamr/source.pdf)"
-              PAGES="$(pdfinfo /tmp/abuamr/source.pdf 2>/dev/null | awk '/^Pages:/ {print $2; exit}')"
-              echo "EXPECTED_SHA256=$EXPECTED_SHA"
-              echo "ACTUAL_SHA256=$ACTUAL_SHA"
-              echo "EXPECTED_SIZE=$EXPECTED_SIZE"
-              echo "ACTUAL_SIZE=$ACTUAL_SIZE"
-              echo "PAGES=${PAGES:-unknown}"
-              if [ "$ACTUAL_SHA" = "$EXPECTED_SHA" ] && [ "$ACTUAL_SIZE" = "$EXPECTED_SIZE" ] && [ "${PAGES:-}" = '638' ]; then
-                echo 'EXACT_MATCH=1'
-              else
-                echo 'EXACT_MATCH=0'
-              fi
-            else
-              echo 'EXACT_MATCH=0'
-            fi
+            echo "EXPECTED_SHA256=$EXPECTED_SHA"
+            echo "ACTUAL_SHA256=$ACTUAL_SHA"
+            echo "EXPECTED_SIZE=$EXPECTED_SIZE"
+            echo "ACTUAL_SIZE=$ACTUAL_SIZE"
+            echo "KNOWN_LOCAL_PAGES=638"
+            echo "EXACT_MATCH=$EXACT_MATCH"
           } | tee qurani-abuamr/source-probe-report.txt
 
       - name: Persist probe report without touching previous app branches
@@ -64,4 +63,5 @@ jobs:
       - name: Require exact byte-for-byte public mirror
         shell: bash
         run: |
+          set -euo pipefail
           grep -q '^EXACT_MATCH=1$' qurani-abuamr/source-probe-report.txt
