@@ -72,7 +72,7 @@ jobs:
           const exactTitle = 'المصحف المعلم بقراءة الإمام أبي عمر البصري براوييه السوسي والدوري';
           const expected = [
             ['quran','المصحف','',5,608,'quran.pdf',true],
-            ['abu-amr-reading','قراءة أبي عمر البصري برواية السوسي والدوري','',1,5,'abu_amr_reading.pdf',undefined],
+            ['abu-amr-reading','قراءة أبي عمر البصري برواية السوسي والدوري','',1,4,'abu_amr_reading.pdf',undefined],
             ['index','الفهرس','',609,610,'quran_index.pdf',undefined],
             ['dua','الدعاء','',611,611,'dua.pdf',undefined],
             ['waqf-symbols','علامات الوقف ومصطلحات الضبط ودلالات الرمز والترميز اللوني للقراءات العشر في مصاحف السلسلة الفراتية','',612,616,'waqf_symbols.pdf',undefined],
@@ -82,6 +82,13 @@ jobs:
 
           test('Abu Amr app uses exactly the approved seven cards, order, ranges and no subtitles', () => {
             assert.deepEqual(SECTIONS.map(s => [s.id,s.title,s.subtitle,s.sourceStartPage,s.sourceEndPage,s.assetName,s.featured]), expected);
+          });
+          test('all source ranges cover PDF pages 1 through 638 exactly once with no gaps or overlap', () => {
+            const pages = [...SECTIONS]
+              .sort((a,b) => a.sourceStartPage - b.sourceStartPage)
+              .flatMap(s => Array.from({length: s.sourceEndPage - s.sourceStartPage + 1}, (_,i) => s.sourceStartPage + i));
+            assert.equal(pages.length, 638);
+            assert.deepEqual(pages, Array.from({length:638}, (_,i) => i + 1));
           });
           test('main mushaf mapping remains exactly PDF 5-608 / printed 1-604', () => {
             assert.equal(mushafToSourcePage(1),5);
@@ -126,7 +133,7 @@ jobs:
           s=s.replace("'ibn-kathir-reading'", "'abu-amr-reading'")
           s=s.replace("'ibn-kathir-usul'", "'abu-amr-usul'")
           s=s.replace("قراءة عبدالله بن كثير برواية البزي وقنبل", "قراءة أبي عمر البصري برواية السوسي والدوري")
-          s=s.replace("sourceStartPage: 1, sourceEndPage: 4, assetName: 'ibn_kathir_reading.pdf'", "sourceStartPage: 1, sourceEndPage: 5, assetName: 'abu_amr_reading.pdf'")
+          s=s.replace("sourceStartPage: 1, sourceEndPage: 4, assetName: 'ibn_kathir_reading.pdf'", "sourceStartPage: 1, sourceEndPage: 4, assetName: 'abu_amr_reading.pdf'")
           s=s.replace("شرح أصول قراءة الامام بن كثير المكي برواية البزي وقنبل", "شرح أصول قراءة الامام أبي عمر البصري برواية السوسي والدوري")
           s=s.replace("sourceStartPage: 621, sourceEndPage: 632, assetName: 'ibn_kathir_usul.pdf'", "sourceStartPage: 621, sourceEndPage: 638, assetName: 'abu_amr_usul.pdf'")
           sections.write_text(s)
@@ -172,6 +179,7 @@ jobs:
           PY
           grep -q 'applicationId "com.qurani.abuamr"' android/app/build.gradle
           grep -q 'المصحف المعلم بقراءة الإمام أبي عمر البصري براوييه السوسي والدوري' src/features/home/HomeScreen.tsx
+          grep -q "sourceStartPage: 1, sourceEndPage: 4, assetName: 'abu_amr_reading.pdf'" src/data/sections.ts
           grep -q 'sourceEndPage: 638' src/data/sections.ts
 
       - name: Create build-only PDF placeholders with the exact approved counts
@@ -187,13 +195,14 @@ jobs:
           out=Path('qurani-app/android/app/src/main/assets/pdf')
           specs={
             'quran.pdf':604,
-            'abu_amr_reading.pdf':5,
+            'abu_amr_reading.pdf':4,
             'quran_index.pdf':2,
             'dua.pdf':1,
             'waqf_symbols.pdf':5,
             'furati_intro.pdf':4,
             'abu_amr_usul.pdf':18,
           }
+          assert sum(specs.values()) == 638, specs
           for name,count in specs.items():
               d=fitz.open()
               for _ in range(count): d.new_page(width=612,height=612)
