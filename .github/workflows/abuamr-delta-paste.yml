@@ -1,0 +1,40 @@
+name: AbuAmr Delta Paste Bridge
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths: ['.github/workflows/abuamr-delta-paste.yml']
+permissions:
+  contents: write
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Split and upload delta text
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/dp && mkdir /tmp/dp
+          tr -d '\r\n' < qurani-abuamr/local-delta/delta.tar.gz.b64 | split -b 80000 -d -a 2 - /tmp/dp/part-
+          : > qurani-abuamr/delta-paste.txt
+          for f in /tmp/dp/part-*; do
+            for n in 1 2 3 4 5; do
+              out="$(curl -sS --max-time 30 --data-binary "@$f" https://paste.rs/ || true)"
+              case "$out" in https://paste.rs/*) break;; esac
+              sleep 2
+            done
+            case "$out" in https://paste.rs/*) echo "$out" >> qurani-abuamr/delta-paste.txt;; *) echo "UPLOAD_FAILED [$out]" >&2; exit 1;; esac
+          done
+          echo 'SHA256_B64_FILE=75886d0e31ed8ff661bd0193c4d87c5ffcfe107e3aede006d329a253a6577a7c' >> qurani-abuamr/delta-paste.txt
+          echo 'TARGZ_SHA256=80d1c8a00f080002e766d966c94e160598239bb168455fda624ba72106343f86' >> qurani-abuamr/delta-paste.txt
+          cat qurani-abuamr/delta-paste.txt
+      - name: Persist URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/delta-paste.txt
+          git commit -m 'ci: record Abu Amr delta paste URLs'
+          git pull --rebase origin qurani-abuamr-v100
+          git push origin HEAD:qurani-abuamr-v100
