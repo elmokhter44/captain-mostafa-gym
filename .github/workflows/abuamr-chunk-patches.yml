@@ -1,0 +1,34 @@
+name: AbuAmr Chunk Patch Transport
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths: ['.github/workflows/abuamr-chunk-patches.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  chunk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Split all patch base64 files into small UTF-8 chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-abuamr/patch-chunks && mkdir -p qurani-abuamr/patch-chunks
+          for f in qurani-abuamr/repacked-patches/*.xzpatch.b64; do
+            base="$(basename "$f" .b64)"
+            mkdir -p "qurani-abuamr/patch-chunks/$base"
+            split -b 5000 -d -a 3 --additional-suffix=.txt "$f" "qurani-abuamr/patch-chunks/$base/part-"
+            sha256sum "$f" > "qurani-abuamr/patch-chunks/$base/source-b64.sha256"
+            wc -c "$f" > "qurani-abuamr/patch-chunks/$base/source-b64.bytes"
+            find "qurani-abuamr/patch-chunks/$base" -name 'part-*.txt' | sort | wc -l > "qurani-abuamr/patch-chunks/$base/parts.count"
+          done
+      - name: Commit chunks
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/patch-chunks/
+          git commit -m 'ci: persist chunked Abu Amr patch transport'
+          git pull --rebase origin qurani-abuamr-v100
+          git push origin HEAD:qurani-abuamr-v100
