@@ -1,0 +1,57 @@
+name: AbuAmr Optimize Bundle Delta
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-bundle-delta-opt.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get old and new Hermes bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/master /tmp/abu /tmp/o /tmp/n /tmp/d && mkdir -p /tmp/master /tmp/abu /tmp/o /tmp/n /tmp/d
+          gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n 'QURANI-FINAL-v1.0.1-R2-1' -D /tmp/master
+          gh release download abuamr-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'AbuAmr-skeleton-v1.0.0.apk' -D /tmp/abu
+          unzip -p /tmp/master/final-delivery/Qurani-v1.0.1.apk assets/index.android.bundle > /tmp/o/bundle
+          unzip -p /tmp/abu/AbuAmr-skeleton-v1.0.0.apk assets/index.android.bundle > /tmp/n/bundle
+          sha256sum /tmp/o/bundle /tmp/n/bundle
+      - name: Try zstd patch and xdelta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v zstd >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y -qq zstd; fi
+          zstd --patch-from=/tmp/o/bundle /tmp/n/bundle -19 -f -o /tmp/d/bundle.zstpatch
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xdelta3 || true
+          if command -v xdelta3 >/dev/null; then xdelta3 -e -9 -s /tmp/o/bundle /tmp/n/bundle /tmp/d/bundle.xdelta; fi
+          ls -l /tmp/d/*
+          mkdir -p qurani-abuamr/optimized-delta
+          cp /tmp/d/bundle.zstpatch qurani-abuamr/optimized-delta/
+          base64 -w76 /tmp/d/bundle.zstpatch > qurani-abuamr/optimized-delta/bundle.zstpatch.b64
+          sha256sum /tmp/d/bundle.zstpatch > qurani-abuamr/optimized-delta/bundle.zstpatch.sha256
+          if [ -s /tmp/d/bundle.xdelta ]; then cp /tmp/d/bundle.xdelta qurani-abuamr/optimized-delta/; base64 -w76 /tmp/d/bundle.xdelta > qurani-abuamr/optimized-delta/bundle.xdelta.b64; sha256sum /tmp/d/bundle.xdelta > qurani-abuamr/optimized-delta/bundle.xdelta.sha256; fi
+          stat -c '%n %s' /tmp/d/* | tee qurani-abuamr/optimized-delta/sizes.txt
+      - name: Commit optimized delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/optimized-delta/
+          git commit -m 'ci: persist optimized Abu Amr Hermes bundle delta'
+          git pull --rebase origin qurani-abuamr-v100
+          git push origin HEAD:qurani-abuamr-v100
