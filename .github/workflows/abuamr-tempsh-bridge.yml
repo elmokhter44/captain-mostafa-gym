@@ -1,0 +1,62 @@
+name: AbuAmr TempSH Text Transfer Bridge
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-tempsh-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: abuamr-transfer-v100
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'AbuAmr-skeleton-v1.0.0.apk' \
+            --pattern 'android-apk-tools-36.zip'
+          echo '4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181  AbuAmr-skeleton-v1.0.0.apk' | sha256sum -c -
+          echo '009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550  android-apk-tools-36.zip' | sha256sum -c -
+      - name: Encode binaries as text and upload to temp.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -w 76 AbuAmr-skeleton-v1.0.0.apk > AbuAmr-skeleton-v1.0.0.apk.b64.txt
+          base64 -w 76 android-apk-tools-36.zip > android-apk-tools-36.zip.b64.txt
+          upload() {
+            local f="$1" u
+            u="$(curl -fsS --retry 6 --retry-delay 3 --retry-all-errors -F "file=@${f}" https://temp.sh/upload | tr -d '\r\n')"
+            test -n "$u"
+            case "$u" in https://temp.sh/*) printf '%s' "$u";; *) echo "Bad temp.sh response: $u" >&2; return 1;; esac
+          }
+          APK_B64_URL="$(upload AbuAmr-skeleton-v1.0.0.apk.b64.txt)"
+          TOOLS_B64_URL="$(upload android-apk-tools-36.zip.b64.txt)"
+          {
+            echo "APK_B64_URL=$APK_B64_URL"
+            echo "TOOLS_B64_URL=$TOOLS_B64_URL"
+            echo 'APK_SHA256=4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181'
+            echo 'TOOLS_SHA256=009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550'
+            echo "APK_B64_BYTES=$(stat -c%s AbuAmr-skeleton-v1.0.0.apk.b64.txt)"
+            echo "TOOLS_B64_BYTES=$(stat -c%s android-apk-tools-36.zip.b64.txt)"
+          } | tee qurani-abuamr/tempsh-bridge.txt
+      - name: Persist transfer URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/tempsh-bridge.txt
+          git commit -m 'ci: record Abu Amr temp.sh transfer URLs'
+          git pull --rebase origin qurani-abuamr-v100
+          git push origin HEAD:qurani-abuamr-v100
