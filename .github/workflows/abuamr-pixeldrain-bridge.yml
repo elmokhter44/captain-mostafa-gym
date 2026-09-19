@@ -1,0 +1,61 @@
+name: AbuAmr Pixeldrain Transfer Bridge
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-pixeldrain-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: abuamr-transfer-v100
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'AbuAmr-skeleton-v1.0.0.apk' \
+            --pattern 'android-apk-tools-36.zip'
+          echo '4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181  AbuAmr-skeleton-v1.0.0.apk' | sha256sum -c -
+          echo '009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550  android-apk-tools-36.zip' | sha256sum -c -
+      - name: Upload transfer files to pixeldrain
+        shell: bash
+        run: |
+          set -euo pipefail
+          upload() {
+            local f="$1" j id
+            j="$(curl -fsS --retry 6 --retry-delay 3 --retry-all-errors -T "$f" https://pixeldrain.com/api/file/)"
+            id="$(printf '%s' "$j" | jq -r '.id')"
+            test -n "$id" && test "$id" != null
+            printf '%s' "$id"
+          }
+          APK_ID="$(upload AbuAmr-skeleton-v1.0.0.apk)"
+          TOOLS_ID="$(upload android-apk-tools-36.zip)"
+          {
+            echo "APK_PAGE=https://pixeldrain.com/u/$APK_ID"
+            echo "APK_URL=https://pixeldrain.com/api/file/$APK_ID"
+            echo "TOOLS_PAGE=https://pixeldrain.com/u/$TOOLS_ID"
+            echo "TOOLS_URL=https://pixeldrain.com/api/file/$TOOLS_ID"
+            echo 'APK_SHA256=4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181'
+            echo 'TOOLS_SHA256=009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550'
+          } | tee qurani-abuamr/pixeldrain-bridge.txt
+      - name: Persist transfer URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/pixeldrain-bridge.txt
+          git commit -m 'ci: record Abu Amr pixeldrain transfer URLs'
+          git pull --rebase origin qurani-abuamr-v100
+          git push origin HEAD:qurani-abuamr-v100
