@@ -16,20 +16,28 @@ jobs:
     timeout-minutes: 20
     env:
       GH_TOKEN: ${{ github.token }}
+      OLD_SHA: 071f82e8a816fb83b0802e763cad3e78479a73a4820b03a42137b1a199a4acea
     steps:
       - uses: actions/checkout@v4
-      - name: Get old and new Hermes bundles
+      - name: Get matching old and new Hermes bundles
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/nafi /tmp/abu /tmp/o /tmp/n /tmp/d && mkdir -p /tmp/nafi /tmp/abu /tmp/o /tmp/n /tmp/d
-          gh release download qurani-v1.0.3-nafi-final --repo "$GITHUB_REPOSITORY" -p 'al-mushaf-al-muallam-nafi-v1.0.3.apk' -D /tmp/nafi
+          rm -rf /tmp/nafi2 /tmp/nafi3 /tmp/abu /tmp/o /tmp/n /tmp/d && mkdir -p /tmp/nafi2 /tmp/nafi3 /tmp/abu /tmp/o /tmp/n /tmp/d
+          gh release download qurani-v1.0.2-nafi-final --repo "$GITHUB_REPOSITORY" -p 'default.apk' -D /tmp/nafi2
+          gh release download qurani-v1.0.3-nafi-final --repo "$GITHUB_REPOSITORY" -p 'al-mushaf-al-muallam-nafi-v1.0.3.apk' -D /tmp/nafi3
           gh release download abuamr-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'AbuAmr-skeleton-v1.0.0.apk' -D /tmp/abu
-          unzip -p /tmp/nafi/al-mushaf-al-muallam-nafi-v1.0.3.apk assets/index.android.bundle > /tmp/o/bundle
+          unzip -p /tmp/nafi2/default.apk assets/index.android.bundle > /tmp/nafi2/bundle
+          unzip -p /tmp/nafi3/al-mushaf-al-muallam-nafi-v1.0.3.apk assets/index.android.bundle > /tmp/nafi3/bundle
           unzip -p /tmp/abu/AbuAmr-skeleton-v1.0.0.apk assets/index.android.bundle > /tmp/n/bundle
-          test "$(stat -c%s /tmp/o/bundle)" = 3312076
-          test "$(stat -c%s /tmp/n/bundle)" = 3311512
-          sha256sum /tmp/o/bundle /tmp/n/bundle
+          echo 'candidate hashes:'
+          sha256sum /tmp/nafi2/bundle /tmp/nafi3/bundle /tmp/n/bundle
+          stat -c '%n %s' /tmp/nafi2/bundle /tmp/nafi3/bundle /tmp/n/bundle
+          for f in /tmp/nafi2/bundle /tmp/nafi3/bundle; do
+            if [ "$(sha256sum "$f" | awk '{print $1}')" = "$OLD_SHA" ]; then cp "$f" /tmp/o/bundle; break; fi
+          done
+          test -s /tmp/o/bundle
+          test "$(sha256sum /tmp/n/bundle | awk '{print $1}')" = '14f3eb06d25894e001da298511cd194a8a9aa4c1c8b39995f343a8c429ccc0a9'
       - name: Try zstd patch and xdelta
         shell: bash
         run: |
@@ -41,7 +49,6 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq xdelta3 || true
           if command -v xdelta3 >/dev/null; then xdelta3 -e -9 -s /tmp/o/bundle /tmp/n/bundle /tmp/d/bundle.xdelta; xdelta3 -d -s /tmp/o/bundle /tmp/d/bundle.xdelta /tmp/d/check2.bundle; cmp /tmp/d/check2.bundle /tmp/n/bundle; fi
-          ls -l /tmp/d/*
           mkdir -p qurani-abuamr/optimized-delta
           base64 -w76 /tmp/d/bundle.zstpatch > qurani-abuamr/optimized-delta/bundle.zstpatch.b64
           sha256sum /tmp/d/bundle.zstpatch > qurani-abuamr/optimized-delta/bundle.zstpatch.sha256
