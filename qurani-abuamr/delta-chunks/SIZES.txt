@@ -1,0 +1,26 @@
+ 10000 qurani-abuamr/delta-chunks/part-000.txt
+ 10000 qurani-abuamr/delta-chunks/part-001.txt
+ 10000 qurani-abuamr/delta-chunks/part-002.txt
+ 10000 qurani-abuamr/delta-chunks/part-003.txt
+ 10000 qurani-abuamr/delta-chunks/part-004.txt
+ 10000 qurani-abuamr/delta-chunks/part-005.txt
+ 10000 qurani-abuamr/delta-chunks/part-006.txt
+ 10000 qurani-abuamr/delta-chunks/part-007.txt
+ 10000 qurani-abuamr/delta-chunks/part-008.txt
+ 10000 qurani-abuamr/delta-chunks/part-009.txt
+ 10000 qurani-abuamr/delta-chunks/part-010.txt
+ 10000 qurani-abuamr/delta-chunks/part-011.txt
+ 10000 qurani-abuamr/delta-chunks/part-012.txt
+ 10000 qurani-abuamr/delta-chunks/part-013.txt
+ 10000 qurani-abuamr/delta-chunks/part-014.txt
+ 10000 qurani-abuamr/delta-chunks/part-015.txt
+ 10000 qurani-abuamr/delta-chunks/part-016.txt
+ 10000 qurani-abuamr/delta-chunks/part-017.txt
+ 10000 qurani-abuamr/delta-chunks/part-018.txt
+ 10000 qurani-abuamr/delta-chunks/part-019.txt
+ 10000 qurani-abuamr/delta-chunks/part-020.txt
+ 10000 qurani-abuamr/delta-chunks/part-021.txt
+ 10000 qurani-abuamr/delta-chunks/part-022.txt
+ 10000 qurani-abuamr/delta-chunks/part-023.txt
+  1672 qurani-abuamr/delta-chunks/part-024.txt
+241672 total
