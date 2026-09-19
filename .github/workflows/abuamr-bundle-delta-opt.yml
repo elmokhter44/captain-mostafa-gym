@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: write
-  actions: read
 
 jobs:
   optimize:
@@ -23,11 +22,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/master /tmp/abu /tmp/o /tmp/n /tmp/d && mkdir -p /tmp/master /tmp/abu /tmp/o /tmp/n /tmp/d
-          gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n 'QURANI-FINAL-v1.0.1-R2-1' -D /tmp/master
+          rm -rf /tmp/nafi /tmp/abu /tmp/o /tmp/n /tmp/d && mkdir -p /tmp/nafi /tmp/abu /tmp/o /tmp/n /tmp/d
+          gh release download qurani-v1.0.3-nafi-final --repo "$GITHUB_REPOSITORY" -p 'al-mushaf-al-muallam-nafi-v1.0.3.apk' -D /tmp/nafi
           gh release download abuamr-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'AbuAmr-skeleton-v1.0.0.apk' -D /tmp/abu
-          unzip -p /tmp/master/final-delivery/Qurani-v1.0.1.apk assets/index.android.bundle > /tmp/o/bundle
+          unzip -p /tmp/nafi/al-mushaf-al-muallam-nafi-v1.0.3.apk assets/index.android.bundle > /tmp/o/bundle
           unzip -p /tmp/abu/AbuAmr-skeleton-v1.0.0.apk assets/index.android.bundle > /tmp/n/bundle
+          test "$(stat -c%s /tmp/o/bundle)" = 3312076
+          test "$(stat -c%s /tmp/n/bundle)" = 3311512
           sha256sum /tmp/o/bundle /tmp/n/bundle
       - name: Try zstd patch and xdelta
         shell: bash
@@ -35,16 +36,17 @@ jobs:
           set -euo pipefail
           if ! command -v zstd >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y -qq zstd; fi
           zstd --patch-from=/tmp/o/bundle /tmp/n/bundle -19 -f -o /tmp/d/bundle.zstpatch
+          zstd -d --patch-from=/tmp/o/bundle /tmp/d/bundle.zstpatch -c > /tmp/d/check.bundle
+          cmp /tmp/d/check.bundle /tmp/n/bundle
           sudo apt-get update -qq
           sudo apt-get install -y -qq xdelta3 || true
-          if command -v xdelta3 >/dev/null; then xdelta3 -e -9 -s /tmp/o/bundle /tmp/n/bundle /tmp/d/bundle.xdelta; fi
+          if command -v xdelta3 >/dev/null; then xdelta3 -e -9 -s /tmp/o/bundle /tmp/n/bundle /tmp/d/bundle.xdelta; xdelta3 -d -s /tmp/o/bundle /tmp/d/bundle.xdelta /tmp/d/check2.bundle; cmp /tmp/d/check2.bundle /tmp/n/bundle; fi
           ls -l /tmp/d/*
           mkdir -p qurani-abuamr/optimized-delta
-          cp /tmp/d/bundle.zstpatch qurani-abuamr/optimized-delta/
           base64 -w76 /tmp/d/bundle.zstpatch > qurani-abuamr/optimized-delta/bundle.zstpatch.b64
           sha256sum /tmp/d/bundle.zstpatch > qurani-abuamr/optimized-delta/bundle.zstpatch.sha256
-          if [ -s /tmp/d/bundle.xdelta ]; then cp /tmp/d/bundle.xdelta qurani-abuamr/optimized-delta/; base64 -w76 /tmp/d/bundle.xdelta > qurani-abuamr/optimized-delta/bundle.xdelta.b64; sha256sum /tmp/d/bundle.xdelta > qurani-abuamr/optimized-delta/bundle.xdelta.sha256; fi
-          stat -c '%n %s' /tmp/d/* | tee qurani-abuamr/optimized-delta/sizes.txt
+          if [ -s /tmp/d/bundle.xdelta ]; then base64 -w76 /tmp/d/bundle.xdelta > qurani-abuamr/optimized-delta/bundle.xdelta.b64; sha256sum /tmp/d/bundle.xdelta > qurani-abuamr/optimized-delta/bundle.xdelta.sha256; fi
+          stat -c '%n %s' /tmp/d/bundle.zstpatch /tmp/d/bundle.xdelta 2>/dev/null | tee qurani-abuamr/optimized-delta/sizes.txt
       - name: Commit optimized delta
         shell: bash
         run: |
