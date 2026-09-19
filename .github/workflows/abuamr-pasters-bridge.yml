@@ -28,13 +28,21 @@ jobs:
           base64 -w 76 "$TOOLS" > /tmp/tools.b64
           upload() {
             local f="$1"
-            local u
-            u="$(curl -fsS --retry 5 --retry-delay 2 --data-binary "@$f" https://paste.rs/)"
+            local tag="$2"
+            local body="/tmp/${tag}.body" hdr="/tmp/${tag}.hdr" code u
+            code="$(curl -sS --retry 5 --retry-delay 2 -D "$hdr" -o "$body" -w '%{http_code}' --data-binary "@$f" https://paste.rs/)"
+            echo "${tag}_HTTP=$code" >&2
+            test "$code" = 201 -o "$code" = 200
+            u="$(tr -d '\r\n' < "$body")"
+            if [ -z "$u" ]; then
+              u="$(tr -d '\r' < "$hdr" | awk 'BEGIN{IGNORECASE=1} /^location: /{sub(/^location: /,""); print; exit}')"
+            fi
             test -n "$u"
+            case "$u" in https://paste.rs/*) ;; *) echo "Unexpected paste URL: $u" >&2; exit 1;; esac
             printf '%s' "$u"
           }
-          OVERLAY_URL="$(upload /tmp/overlay.b64)"
-          TOOLS_URL="$(upload /tmp/tools.b64)"
+          OVERLAY_URL="$(upload /tmp/overlay.b64 overlay)"
+          TOOLS_URL="$(upload /tmp/tools.b64 tools)"
           {
             echo "OVERLAY_B64_URL=$OVERLAY_URL"
             echo "TOOLS_B64_URL=$TOOLS_URL"
