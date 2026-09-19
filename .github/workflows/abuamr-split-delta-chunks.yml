@@ -22,7 +22,7 @@ jobs:
           rm -rf qurani-abuamr/delta-chunks
           mkdir -p qurani-abuamr/delta-chunks
           tr -d '\n\r' < qurani-abuamr/local-delta/delta.tar.gz.b64 > /tmp/delta.b64
-          split -b 10000 -d -a 3 --additional-suffix=.txt /tmp/delta.b64 qurani-abuamr/delta-chunks/part-
+          split -b 5000 -d -a 3 --additional-suffix=.txt /tmp/delta.b64 qurani-abuamr/delta-chunks/part-
           wc -c qurani-abuamr/delta-chunks/* > qurani-abuamr/delta-chunks/SIZES.txt
           sha256sum /tmp/delta.b64 > qurani-abuamr/delta-chunks/BASE64-SHA256.txt
           echo "PARTS=$(find qurani-abuamr/delta-chunks -name 'part-*.txt' | wc -l)" > qurani-abuamr/delta-chunks/COUNT.txt
@@ -32,7 +32,7 @@ jobs:
           set -euo pipefail
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add qurani-abuamr/delta-chunks
+          git add -A qurani-abuamr/delta-chunks
           git commit -m 'ci: persist Abu Amr delta transfer chunks'
           git pull --rebase origin qurani-abuamr-v100
           git push origin HEAD:qurani-abuamr-v100
