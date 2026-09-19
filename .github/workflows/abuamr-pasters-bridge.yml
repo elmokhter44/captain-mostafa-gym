@@ -1,0 +1,55 @@
+name: AbuAmr PasteRS Local Bridge
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-pasters-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish compact local-finalization binaries as base64 text pastes
+        shell: bash
+        run: |
+          set -euo pipefail
+          OVERLAY='qurani-abuamr/local-binaries/abuamr-overlay.zip'
+          TOOLS='qurani-abuamr/local-binaries/android-sign-tools-36.zip'
+          test -s "$OVERLAY"
+          test -s "$TOOLS"
+          base64 -w 76 "$OVERLAY" > /tmp/overlay.b64
+          base64 -w 76 "$TOOLS" > /tmp/tools.b64
+          upload() {
+            local f="$1"
+            local u
+            u="$(curl -fsS --retry 5 --retry-delay 2 --data-binary "@$f" https://paste.rs/)"
+            test -n "$u"
+            printf '%s' "$u"
+          }
+          OVERLAY_URL="$(upload /tmp/overlay.b64)"
+          TOOLS_URL="$(upload /tmp/tools.b64)"
+          {
+            echo "OVERLAY_B64_URL=$OVERLAY_URL"
+            echo "TOOLS_B64_URL=$TOOLS_URL"
+            echo "OVERLAY_SHA256=$(sha256sum "$OVERLAY" | awk '{print $1}')"
+            echo "TOOLS_SHA256=$(sha256sum "$TOOLS" | awk '{print $1}')"
+            echo "OVERLAY_B64_BYTES=$(stat -c%s /tmp/overlay.b64)"
+            echo "TOOLS_B64_BYTES=$(stat -c%s /tmp/tools.b64)"
+          } | tee qurani-abuamr/pasters-bridge.txt
+      - name: Persist paste URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/pasters-bridge.txt
+          git commit -m 'ci: record Abu Amr paste.rs local bridge URLs'
+          git pull --rebase origin qurani-abuamr-v100
+          git push origin HEAD:qurani-abuamr-v100
