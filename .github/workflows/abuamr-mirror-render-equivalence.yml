@@ -1,0 +1,62 @@
+name: AbuAmr Mirror Render Equivalence
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-mirror-render-equivalence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download mirror and compute exact 0.5x MuPDF render aggregate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet 'PyMuPDF==1.26.7'
+          curl -fL --retry 5 --retry-delay 2 'https://bhr-q.com/media/attachments/qran/03/Qra%27a-ALbasari.pdf' -o /tmp/mirror.pdf
+          python - <<'PY'
+          import fitz, hashlib, pathlib
+          src=pathlib.Path('/tmp/mirror.pdf')
+          doc=fitz.open(src)
+          assert len(doc)==638, len(doc)
+          lines=[]
+          for i,p in enumerate(doc):
+              pix=p.get_pixmap(matrix=fitz.Matrix(0.5,0.5), alpha=False)
+              h=hashlib.sha256(pix.samples).hexdigest()
+              lines.append(f"{i+1}\t{pix.width}x{pix.height}\t{h}\n")
+          blob=''.join(lines).encode()
+          agg=hashlib.sha256(blob).hexdigest()
+          expected='3ab644b4beaed3b8cb55790926a1ad21b46210c7419d604dd1336e87f856713c'
+          report=(
+              f'MIRROR_BYTES={src.stat().st_size}\n'
+              f'MIRROR_SHA256={hashlib.sha256(src.read_bytes()).hexdigest()}\n'
+              f'PAGES={len(doc)}\n'
+              f'RENDER_LIST_SHA256={agg}\n'
+              f'EXPECTED_RENDER_LIST_SHA256={expected}\n'
+              f'RENDER_EQUIVALENT={int(agg==expected)}\n'
+          )
+          pathlib.Path('qurani-abuamr/mirror-render-equivalence.txt').write_text(report)
+          pathlib.Path('/tmp/mirror-render-hashes.txt').write_bytes(blob)
+          print(report)
+          PY
+      - name: Persist report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/mirror-render-equivalence.txt
+          git commit -m 'ci: record Abu Amr mirror render equivalence' || true
+          git pull --rebase origin qurani-abuamr-v100
+          git push origin HEAD:qurani-abuamr-v100
