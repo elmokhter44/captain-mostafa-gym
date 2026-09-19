@@ -1,0 +1,43 @@
+name: AbuAmr Split Local Bridge 50K
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths: ['.github/workflows/abuamr-split-local-bridge-50k.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create 50K text chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-abuamr/manual-bridge-50k
+          mkdir -p qurani-abuamr/manual-bridge-50k/tools qurani-abuamr/manual-bridge-50k/delta
+          base64 -w 0 qurani-abuamr/local-binaries/android-sign-tools-36.zip > /tmp/tools.b64
+          tr -d '\r\n' < qurani-abuamr/local-delta/delta.tar.gz.b64 > /tmp/delta.b64
+          split -b 50000 -d -a 3 --additional-suffix=.txt /tmp/tools.b64 qurani-abuamr/manual-bridge-50k/tools/part-
+          split -b 50000 -d -a 3 --additional-suffix=.txt /tmp/delta.b64 qurani-abuamr/manual-bridge-50k/delta/part-
+          {
+            echo "TOOLS_PARTS=$(find qurani-abuamr/manual-bridge-50k/tools -name 'part-*' | wc -l)"
+            echo "DELTA_PARTS=$(find qurani-abuamr/manual-bridge-50k/delta -name 'part-*' | wc -l)"
+            echo "TOOLS_B64_SHA256=$(sha256sum /tmp/tools.b64 | awk '{print $1}')"
+            echo "DELTA_B64_SHA256=$(sha256sum /tmp/delta.b64 | awk '{print $1}')"
+            echo "TOOLS_ZIP_SHA256=$(sha256sum qurani-abuamr/local-binaries/android-sign-tools-36.zip | awk '{print $1}')"
+          } > qurani-abuamr/manual-bridge-50k/manifest.txt
+      - name: Persist chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/manual-bridge-50k
+          git commit -m 'ci: persist 50K local finalization bridge chunks'
+          git pull --rebase origin qurani-abuamr-v100
+          git push origin HEAD:qurani-abuamr-v100
