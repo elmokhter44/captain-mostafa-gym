@@ -1,0 +1,6 @@
+https://paste.rs/ZPrVc
+https://paste.rs/WL73f
+https://paste.rs/INJhp
+https://paste.rs/Q8db3
+SHA256_B64_FILE=75886d0e31ed8ff661bd0193c4d87c5ffcfe107e3aede006d329a253a6577a7c
+TARGZ_SHA256=80d1c8a00f080002e766d966c94e160598239bb168455fda624ba72106343f86
