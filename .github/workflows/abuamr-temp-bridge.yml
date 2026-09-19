@@ -1,0 +1,37 @@
+name: AbuAmr Temporary Local Bridge
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-temp-bridge.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare compact files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp qurani-abuamr/local-binaries/android-sign-tools-36.zip /tmp/android-sign-tools-36.zip
+          base64 -d qurani-abuamr/local-delta/delta.tar.gz.b64 > /tmp/abuamr-delta.tar.gz
+          sha256sum /tmp/android-sign-tools-36.zip /tmp/abuamr-delta.tar.gz
+      - name: Upload compact bridge to temporary hosts
+        shell: bash
+        run: |
+          set +e
+          for f in /tmp/android-sign-tools-36.zip /tmp/abuamr-delta.tar.gz; do
+            echo "FILE=$(basename "$f")"
+            echo -n 'ZEROX0_URL='
+            curl -fsS --max-time 60 -F "file=@$f" https://0x0.st || true
+            echo
+            echo -n 'CATBOX_URL='
+            curl -fsS --max-time 60 -F 'reqtype=fileupload' -F "fileToUpload=@$f" https://catbox.moe/user/api.php || true
+            echo
+            echo -n 'TMPFILES_JSON='
+            curl -fsS --max-time 60 -F "file=@$f" https://tmpfiles.org/api/v1/upload || true
+            echo
+          done
