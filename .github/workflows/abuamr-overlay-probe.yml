@@ -1,0 +1,84 @@
+name: AbuAmr Overlay Probe
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-overlay-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Nafi master APK and latest Abu Amr skeleton
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/master-art /tmp/abu
+          gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n 'QURANI-FINAL-v1.0.1-R2-1' -D /tmp/master-art
+          test -s /tmp/master-art/final-delivery/Qurani-v1.0.1.apk
+          gh release download abuamr-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'AbuAmr-skeleton-v1.0.0.apk' -D /tmp/abu
+          test -s /tmp/abu/AbuAmr-skeleton-v1.0.0.apk
+      - name: Build minimal overlay excluding PDFs, signatures and identical native libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile, hashlib, os, json, shutil
+          base='/tmp/master-art/final-delivery/Qurani-v1.0.1.apk'
+          new='/tmp/abu/AbuAmr-skeleton-v1.0.0.apk'
+          out='/tmp/abuamr-overlay.zip'
+          def entries(path):
+              with zipfile.ZipFile(path) as z:
+                  return {i.filename:z.read(i.filename) for i in z.infolist() if not i.is_dir()}
+          a=entries(base); b=entries(new)
+          changed=[]; added=[]; deleted=[]; lib_mismatch=[]
+          for n,data in b.items():
+              if n.startswith('META-INF/') or n.startswith('assets/pdf/'):
+                  continue
+              if n.startswith('lib/'):
+                  if n not in a or a[n] != data: lib_mismatch.append(n)
+                  continue
+              if n not in a: added.append(n); changed.append(n)
+              elif a[n]!=data: changed.append(n)
+          for n in a:
+              if n.startswith('META-INF/') or n.startswith('assets/pdf/') or n.startswith('lib/'):
+                  continue
+              if n not in b: deleted.append(n)
+          assert not lib_mismatch, f'native lib mismatch: {lib_mismatch[:10]}'
+          with zipfile.ZipFile(out,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+              for n in changed:
+                  z.writestr(n,b[n])
+              z.writestr('__DELETE_LIST__.txt','\n'.join(deleted)+'\n')
+          rep={
+            'base_apk_bytes':os.path.getsize(base),
+            'skeleton_bytes':os.path.getsize(new),
+            'overlay_bytes':os.path.getsize(out),
+            'overlay_sha256':hashlib.sha256(open(out,'rb').read()).hexdigest(),
+            'changed_count':len(changed),'added_count':len(added),'deleted_count':len(deleted),
+            'native_libs_identical':True,
+            'changed':changed,'added':added,'deleted':deleted,
+          }
+          open('qurani-abuamr/overlay-probe.json','w').write(json.dumps(rep,ensure_ascii=False,indent=2))
+          print(json.dumps({k:v for k,v in rep.items() if k not in ('changed','added','deleted')},indent=2))
+          print('CHANGED FILES:')
+          print('\n'.join(changed))
+          PY
+      - name: Persist overlay probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/overlay-probe.json
+          git commit -m 'ci: record Abu Amr minimal APK overlay probe'
+          git push origin HEAD:qurani-abuamr-v100
