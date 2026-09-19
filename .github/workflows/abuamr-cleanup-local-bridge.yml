@@ -1,0 +1,46 @@
+name: AbuAmr Cleanup and Local Bridge
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths: ['.github/workflows/abuamr-cleanup-local-bridge.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free obsolete Qurani artifact storage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for id in 10448144661 10448044347 10430458171 10429648883; do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id" >/dev/null 2>&1 || true
+            echo "DELETE_ATTEMPT=$id"
+          done
+      - name: Verify bridge payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum qurani-abuamr/local-binaries/android-sign-tools-36.zip
+          sha256sum qurani-abuamr/local-delta/delta.tar.gz.b64
+          test "$(sha256sum qurani-abuamr/local-binaries/android-sign-tools-36.zip | awk '{print $1}')" = '74a57d5b823988109d056df26b0ba23ce41c5e90c1b6538b1519a6afd55ed946'
+      - name: Upload compact finalization bridge
+        uses: actions/upload-artifact@v4
+        with:
+          name: abuamr-local-finalization-bridge
+          retention-days: 1
+          compression-level: 0
+          path: |
+            qurani-abuamr/local-binaries/android-sign-tools-36.zip
+            qurani-abuamr/local-delta/delta.tar.gz.b64
+            qurani-abuamr/local-delta/manifest.json
+            qurani-abuamr/local-delta/delta-sha256.txt
