@@ -1,0 +1,28 @@
+name: AbuAmr Print Repacked Patches
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths: ['.github/workflows/abuamr-print-patches.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  print:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in \
+            'AndroidManifest.xml.bsdiff.xzpatch.b64' \
+            'classes.dex.bsdiff.xzpatch.b64' \
+            'resources.arsc.bsdiff.xzpatch.b64' \
+            'assets__dexopt__baseline.prof.bsdiff.xzpatch.b64' \
+            'assets__index.android.bundle.bsdiff.xzpatch.b64'; do
+            echo "=====BEGIN:$f====="
+            tr -d '\n\r' < "qurani-abuamr/repacked-patches/$f"
+            echo
+            echo "=====END:$f====="
+          done
