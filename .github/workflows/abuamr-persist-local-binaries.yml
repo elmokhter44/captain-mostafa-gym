@@ -1,0 +1,102 @@
+name: AbuAmr Persist Local Finalization Binaries
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-persist-local-binaries.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  persist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exact reference APKs and compact Android signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/master-art /tmp/abu /tmp/tools
+          mkdir -p /tmp/master-art /tmp/abu /tmp/tools
+          gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n 'QURANI-FINAL-v1.0.1-R2-1' -D /tmp/master-art
+          test -s /tmp/master-art/final-delivery/Qurani-v1.0.1.apk
+          gh release download abuamr-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'AbuAmr-skeleton-v1.0.0.apk' -D /tmp/abu
+          echo '4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181  /tmp/abu/AbuAmr-skeleton-v1.0.0.apk' | sha256sum -c -
+          gh release download ibnkathir-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'android-sign-tools-36.zip' -D /tmp/tools
+          echo '74a57d5b823988109d056df26b0ba23ce41c5e90c1b6538b1519a6afd55ed946  /tmp/tools/android-sign-tools-36.zip' | sha256sum -c -
+
+      - name: Build exact minimal overlay and verify it reconstructs every non-PDF entry
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qurani-abuamr/local-binaries
+          python3 - <<'PY'
+          import zipfile, hashlib, os, json, shutil
+          base='/tmp/master-art/final-delivery/Qurani-v1.0.1.apk'
+          new='/tmp/abu/AbuAmr-skeleton-v1.0.0.apk'
+          out='qurani-abuamr/local-binaries/abuamr-overlay.zip'
+          def read(path):
+              with zipfile.ZipFile(path) as z:
+                  return {i.filename:z.read(i.filename) for i in z.infolist() if not i.is_dir()}
+          a=read(base); b=read(new)
+          changed=[]; deleted=[]; lib_mismatch=[]
+          for n,data in b.items():
+              if n.startswith('META-INF/') or n.startswith('assets/pdf/'):
+                  continue
+              if n.startswith('lib/'):
+                  if n not in a or a[n] != data: lib_mismatch.append(n)
+                  continue
+              if n not in a or a[n] != data: changed.append(n)
+          for n in a:
+              if n.startswith('META-INF/') or n.startswith('assets/pdf/') or n.startswith('lib/'):
+                  continue
+              if n not in b: deleted.append(n)
+          assert not lib_mismatch, lib_mismatch
+          with zipfile.ZipFile(out,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+              for n in changed: z.writestr(n,b[n])
+              z.writestr('__DELETE_LIST__.txt','\n'.join(deleted)+'\n')
+          # Prove applying overlay to the Nafi base produces every non-PDF, non-signature skeleton entry byte-for-byte.
+          recon=dict(a)
+          for n in list(recon):
+              if n.startswith('META-INF/') or n.startswith('assets/pdf/'):
+                  recon.pop(n,None)
+          for n in deleted: recon.pop(n,None)
+          for n in changed: recon[n]=b[n]
+          target={n:d for n,d in b.items() if not n.startswith('META-INF/') and not n.startswith('assets/pdf/')}
+          assert set(recon)==set(target),(sorted(set(recon)-set(target))[:10],sorted(set(target)-set(recon))[:10])
+          for n in target: assert recon[n]==target[n],n
+          rep={
+            'base_apk_sha256':hashlib.sha256(open(base,'rb').read()).hexdigest(),
+            'skeleton_apk_sha256':hashlib.sha256(open(new,'rb').read()).hexdigest(),
+            'overlay_sha256':hashlib.sha256(open(out,'rb').read()).hexdigest(),
+            'overlay_bytes':os.path.getsize(out),
+            'tools_sha256':'74a57d5b823988109d056df26b0ba23ce41c5e90c1b6538b1519a6afd55ed946',
+            'changed':changed,'deleted':deleted,'native_libs_identical':True,
+            'reconstruction_non_pdf_byte_exact':True,
+            'manifest_sha256':hashlib.sha256(b['AndroidManifest.xml']).hexdigest(),
+            'resources_arsc_sha256':hashlib.sha256(b['resources.arsc']).hexdigest(),
+            'classes_dex_sha256':hashlib.sha256(b['classes.dex']).hexdigest(),
+            'bundle_sha256':hashlib.sha256(b['assets/index.android.bundle']).hexdigest(),
+          }
+          open('qurani-abuamr/local-binaries/manifest.json','w').write(json.dumps(rep,ensure_ascii=False,indent=2))
+          print(json.dumps(rep,ensure_ascii=False,indent=2))
+          PY
+          cp /tmp/tools/android-sign-tools-36.zip qurani-abuamr/local-binaries/android-sign-tools-36.zip
+          sha256sum qurani-abuamr/local-binaries/*
+
+      - name: Commit compact binary bridge to isolated Abu Amr branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/local-binaries/
+          git commit -m 'ci: persist compact verified Abu Amr local finalization bridge'
+          git push origin HEAD:qurani-abuamr-v100
