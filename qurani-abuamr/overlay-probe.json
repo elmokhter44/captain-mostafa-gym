@@ -1,0 +1,19 @@
+{
+  "base_apk_bytes": 155753064,
+  "skeleton_bytes": 70781380,
+  "overlay_bytes": 2800954,
+  "overlay_sha256": "70a59df6b4cdd2d69f68d0ca9660a2ca5d04230244e8fc120cc0429788a6ba15",
+  "changed_count": 5,
+  "added_count": 0,
+  "deleted_count": 0,
+  "native_libs_identical": true,
+  "changed": [
+    "assets/dexopt/baseline.prof",
+    "classes.dex",
+    "assets/index.android.bundle",
+    "AndroidManifest.xml",
+    "resources.arsc"
+  ],
+  "added": [],
+  "deleted": []
+}
