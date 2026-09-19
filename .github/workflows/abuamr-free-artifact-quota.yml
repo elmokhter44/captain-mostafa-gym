@@ -1,0 +1,40 @@
+name: Free Actions Artifact Quota for AbuAmr
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-free-artifact-quota.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      KEEP_ARTIFACT_ID: '10448144661'
+    steps:
+      - name: Delete every non-expired Actions artifact except the verified master final artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(.expired == false) | [.id,.name,.size_in_bytes] | @tsv' > /tmp/artifacts.tsv
+          cat /tmp/artifacts.tsv
+          while IFS=$'\t' read -r id name size; do
+            [ -n "$id" ] || continue
+            if [ "$id" = "$KEEP_ARTIFACT_ID" ]; then
+              echo "KEEP $id $name $size"
+              continue
+            fi
+            echo "DELETE $id $name $size"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id"
+          done < /tmp/artifacts.tsv
+          echo 'Remaining:'
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(.expired == false) | [.id,.name,.size_in_bytes] | @tsv'
