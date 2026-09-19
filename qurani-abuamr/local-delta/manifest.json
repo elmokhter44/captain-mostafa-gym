@@ -1,0 +1,37 @@
+[
+  {
+    "name": "assets/dexopt/baseline.prof",
+    "old": 1475,
+    "new": 1475,
+    "patch": 1942,
+    "new_sha256": "cc99bb53251d37340b3070433da5657bf6d0c754bf583600d9c64f83d9a3abd2"
+  },
+  {
+    "name": "classes.dex",
+    "old": 3238916,
+    "new": 3238928,
+    "patch": 11720,
+    "new_sha256": "0728ca800be7dfca886f05a986fa8eb6d673e03bb47c81010a5e7a5e3a32a11e"
+  },
+  {
+    "name": "assets/index.android.bundle",
+    "old": 3312076,
+    "new": 3311512,
+    "patch": 165741,
+    "new_sha256": "14f3eb06d25894e001da298511cd194a8a9aa4c1c8b39995f343a8c429ccc0a9"
+  },
+  {
+    "name": "AndroidManifest.xml",
+    "old": 6092,
+    "new": 6124,
+    "patch": 282,
+    "new_sha256": "e7ed185fa40ccbe870b4e14be0cc678857e2c2fb1b78e15129ca9082d64d90e9"
+  },
+  {
+    "name": "resources.arsc",
+    "old": 970376,
+    "new": 970528,
+    "patch": 949,
+    "new_sha256": "e12f0063051828733ea593ff9d66c5ce8d7726d9ea5188e5c7662fede24b5f70"
+  }
+]
