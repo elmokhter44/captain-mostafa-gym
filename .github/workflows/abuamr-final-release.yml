@@ -1,0 +1,274 @@
+name: AbuAmr Final Signed APK
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-final-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_URL: "https://bhr-q.com/media/attachments/qran/03/Qra%27a-ALbasari.pdf"
+      LOCAL_SOURCE_RENDER_SHA256: "0234453322142b8f3ee63f267d9959d99170b59e6c1e448fb3329bf632d92859"
+      FINAL_TAG: "abuamr-v1.0.0-final"
+      KEY_TAG: "abuamr-signing-key-v1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install PDF and verification dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet 'PyMuPDF==1.26.7'
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq zip unzip jq
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;36.0.0'
+
+      - name: Download the exact latest Abu Amr skeleton
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/abuamr-input && mkdir -p /tmp/abuamr-input
+          gh release download abuamr-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'AbuAmr-skeleton-v1.0.0.apk' -D /tmp/abuamr-input
+          test -s /tmp/abuamr-input/AbuAmr-skeleton-v1.0.0.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging /tmp/abuamr-input/AbuAmr-skeleton-v1.0.0.apk > /tmp/skeleton-badging.txt
+          grep -q "package: name='com.qurani.abuamr' versionCode='1' versionName='1.0.0'" /tmp/skeleton-badging.txt
+
+      - name: Download source PDF and prove visual identity to the uploaded 638-page source
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 4 --retry-delay 2 "$SOURCE_URL" -o /tmp/abuamr-source.pdf
+          test -s /tmp/abuamr-source.pdf
+          sha256sum /tmp/abuamr-source.pdf | tee /tmp/source-byte-sha256.txt
+          python3 - <<'PY'
+          import fitz, hashlib, os
+          path='/tmp/abuamr-source.pdf'
+          expected=os.environ['LOCAL_SOURCE_RENDER_SHA256']
+          doc=fitz.open(path)
+          assert doc.page_count == 638, doc.page_count
+          h=hashlib.sha256()
+          for i,p in enumerate(doc):
+              pix=p.get_pixmap(matrix=fitz.Matrix(0.5,0.5), alpha=False)
+              h.update(i.to_bytes(4,'big'))
+              h.update(pix.width.to_bytes(4,'big'))
+              h.update(pix.height.to_bytes(4,'big'))
+              h.update(pix.samples)
+          actual=h.hexdigest()
+          print('SOURCE_PAGES=', doc.page_count)
+          print('SOURCE_RENDER_SHA256=', actual)
+          assert actual == expected, (actual, expected)
+          open('/tmp/source-visual-verification.txt','w').write(
+              'pages=638\nrender_scale=0.5\nrender_sha256='+actual+'\nvisual_match_uploaded_source=true\n'
+          )
+          PY
+
+      - name: Split the source into the seven approved direct PDF assets without rasterization
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/abuamr-pdf && mkdir -p /tmp/abuamr-pdf
+          python3 - <<'PY'
+          import fitz, hashlib, json, os
+          src=fitz.open('/tmp/abuamr-source.pdf')
+          ranges=[
+              ('abu_amr_reading.pdf',1,4),
+              ('quran.pdf',5,608),
+              ('quran_index.pdf',609,610),
+              ('dua.pdf',611,611),
+              ('waqf_symbols.pdf',612,616),
+              ('furati_intro.pdf',617,620),
+              ('abu_amr_usul.pdf',621,638),
+          ]
+          assert sum(b-a+1 for _,a,b in ranges)==638
+          report=[]
+          for name,a,b in ranges:
+              out=fitz.open()
+              out.insert_pdf(src, from_page=a-1, to_page=b-1)
+              path='/tmp/abuamr-pdf/'+name
+              out.save(path, garbage=4, deflate=True)
+              out.close()
+              chk=fitz.open(path)
+              assert chk.page_count == b-a+1, (name,chk.page_count)
+              # Every output page must render pixel-identically to its source page.
+              for j in range(chk.page_count):
+                  p1=src[a-1+j].get_pixmap(matrix=fitz.Matrix(0.5,0.5), alpha=False)
+                  p2=chk[j].get_pixmap(matrix=fitz.Matrix(0.5,0.5), alpha=False)
+                  assert (p1.width,p1.height)==(p2.width,p2.height), (name,j+1)
+                  assert p1.samples==p2.samples, (name,j+1,'render mismatch')
+              # Direct page copying should preserve vector drawing structure on sampled pages.
+              if chk.page_count:
+                  for j in sorted(set([0, chk.page_count-1])):
+                      assert len(chk[j].get_drawings()) == len(src[a-1+j].get_drawings()), (name,j+1,'drawing count mismatch')
+              chk.close()
+              data=open(path,'rb').read()
+              report.append({'name':name,'source_pages':[a,b],'pages':b-a+1,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'split_method':'PyMuPDF insert_pdf direct page copy; no page rendering/rasterization'})
+          json.dump({'source_pages':638,'source_render_sha256':os.environ['LOCAL_SOURCE_RENDER_SHA256'],'assets':report},open('/tmp/pdf-manifest.json','w'),ensure_ascii=False,indent=2)
+          print('PDF_SPLIT_AND_VISUAL_PARITY_OK=1')
+          PY
+
+      - name: Repack the verified skeleton with the original-quality PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/apk-stage && mkdir -p /tmp/apk-stage
+          unzip -q /tmp/abuamr-input/AbuAmr-skeleton-v1.0.0.apk -d /tmp/apk-stage
+          rm -rf /tmp/apk-stage/META-INF /tmp/apk-stage/assets/pdf
+          mkdir -p /tmp/apk-stage/assets/pdf
+          cp /tmp/abuamr-pdf/*.pdf /tmp/apk-stage/assets/pdf/
+          cd /tmp/apk-stage
+          rm -f /tmp/AbuAmr-v1.0.0-unsigned.apk
+          zip -q -r -9 /tmp/AbuAmr-v1.0.0-unsigned.apk . -x 'lib/*/*.so'
+          if find lib -type f -name '*.so' -print -quit | grep -q .; then
+            find lib -type f -name '*.so' -print0 | xargs -0 zip -q -0 /tmp/AbuAmr-v1.0.0-unsigned.apk
+          fi
+          cd /tmp
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -P 16 -f -v 4 /tmp/AbuAmr-v1.0.0-unsigned.apk /tmp/AbuAmr-v1.0.0-aligned.apk > /tmp/zipalign-build.txt
+
+      - name: Create or restore the independent Abu Amr release signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/abuamr-key && mkdir -p /tmp/abuamr-key
+          if gh release view "$KEY_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && gh release view "$KEY_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qx 'AbuAmr-signing-backup.zip'; then
+            gh release download "$KEY_TAG" --repo "$GITHUB_REPOSITORY" -p 'AbuAmr-signing-backup.zip' -D /tmp/abuamr-key
+            unzip -q /tmp/abuamr-key/AbuAmr-signing-backup.zip -d /tmp/abuamr-key
+          else
+            PASS="$(python3 - <<'PY'
+          import secrets
+          print(secrets.token_urlsafe(36))
+          PY
+          )"
+            printf '%s' "$PASS" > /tmp/abuamr-key/keystore-password.txt
+            keytool -genkeypair -v \
+              -keystore /tmp/abuamr-key/AbuAmr-v1-release.keystore \
+              -storepass "$PASS" -keypass "$PASS" -alias abuamr-release \
+              -keyalg RSA -keysize 4096 -validity 10000 \
+              -dname 'CN=Abu Amr Quran App,O=QuranKarem,C=EG' >/tmp/keytool-create.txt 2>&1
+            (cd /tmp/abuamr-key && zip -q AbuAmr-signing-backup.zip AbuAmr-v1-release.keystore keystore-password.txt)
+            gh release view "$KEY_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create "$KEY_TAG" --repo "$GITHUB_REPOSITORY" --title 'Abu Amr signing key backup' --notes 'Private signing-key backup for future Abu Amr app updates. Do not publish outside this private repository.'
+            gh release upload "$KEY_TAG" /tmp/abuamr-key/AbuAmr-signing-backup.zip --repo "$GITHUB_REPOSITORY" --clobber
+          fi
+          test -s /tmp/abuamr-key/AbuAmr-v1-release.keystore
+          test -s /tmp/abuamr-key/keystore-password.txt
+
+      - name: Sign final APK with v1 plus v2 plus v3 and verify 16 KB alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          PASS="$(cat /tmp/abuamr-key/keystore-password.txt)"
+          FINAL=/tmp/AbuAmr-v1.0.0.apk
+          rm -f "$FINAL"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks /tmp/abuamr-key/AbuAmr-v1-release.keystore \
+            --ks-key-alias abuamr-release \
+            --ks-pass "pass:$PASS" --key-pass "pass:$PASS" \
+            --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
+            --out "$FINAL" /tmp/AbuAmr-v1.0.0-aligned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$FINAL" | tee /tmp/apksigner-verify.txt
+          grep -q 'Verified using v1 scheme (JAR signing): true' /tmp/apksigner-verify.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/apksigner-verify.txt
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$FINAL" > /tmp/zipalign-verify.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$FINAL" > /tmp/final-badging.txt
+          grep -q "package: name='com.qurani.abuamr' versionCode='1' versionName='1.0.0'" /tmp/final-badging.txt
+
+      - name: Verify the exact seven PDFs embedded in the signed final APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile, fitz, hashlib, json, os, tempfile
+          apk='/tmp/AbuAmr-v1.0.0.apk'
+          src=fitz.open('/tmp/abuamr-source.pdf')
+          expected={
+              'abu_amr_reading.pdf':(1,4),
+              'quran.pdf':(5,608),
+              'quran_index.pdf':(609,610),
+              'dua.pdf':(611,611),
+              'waqf_symbols.pdf':(612,616),
+              'furati_intro.pdf':(617,620),
+              'abu_amr_usul.pdf':(621,638),
+          }
+          report={}
+          with zipfile.ZipFile(apk) as z:
+              pdf_entries=sorted(n for n in z.namelist() if n.startswith('assets/pdf/') and n.endswith('.pdf'))
+              assert pdf_entries==sorted('assets/pdf/'+n for n in expected), pdf_entries
+              for name,(a,b) in expected.items():
+                  arc='assets/pdf/'+name
+                  data=z.read(arc)
+                  fd,path=tempfile.mkstemp(suffix='.pdf'); os.close(fd)
+                  open(path,'wb').write(data)
+                  d=fitz.open(path)
+                  assert d.page_count==b-a+1,(name,d.page_count,b-a+1)
+                  for j in range(d.page_count):
+                      p1=src[a-1+j].get_pixmap(matrix=fitz.Matrix(0.5,0.5),alpha=False)
+                      p2=d[j].get_pixmap(matrix=fitz.Matrix(0.5,0.5),alpha=False)
+                      assert (p1.width,p1.height,p1.samples)==(p2.width,p2.height,p2.samples),(name,j+1)
+                  report[name]={'pages':d.page_count,'sha256':hashlib.sha256(data).hexdigest(),'bytes':len(data),'source_pages':[a,b],'visual_parity':True}
+                  d.close(); os.unlink(path)
+          json.dump(report,open('/tmp/embedded-pdf-report.json','w'),ensure_ascii=False,indent=2)
+          print('FINAL_EMBEDDED_PDFS_OK=1')
+          PY
+          sha256sum /tmp/AbuAmr-v1.0.0.apk | tee /tmp/final-apk-sha256.txt
+          ls -lh /tmp/AbuAmr-v1.0.0.apk
+
+      - name: Build final verification report
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo 'Abu Amr Quran Android v1.0.0 final verification'
+            echo 'package=com.qurani.abuamr'
+            echo 'versionCode=1'
+            echo 'versionName=1.0.0'
+            echo 'source_pages=638'
+            echo 'approved_ranges=1-4,5-608,609-610,611,612-616,617-620,621-638'
+            echo 'source_visual_match_uploaded_file=true'
+            echo 'pdf_split_method=direct PDF page object copy; no rasterization'
+            echo 'signing_v1=true'
+            echo 'signing_v2=true'
+            echo 'zipalign_16kb=true'
+            echo
+            cat /tmp/final-apk-sha256.txt
+            echo
+            cat /tmp/apksigner-verify.txt
+          } > /tmp/AbuAmr-v1.0.0-verification.txt
+
+      - name: Publish the final APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$FINAL_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create "$FINAL_TAG" --repo "$GITHUB_REPOSITORY" --title 'المصحف المعلم - أبو عمر البصري v1.0.0' --notes 'Final signed Android APK. Package com.qurani.abuamr. Includes all 638 approved source pages in seven direct PDF assets.'
+          gh release upload "$FINAL_TAG" \
+            /tmp/AbuAmr-v1.0.0.apk \
+            /tmp/AbuAmr-v1.0.0-verification.txt \
+            /tmp/pdf-manifest.json \
+            /tmp/embedded-pdf-report.json \
+            --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Upload final Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ABUAMR-FINAL-v1.0.0
+          retention-days: 30
+          compression-level: 0
+          path: |
+            /tmp/AbuAmr-v1.0.0.apk
+            /tmp/AbuAmr-v1.0.0-verification.txt
+            /tmp/pdf-manifest.json
+            /tmp/embedded-pdf-report.json
