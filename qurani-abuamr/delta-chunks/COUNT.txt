@@ -1,1 +1,1 @@
-PARTS=25
+PARTS=49
