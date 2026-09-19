@@ -1,0 +1,22 @@
+name: AbuAmr Log Bridge Test
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths: ['.github/workflows/abuamr-log-bridge-test.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dump one 100K tools chunk
+        shell: bash
+        run: |
+          echo '===BEGIN-B64===' 
+          cat qurani-ibnkathir/payload-chunks/tools-00
+          echo
+          echo '===END-B64===' 
