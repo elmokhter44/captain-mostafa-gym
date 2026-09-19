@@ -1,0 +1,24 @@
+name: AbuAmr Skeleton Artifact Bridge
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths: ['.github/workflows/abuamr-skeleton-artifact.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download skeleton
+        run: |
+          gh release download abuamr-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'AbuAmr-skeleton-v1.0.0.apk' -D /tmp
+          sha256sum /tmp/AbuAmr-skeleton-v1.0.0.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ABUAMR-SKELETON-BRIDGE
+          compression-level: 0
+          retention-days: 1
+          path: /tmp/AbuAmr-skeleton-v1.0.0.apk
