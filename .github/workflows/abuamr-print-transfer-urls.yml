@@ -1,0 +1,26 @@
+name: AbuAmr Print Fresh Transfer URLs
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-print-transfer-urls.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  print:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Print fresh signed redirects
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG='abuamr-transfer-v100'
+          for NAME in AbuAmr-skeleton-v1.0.0.apk android-apk-tools-36.zip; do
+            API_URL="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq ".assets[] | select(.name == \"$NAME\") | .apiUrl")"
+            LOC="$(curl -fsSI -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/octet-stream' "$API_URL" | tr -d '\r' | awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/^location:[[:space:]]*/,"");print;exit}')"
+            test -n "$LOC"
+            printf 'TRANSFER_URL_%s=%s\n' "$NAME" "$LOC"
+          done
