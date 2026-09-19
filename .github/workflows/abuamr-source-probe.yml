@@ -1,0 +1,67 @@
+name: AbuAmr Source Probe
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-source-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download candidate public source and verify against uploaded PDF fingerprint
+        shell: bash
+        run: |
+          set -u -o pipefail
+          mkdir -p qurani-abuamr /tmp/abuamr
+          URL='https://bhr-q.com/media/attachments/qran/03/Qra%27a-ALbasari.pdf'
+          EXPECTED_SHA='a95be4076c733428c88d07a87999f8bf8d467122995d13e12e8b92f93832ef57'
+          EXPECTED_SIZE='137991754'
+          set +e
+          curl -fL --retry 4 --retry-delay 3 --connect-timeout 20 --max-time 900 "$URL" -o /tmp/abuamr/source.pdf
+          CURL_STATUS=$?
+          set -e
+          {
+            echo "URL=$URL"
+            echo "CURL_STATUS=$CURL_STATUS"
+            if [ "$CURL_STATUS" -eq 0 ] && [ -s /tmp/abuamr/source.pdf ]; then
+              ACTUAL_SHA="$(sha256sum /tmp/abuamr/source.pdf | awk '{print $1}')"
+              ACTUAL_SIZE="$(stat -c%s /tmp/abuamr/source.pdf)"
+              PAGES="$(pdfinfo /tmp/abuamr/source.pdf 2>/dev/null | awk '/^Pages:/ {print $2; exit}')"
+              echo "EXPECTED_SHA256=$EXPECTED_SHA"
+              echo "ACTUAL_SHA256=$ACTUAL_SHA"
+              echo "EXPECTED_SIZE=$EXPECTED_SIZE"
+              echo "ACTUAL_SIZE=$ACTUAL_SIZE"
+              echo "PAGES=${PAGES:-unknown}"
+              if [ "$ACTUAL_SHA" = "$EXPECTED_SHA" ] && [ "$ACTUAL_SIZE" = "$EXPECTED_SIZE" ] && [ "${PAGES:-}" = '638' ]; then
+                echo 'EXACT_MATCH=1'
+              else
+                echo 'EXACT_MATCH=0'
+              fi
+            else
+              echo 'EXACT_MATCH=0'
+            fi
+          } | tee qurani-abuamr/source-probe-report.txt
+
+      - name: Persist probe report without touching previous app branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-abuamr/source-probe-report.txt
+          git diff --cached --quiet || git commit -m 'ci: record Abu Amr source probe'
+          git push origin HEAD:qurani-abuamr-v100
+
+      - name: Require exact byte-for-byte public mirror
+        shell: bash
+        run: |
+          grep -q '^EXACT_MATCH=1$' qurani-abuamr/source-probe-report.txt
