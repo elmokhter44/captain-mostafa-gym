@@ -1,0 +1,190 @@
+name: AbuAmr Skeleton Release Transfer
+
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-skeleton-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      REALM_DISABLE_ANALYTICS: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+          cache-read-only: false
+
+      - name: Restore verified master-template source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download 35100431525 --repo "$GITHUB_REPOSITORY" -n QURANI-FINAL-v1.0.1-R2-1 -D /tmp/master
+          test -s /tmp/master/final-delivery/Qurani-source-v1.0.1.zip
+          mkdir -p qurani-app
+          unzip -q /tmp/master/final-delivery/Qurani-source-v1.0.1.zip -d qurani-app
+
+      - name: Reproduce Ibn Kathir v1.0.0 master template
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d qurani-ibnkathir/ibnkathir-code.patch.gz.b64 | gzip -dc > /tmp/ibnkathir.patch
+          cd qurani-app
+          patch --batch -p1 < /tmp/ibnkathir.patch
+          patch --batch -p1 < ../qurani-ibnkathir/approved-additions-code.patch
+
+      - name: Apply approved Abu Amr identity, labels and ranges
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, shutil, json
+          title='المصحف المعلم بقراءة الإمام أبي عمر البصري براوييه السوسي وبالحاشية ماخالفة فيه الدوري'
+          reading='قراءة أبي عمر البصري برواية السوسي وبالحاشية ماخالفة فيه الدوري'
+          usul='شرح أصول قراءة الامام أبي عمر البصري برواية السوسي وبالحاشية ماخالفة فيه الدوري'
+
+          p=Path('src/data/sections.ts'); s=p.read_text()
+          s=s.replace("'ibn-kathir-reading'", "'abu-amr-reading'")
+          s=s.replace("'ibn-kathir-usul'", "'abu-amr-usul'")
+          s=s.replace('قراءة عبدالله بن كثير برواية البزي وقنبل', reading)
+          s=s.replace("assetName: 'ibn_kathir_reading.pdf'", "assetName: 'abu_amr_reading.pdf'")
+          s=s.replace('شرح أصول قراءة الامام بن كثير المكي برواية البزي وقنبل', usul)
+          s=s.replace("sourceStartPage: 621, sourceEndPage: 632, assetName: 'ibn_kathir_usul.pdf'", "sourceStartPage: 621, sourceEndPage: 638, assetName: 'abu_amr_usul.pdf'")
+          p.write_text(s)
+
+          p=Path('src/features/home/HomeScreen.tsx'); h=p.read_text()
+          h=re.sub(r'<Text style=\{styles\.tagline\}>.*?</Text>', f'<Text style={{styles.tagline}}>{title}</Text>', h, count=1)
+          h=re.sub(r'<Text style=\{styles\.subtag\}>.*?</Text>', '<Text style={styles.subtag}>السوسي والدوري • يعمل بالكامل دون إنترنت</Text>', h, count=1)
+          p.write_text(h)
+
+          p=Path('android/app/build.gradle'); g=p.read_text().replace('com.qurani.ibnkathir','com.qurani.abuamr')
+          g=re.sub(r'versionCode\s+\d+', 'versionCode 1', g)
+          g=re.sub(r'versionName\s+"[^"]+"', 'versionName "1.0.0"', g)
+          p.write_text(g)
+
+          p=Path('src/app/constants.ts'); c=p.read_text().replace('com.qurani.ibnkathir','com.qurani.abuamr')
+          c=re.sub(r"VERSION_NAME\s*=\s*'[^']+'", "VERSION_NAME = '1.0.0'", c)
+          c=re.sub(r'VERSION_CODE\s*=\s*\d+', 'VERSION_CODE = 1', c)
+          p.write_text(c)
+
+          for f in Path('android/app/src/main/java').rglob('*.kt'):
+              f.write_text(f.read_text().replace('com.qurani.ibnkathir','com.qurani.abuamr'))
+          old=Path('android/app/src/main/java/com/qurani/ibnkathir'); new=Path('android/app/src/main/java/com/qurani/abuamr')
+          if old.exists():
+              new.parent.mkdir(parents=True, exist_ok=True)
+              if new.exists(): shutil.rmtree(new)
+              shutil.move(str(old), str(new))
+
+          p=Path('app.json'); d=json.loads(p.read_text()); d['displayName']=title; p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          p=Path('android/app/src/main/res/values/strings.xml'); x=p.read_text(); x=re.sub(r'(<string name="app_name">).*?(</string>)', r'\1'+title+r'\2', x, count=1, flags=re.S); p.write_text(x)
+          PY
+
+          cat > __tests__/abuamr-final-contract.node.test.ts <<'EOF'
+          import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import {readFileSync} from 'node:fs';
+          import {SECTIONS} from '../src/data/sections.ts';
+          import {mushafToSourcePage, sourceToMushafPage} from '../src/utils/pageMapping.ts';
+          const title='المصحف المعلم بقراءة الإمام أبي عمر البصري براوييه السوسي وبالحاشية ماخالفة فيه الدوري';
+          const expected=[
+            ['quran','المصحف','',5,608,'quran.pdf',true],
+            ['abu-amr-reading','قراءة أبي عمر البصري برواية السوسي وبالحاشية ماخالفة فيه الدوري','',1,4,'abu_amr_reading.pdf',undefined],
+            ['index','الفهرس','',609,610,'quran_index.pdf',undefined],
+            ['dua','الدعاء','',611,611,'dua.pdf',undefined],
+            ['waqf-symbols','علامات الوقف ومصطلحات الضبط ودلالات الرمز والترميز اللوني للقراءات العشر في مصاحف السلسلة الفراتية','',612,616,'waqf_symbols.pdf',undefined],
+            ['furati-intro','من بين يدي السلسلة الفراتية','',617,620,'furati_intro.pdf',undefined],
+            ['abu-amr-usul','شرح أصول قراءة الامام أبي عمر البصري برواية السوسي وبالحاشية ماخالفة فيه الدوري','',621,638,'abu_amr_usul.pdf',undefined],
+          ] as const;
+          test('approved contract',()=>{
+            assert.deepEqual(SECTIONS.map(s=>[s.id,s.title,s.subtitle,s.sourceStartPage,s.sourceEndPage,s.assetName,s.featured]), expected);
+            const pages=[...SECTIONS].sort((a,b)=>a.sourceStartPage-b.sourceStartPage).flatMap(s=>Array.from({length:s.sourceEndPage-s.sourceStartPage+1},(_,i)=>s.sourceStartPage+i));
+            assert.equal(pages.length,638); assert.deepEqual(pages,Array.from({length:638},(_,i)=>i+1));
+            assert.equal(mushafToSourcePage(1),5); assert.equal(mushafToSourcePage(604),608); assert.equal(sourceToMushafPage(5),1); assert.equal(sourceToMushafPage(608),604);
+            assert.ok(readFileSync('src/features/home/HomeScreen.tsx','utf8').includes(title));
+          });
+          EOF
+          npm install --no-audit --no-fund
+          node --experimental-strip-types --test __tests__/abuamr-final-contract.node.test.ts | tee /tmp/abuamr-contract.txt
+          grep -q '# fail 0' /tmp/abuamr-contract.txt
+
+      - name: Create build-only PDF placeholders
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet 'PyMuPDF==1.26.4'
+          rm -rf qurani-app/android/app/src/main/assets/pdf
+          mkdir -p qurani-app/android/app/src/main/assets/pdf
+          python3 - <<'PY'
+          import fitz
+          from pathlib import Path
+          out=Path('qurani-app/android/app/src/main/assets/pdf')
+          specs={'quran.pdf':604,'abu_amr_reading.pdf':4,'quran_index.pdf':2,'dua.pdf':1,'waqf_symbols.pdf':5,'furati_intro.pdf':4,'abu_amr_usul.pdf':18}
+          assert sum(specs.values())==638
+          for name,count in specs.items():
+              d=fitz.open(); [d.new_page(width=612,height=612) for _ in range(count)]; d.save(out/name); d.close()
+          PY
+
+      - name: Install Android SDK 36, NDK and CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
+
+      - name: Build verified skeleton
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          keytool -genkeypair -v -keystore android/app/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Temporary Skeleton,O=QuranKarem,C=EG' >/dev/null 2>&1
+          cd android
+          gradle wrapper --gradle-version 9.3.1
+          chmod +x gradlew
+          rm -rf app/.cxx .cxx
+          ./gradlew assembleRelease --stacktrace
+          cd ..
+          APK='android/app/build/outputs/apk/release/app-release.apk'
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/abuamr-badging.txt
+          grep -q "package: name='com.qurani.abuamr' versionCode='1' versionName='1.0.0'" /tmp/abuamr-badging.txt
+          cp "$APK" AbuAmr-skeleton-v1.0.0.apk
+
+      - name: Package Android finalization tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          rm -rf /tmp/android-apk-tools && mkdir -p /tmp/android-apk-tools/lib
+          cp "$BT/apksigner" "$BT/zipalign" "$BT/aapt" "$BT/aapt2" /tmp/android-apk-tools/
+          cp "$BT/lib/apksigner.jar" /tmp/android-apk-tools/lib/
+          cd /tmp && zip -qr android-apk-tools-36.zip android-apk-tools
+
+      - name: Publish transfer release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG='abuamr-transfer-v100'
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title 'Abu Amr v1.0.0 transfer' --notes 'Temporary build transport assets for local finalization.'
+          gh release upload "$TAG" qurani-app/AbuAmr-skeleton-v1.0.0.apk /tmp/android-apk-tools-36.zip --repo "$GITHUB_REPOSITORY" --clobber
