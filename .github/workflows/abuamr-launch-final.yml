@@ -1,0 +1,22 @@
+name: AbuAmr Launch Final
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths:
+      - '.github/workflows/abuamr-launch-final.yml'
+  workflow_dispatch:
+permissions:
+  actions: write
+  contents: read
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Launch final signed APK workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run abuamr-final-release.yml --repo "$GITHUB_REPOSITORY" --ref qurani-abuamr-v100
+          echo FINAL_WORKFLOW_DISPATCHED=1
