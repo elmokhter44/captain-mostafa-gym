@@ -29,18 +29,20 @@ jobs:
             -D /tmp/abuamr-transfer
           echo '4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181  /tmp/abuamr-transfer/AbuAmr-skeleton-v1.0.0.apk' | sha256sum -c -
           echo '009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550  /tmp/abuamr-transfer/android-apk-tools-36.zip' | sha256sum -c -
-      - name: Upload to file.io
+      - name: Upload to tmpfiles.org
         shell: bash
         run: |
           set -euo pipefail
-          APK_JSON="$(curl -fsS --retry 5 -F 'file=@/tmp/abuamr-transfer/AbuAmr-skeleton-v1.0.0.apk' 'https://file.io/?expires=1w')"
-          TOOLS_JSON="$(curl -fsS --retry 5 -F 'file=@/tmp/abuamr-transfer/android-apk-tools-36.zip' 'https://file.io/?expires=1w')"
-          printf '%s\n' "$APK_JSON" > /tmp/apk.json
-          printf '%s\n' "$TOOLS_JSON" > /tmp/tools.json
-          APK_URL="$(printf '%s' "$APK_JSON" | jq -r '.link // empty')"
-          TOOLS_URL="$(printf '%s' "$TOOLS_JSON" | jq -r '.link // empty')"
-          test -n "$APK_URL"
-          test -n "$TOOLS_URL"
+          APK_JSON="$(curl -fsS --retry 5 -F 'file=@/tmp/abuamr-transfer/AbuAmr-skeleton-v1.0.0.apk' https://tmpfiles.org/api/v1/upload)"
+          TOOLS_JSON="$(curl -fsS --retry 5 -F 'file=@/tmp/abuamr-transfer/android-apk-tools-36.zip' https://tmpfiles.org/api/v1/upload)"
+          echo "APK_RESPONSE=$APK_JSON"
+          echo "TOOLS_RESPONSE=$TOOLS_JSON"
+          APK_PAGE="$(printf '%s' "$APK_JSON" | jq -r '.data.url // empty')"
+          TOOLS_PAGE="$(printf '%s' "$TOOLS_JSON" | jq -r '.data.url // empty')"
+          test -n "$APK_PAGE"
+          test -n "$TOOLS_PAGE"
+          APK_URL="${APK_PAGE/https:\/\/tmpfiles.org\//https:\/\/tmpfiles.org\/dl\/}"
+          TOOLS_URL="${TOOLS_PAGE/https:\/\/tmpfiles.org\//https:\/\/tmpfiles.org\/dl\/}"
           {
             echo "APK_URL=$APK_URL"
             echo "TOOLS_URL=$TOOLS_URL"
