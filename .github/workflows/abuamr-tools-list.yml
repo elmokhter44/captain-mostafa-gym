@@ -1,0 +1,13 @@
+name: AbuAmr Tools List
+on:
+  push:
+    branches: [qurani-abuamr-v100]
+    paths: ['.github/workflows/abuamr-tools-list.yml']
+permissions:
+  contents: read
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: unzip -l qurani-abuamr/local-binaries/android-sign-tools-36.zip
