@@ -1,0 +1,21 @@
+{
+  "base_apk_sha256": "2a6ce96c24a49f2865784817739d581589fb78ee6679339acd0e6d96cd112e69",
+  "skeleton_apk_sha256": "4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181",
+  "overlay_sha256": "a8a76b854e417aa20232c723703a312028c0d10fdb5c75e0b0a310bc0920f55b",
+  "overlay_bytes": 2800954,
+  "tools_sha256": "74a57d5b823988109d056df26b0ba23ce41c5e90c1b6538b1519a6afd55ed946",
+  "changed": [
+    "assets/dexopt/baseline.prof",
+    "classes.dex",
+    "assets/index.android.bundle",
+    "AndroidManifest.xml",
+    "resources.arsc"
+  ],
+  "deleted": [],
+  "native_libs_identical": true,
+  "reconstruction_non_pdf_byte_exact": true,
+  "manifest_sha256": "e7ed185fa40ccbe870b4e14be0cc678857e2c2fb1b78e15129ca9082d64d90e9",
+  "resources_arsc_sha256": "e12f0063051828733ea593ff9d66c5ce8d7726d9ea5188e5c7662fede24b5f70",
+  "classes_dex_sha256": "0728ca800be7dfca886f05a986fa8eb6d673e03bb47c81010a5e7a5e3a32a11e",
+  "bundle_sha256": "14f3eb06d25894e001da298511cd194a8a9aa4c1c8b39995f343a8c429ccc0a9"
+}
