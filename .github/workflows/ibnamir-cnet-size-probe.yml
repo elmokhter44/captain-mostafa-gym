@@ -1,0 +1,40 @@
+name: IbnAmir CNet Size Probe
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths: ['.github/workflows/ibnamir-cnet-size-probe.yml']
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload size probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qurani-ibnamir /tmp/probes
+          OUT=qurani-ibnamir/cnet-size-probe.txt
+          : > "$OUT"
+          for kb in 64 128 256 512 768 1024 1536 2048; do
+            python3 - "$kb" > "/tmp/probes/$kb.txt" <<'PY'
+import sys
+n=int(sys.argv[1])*1024
+sys.stdout.write('A'*n)
+PY
+            u="$(curl -fsS --retry 3 --retry-delay 2 --data-binary @"/tmp/probes/$kb.txt" https://paste.c-net.org/)"
+            echo "KB_${kb}=$u" >> "$OUT"
+          done
+          cat "$OUT"
+      - name: Persist
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnamir/cnet-size-probe.txt
+          git commit -m 'ci: record cnet size probe URLs'
+          git pull --rebase origin qurani-ibnamir-v100
+          git push origin HEAD:qurani-ibnamir-v100
