@@ -19,19 +19,20 @@ jobs:
           python-version: '3.12'
       - name: Install PDF verifier
         run: python -m pip install --quiet 'PyMuPDF==1.26.7'
-      - name: Download candidate and prove rendered equivalence to uploaded 633-page source
+      - name: Download Hisham candidate and prove rendered equivalence to uploaded 633-page source
         shell: bash
         env:
           EXPECTED_RENDER_SHA256: 8bece7bd74a036262d47c7495e0de6ff8e42a448782e60bd3b5f29fa436b8faa
         run: |
           set -euo pipefail
-          url="https://bhr-q.com/media/attachments/qran/04/Qra%27ah-ebn-Ammer.pdf"
+          url="https://bhr-q.com/media/attachments/qran/04/Hisham.pdf"
           curl -L --fail --retry 4 --retry-delay 2 "$url" -o /tmp/ibnamir-source.pdf
           sha256sum /tmp/ibnamir-source.pdf
           python - <<'PY'
           import fitz, hashlib, os
           path='/tmp/ibnamir-source.pdf'
           doc=fitz.open(path)
+          print('SOURCE_PAGES=',doc.page_count)
           assert doc.page_count == 633, doc.page_count
           h=hashlib.sha256()
           for i,p in enumerate(doc):
@@ -42,7 +43,6 @@ jobs:
               h.update(pix.samples)
           actual=h.hexdigest()
           expected=os.environ['EXPECTED_RENDER_SHA256']
-          print('SOURCE_PAGES=',doc.page_count)
           print('SOURCE_RENDER_SHA256=',actual)
           print('EXPECTED_RENDER_SHA256=',expected)
           assert actual == expected, (actual,expected)
