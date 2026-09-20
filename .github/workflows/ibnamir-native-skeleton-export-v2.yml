@@ -88,6 +88,7 @@ jobs:
           wf=yaml.safe_load(Path('.github/workflows/ibnamir-native-skeleton-export.yml').read_text())
           steps=wf['jobs']['build']['steps']
           s=next(x for x in steps if x.get('name','').startswith('Build compact unsigned release shell'))['run']
+          s=s.replace('APK=app/build/outputs/apk/release/app-release-unsigned.apk','APK=/tmp/ibnamir-native/app/build/outputs/apk/release/app-release-unsigned.apk')
           Path('/tmp/build.sh').write_text(s)
           PY
           bash /tmp/build.sh
