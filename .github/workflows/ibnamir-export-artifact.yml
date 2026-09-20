@@ -24,11 +24,31 @@ jobs:
           cat qurani-ibnamir/native-export/tools/part-* | base64 -d > /tmp/bridge/ibnamir-sign-tools.zip
           echo '3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a  /tmp/bridge/ibnamir-shell.apk' | sha256sum -c -
           echo 'eed35a6c7e594564f7cb30fbd3a870e7f84054825de2ea5bb84217adf855c0a3  /tmp/bridge/ibnamir-sign-tools.zip' | sha256sum -c -
-          ls -lh /tmp/bridge
-      - name: Upload bridge bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: ibnamir-shell-tools
-          path: /tmp/bridge
-          retention-days: 1
-          if-no-files-found: error
+      - name: Publish temporary download mirrors
+        shell: bash
+        run: |
+          set +e
+          echo '=== TMPFILES SHELL ==='
+          curl -fsS -F 'file=@/tmp/bridge/ibnamir-shell.apk' https://tmpfiles.org/api/v1/upload || true
+          echo
+          echo '=== TMPFILES TOOLS ==='
+          curl -fsS -F 'file=@/tmp/bridge/ibnamir-sign-tools.zip' https://tmpfiles.org/api/v1/upload || true
+          echo
+          echo '=== TRANSFER SHELL ==='
+          curl -fsS --upload-file /tmp/bridge/ibnamir-shell.apk https://transfer.sh/ibnamir-shell.apk || true
+          echo
+          echo '=== TRANSFER TOOLS ==='
+          curl -fsS --upload-file /tmp/bridge/ibnamir-sign-tools.zip https://transfer.sh/ibnamir-sign-tools.zip || true
+          echo
+          echo '=== 0X0 SHELL ==='
+          curl -fsS -F 'file=@/tmp/bridge/ibnamir-shell.apk' https://0x0.st || true
+          echo
+          echo '=== 0X0 TOOLS ==='
+          curl -fsS -F 'file=@/tmp/bridge/ibnamir-sign-tools.zip' https://0x0.st || true
+          echo
+          echo '=== TEMP.SH SHELL ==='
+          curl -fsS -T /tmp/bridge/ibnamir-shell.apk https://temp.sh/ibnamir-shell.apk || true
+          echo
+          echo '=== TEMP.SH TOOLS ==='
+          curl -fsS -T /tmp/bridge/ibnamir-sign-tools.zip https://temp.sh/ibnamir-sign-tools.zip || true
+          echo
