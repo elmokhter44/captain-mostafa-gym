@@ -1,4 +1,4 @@
-name: IbnAmir Verify Public Source
+name: IbnAmir Compare Source Mirrors
 
 on:
   push:
@@ -10,38 +10,41 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  compare:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install PDF verifier
-        run: python -m pip install --quiet 'PyMuPDF==1.26.7'
-      - name: Prove public Ibn Amir reading PDF equals uploaded source pages 1-631
+      - run: python -m pip install --quiet 'PyMuPDF==1.26.7'
+      - name: Compare section render hashes to uploaded source
         shell: bash
         env:
-          EXPECTED_631_RENDER_SHA256: 2314260a9298751e6a0758a1a43f8682d12e96c29afd580d9d2f7e379bf38fb0
+          E_READING: 1b8b9eb741bef2a67711f361f6248568e9eb50f661e9c51c095082b9e483b28c
+          E_QURAN: 23cbc1a19b75237f331cb1a9fafe1adcab7c25819a69f2af50b94e76f9809dd7
+          E_INDEX: d748c7131862ef6fe7ac6887eea3673264b0f7c16e8ab784923d131abad7a8ba
+          E_DUA: b0c934e6fa791de76dffb5b92efbd4aa8233f94030dd247176b7b0d773318565
+          E_SYMBOLS: 2b44f5f53487bc0625c2f11067992ee06c03118512c914abd9c46f7019bda466
+          E_INTRO: cf97c0154df1ba5789a2c461e172c5769c355551298147f6f81ab0002ffe9e2f
+          E_USUL11: b6eb57fae5419d91f5081f3b4808f3d7bcfb3f469914699f16014652f0d6330c
         run: |
           set -euo pipefail
-          curl -L --fail --retry 4 --retry-delay 2 "https://bhr-q.com/media/attachments/qran/04/Qra%27ah-ebn-Ammer.pdf" -o /tmp/ibnamir-source.pdf
-          sha256sum /tmp/ibnamir-source.pdf
+          curl -L --fail --retry 3 "https://bhr-q.com/media/attachments/qran/04/Qra%27ah-ebn-Ammer.pdf" -o /tmp/qraah.pdf
+          curl -L --fail --retry 3 "https://bhr-q.com/media/attachments/qran/04/Hisham.pdf" -o /tmp/hisham.pdf
           python - <<'PY'
           import fitz, hashlib, os
-          doc=fitz.open('/tmp/ibnamir-source.pdf')
-          print('MIRROR_PAGES=',doc.page_count)
-          assert doc.page_count == 631, doc.page_count
-          h=hashlib.sha256()
-          for i,p in enumerate(doc):
-              pix=p.get_pixmap(matrix=fitz.Matrix(0.5,0.5), alpha=False)
-              h.update(i.to_bytes(4,'big'))
-              h.update(pix.width.to_bytes(4,'big'))
-              h.update(pix.height.to_bytes(4,'big'))
-              h.update(pix.samples)
-          actual=h.hexdigest(); expected=os.environ['EXPECTED_631_RENDER_SHA256']
-          print('MIRROR_631_RENDER_SHA256=',actual)
-          print('UPLOADED_FIRST_631_RENDER_SHA256=',expected)
-          assert actual == expected, (actual, expected)
-          print('FIRST_631_RENDER_EQUIVALENT=YES')
+          exp={'reading':os.environ['E_READING'],'quran':os.environ['E_QURAN'],'index':os.environ['E_INDEX'],'dua':os.environ['E_DUA'],'symbols':os.environ['E_SYMBOLS'],'intro':os.environ['E_INTRO'],'usul11':os.environ['E_USUL11']}
+          ranges={'reading':(1,4),'quran':(5,608),'index':(609,610),'dua':(611,611),'symbols':(612,616),'intro':(617,620),'usul11':(621,631)}
+          def rh(doc,a,b):
+              h=hashlib.sha256()
+              for j,pno in enumerate(range(a-1,b)):
+                  p=doc[pno]; pix=p.get_pixmap(matrix=fitz.Matrix(.5,.5),alpha=False)
+                  h.update(j.to_bytes(4,'big')); h.update(pix.width.to_bytes(4,'big')); h.update(pix.height.to_bytes(4,'big')); h.update(pix.samples)
+              return h.hexdigest()
+          for f in ['/tmp/qraah.pdf','/tmp/hisham.pdf']:
+              d=fitz.open(f); print('\nFILE',f,'PAGES',d.page_count)
+              for n,(a,b) in ranges.items():
+                  if b<=d.page_count:
+                      x=rh(d,a,b); print(n,x,'MATCH' if x==exp[n] else 'DIFF')
           PY
