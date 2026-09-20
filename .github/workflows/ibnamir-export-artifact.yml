@@ -1,4 +1,4 @@
-name: IbnAmir Filebin Bridge
+name: IbnAmir Filebin Zip Bridge
 
 on:
   push:
@@ -15,19 +15,21 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct shell
+      - name: Reconstruct and zip shell
         shell: bash
         run: |
           set -euo pipefail
           cat qurani-ibnamir/native-export/apk/part-* | base64 -d > /tmp/ibnamir-shell.apk
           echo '3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a  /tmp/ibnamir-shell.apk' | sha256sum -c -
-      - name: Upload to Filebin
+          cd /tmp && zip -q ibnamir-shell.zip ibnamir-shell.apk
+          sha256sum /tmp/ibnamir-shell.zip
+      - name: Upload zip to Filebin
         shell: bash
         run: |
           set -euo pipefail
-          BIN="ibnamir-$(date +%s)-${GITHUB_RUN_ID}"
-          URL="https://filebin.net/${BIN}/ibnamir-shell.apk"
+          BIN="ibnamir-zip-$(date +%s)-${GITHUB_RUN_ID}"
+          URL="https://filebin.net/${BIN}/ibnamir-shell.zip"
           echo "FILEBIN_URL=${URL}"
-          curl --fail --silent --show-error -X POST --data-binary @/tmp/ibnamir-shell.apk -H 'Content-Type: application/vnd.android.package-archive' "$URL"
+          curl --fail --silent --show-error -X POST --data-binary @/tmp/ibnamir-shell.zip -H 'Content-Type: application/octet-stream' "$URL"
           echo
-          curl --fail --silent --show-error -I "$URL" | head -20
+          curl --fail --silent --show-error "https://filebin.net/sha256/${BIN}"
