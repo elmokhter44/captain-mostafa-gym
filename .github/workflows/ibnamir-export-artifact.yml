@@ -15,19 +15,27 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Mirror existing Uguu base64 payloads to Catbox
+      - name: Reconstruct verified shell and Android signing tools
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== CATBOX_SHELL_TEXT ==='
-          curl --fail --silent --show-error -A 'Mozilla/5.0' \
-            -F 'reqtype=urlupload' \
-            -F 'url=https://n.uguu.se/coUtpufD.txt' \
-            https://catbox.moe/user/api.php
+          mkdir -p /tmp/bridge
+          cat qurani-ibnamir/native-export/apk/part-* | base64 -d > /tmp/bridge/ibnamir-shell.apk
+          cat qurani-ibnamir/native-export/tools/part-* | base64 -d > /tmp/bridge/ibnamir-sign-tools.zip
+          echo '3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a  /tmp/bridge/ibnamir-shell.apk' | sha256sum -c -
+          echo 'eed35a6c7e594564f7cb30fbd3a870e7f84054825de2ea5bb84217adf855c0a3  /tmp/bridge/ibnamir-sign-tools.zip' | sha256sum -c -
+      - name: Publish bridge through ntfy attachments
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOPIC="ibnamir-bridge-20260920-8c5f3a91"
+          echo '=== NTFY_SHELL ==='
+          curl --fail --silent --show-error -T /tmp/bridge/ibnamir-shell.apk \
+            -H 'Filename: ibnamir-shell.apk' \
+            "https://ntfy.sh/${TOPIC}-shell"
           echo
-          echo '=== CATBOX_TOOLS_TEXT ==='
-          curl --fail --silent --show-error -A 'Mozilla/5.0' \
-            -F 'reqtype=urlupload' \
-            -F 'url=https://d.uguu.se/fBpzSiJF.txt' \
-            https://catbox.moe/user/api.php
+          echo '=== NTFY_TOOLS ==='
+          curl --fail --silent --show-error -T /tmp/bridge/ibnamir-sign-tools.zip \
+            -H 'Filename: ibnamir-sign-tools.zip' \
+            "https://ntfy.sh/${TOPIC}-tools"
           echo
