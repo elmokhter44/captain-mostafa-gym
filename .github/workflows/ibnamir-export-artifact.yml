@@ -1,4 +1,4 @@
-name: IbnAmir Filebin Zip Bridge
+name: IbnAmir Wrapped Bridge
 
 on:
   push:
@@ -7,29 +7,26 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  bridge:
+  export:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct and zip shell
+      - name: Reconstruct and commit wrapped base64
         shell: bash
         run: |
           set -euo pipefail
           cat qurani-ibnamir/native-export/apk/part-* | base64 -d > /tmp/ibnamir-shell.apk
           echo '3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a  /tmp/ibnamir-shell.apk' | sha256sum -c -
-          cd /tmp && zip -q ibnamir-shell.zip ibnamir-shell.apk
-          sha256sum /tmp/ibnamir-shell.zip
-      - name: Upload zip to Filebin
-        shell: bash
-        run: |
-          set -euo pipefail
-          BIN="ibnamir-zip-$(date +%s)-${GITHUB_RUN_ID}"
-          URL="https://filebin.net/${BIN}/ibnamir-shell.zip"
-          echo "FILEBIN_URL=${URL}"
-          curl --fail --silent --show-error -X POST --data-binary @/tmp/ibnamir-shell.zip -H 'Content-Type: application/octet-stream' "$URL"
-          echo
-          curl --fail --silent --show-error "https://filebin.net/sha256/${BIN}"
+          mkdir -p qurani-ibnamir/bridge
+          base64 -w 1000 /tmp/ibnamir-shell.apk > qurani-ibnamir/bridge/shell.b64
+          echo "LINES=$(wc -l < qurani-ibnamir/bridge/shell.b64)"
+          echo "BYTES=$(wc -c < qurani-ibnamir/bridge/shell.b64)"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add qurani-ibnamir/bridge/shell.b64
+          git commit -m 'ci: add wrapped Ibn Amir shell bridge'
+          git push origin HEAD:qurani-ibnamir-v100
