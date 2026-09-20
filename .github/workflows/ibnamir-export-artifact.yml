@@ -1,4 +1,4 @@
-name: IbnAmir Public Bridge
+name: IbnAmir Filebin Bridge
 
 on:
   push:
@@ -21,22 +21,13 @@ jobs:
           set -euo pipefail
           cat qurani-ibnamir/native-export/apk/part-* | base64 -d > /tmp/ibnamir-shell.apk
           echo '3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a  /tmp/ibnamir-shell.apk' | sha256sum -c -
-      - name: Try public mirrors
+      - name: Upload to Filebin
         shell: bash
         run: |
-          set +e
-          echo '=== CATBOX ==='
-          curl -L --connect-timeout 10 --max-time 60 -fsS -F 'reqtype=fileupload' -F 'fileToUpload=@/tmp/ibnamir-shell.apk' https://catbox.moe/user/api.php || true
+          set -euo pipefail
+          BIN="ibnamir-$(date +%s)-${GITHUB_RUN_ID}"
+          URL="https://filebin.net/${BIN}/ibnamir-shell.apk"
+          echo "FILEBIN_URL=${URL}"
+          curl --fail --silent --show-error -X POST --data-binary @/tmp/ibnamir-shell.apk -H 'Content-Type: application/vnd.android.package-archive' "$URL"
           echo
-          echo '=== LITTERBOX ==='
-          curl -L --connect-timeout 10 --max-time 60 -fsS -F 'reqtype=fileupload' -F 'time=1h' -F 'fileToUpload=@/tmp/ibnamir-shell.apk' https://litterbox.catbox.moe/resources/internals/api.php || true
-          echo
-          echo '=== UGUU ==='
-          curl -L --connect-timeout 10 --max-time 60 -fsS -F 'files[]=@/tmp/ibnamir-shell.apk' https://uguu.se/upload.php || true
-          echo
-          echo '=== PIXELDRAIN ==='
-          curl -L --connect-timeout 10 --max-time 60 -fsS -T /tmp/ibnamir-shell.apk https://pixeldrain.com/api/file/ || true
-          echo
-          echo '=== BASHUPLOAD ==='
-          curl -L --connect-timeout 10 --max-time 60 -fsS -T /tmp/ibnamir-shell.apk https://bashupload.com/ibnamir-shell.apk || true
-          echo
+          curl --fail --silent --show-error -I "$URL" | head -20
