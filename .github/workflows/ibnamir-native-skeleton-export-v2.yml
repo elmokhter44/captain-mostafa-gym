@@ -19,7 +19,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Generate compact app shell from the already-reviewed exporter
+      - name: Generate compact app shell from the reviewed exporter
         shell: bash
         run: |
           set -euo pipefail
@@ -34,24 +34,44 @@ jobs:
           a="const {SURAHS}=await import('./src/data/surahs.ts');"
           b="const {VERSE_INDEX}=await import('./src/data/verses.generated.ts');"
           assert a in s and b in s
-          s=s.replace(a,"const sm=await import('./src/data/surahs.ts');\nconst SURAHS=Object.values(sm).find(v=>Array.isArray(v)&&v.length===114);")
-          s=s.replace(b,"const vm=await import('./src/data/verses.generated.ts');\nconst VERSE_INDEX=Object.values(vm).find(v=>Array.isArray(v)&&v.length===6236);")
+          s=s.replace(a,"const sm=await import('./src/data/surahs.ts');\nconst sv=[...Object.values(sm),...Object.values(sm.default||{})];\nconst SURAHS=sv.find(v=>Array.isArray(v)&&v.length===114);")
+          s=s.replace(b,"const vm=await import('./src/data/verses.generated.ts');\nconst vv=[...Object.values(vm),...Object.values(vm.default||{})];\nconst VERSE_INDEX=vv.find(v=>Array.isArray(v)&&v.length===6236);")
           Path('/tmp/generate.sh').write_text(s)
           PY
           bash /tmp/generate.sh
-      - name: GREEN contract
+      - name: Verify exact approved identity sections mapping and search corpus
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import yaml
-          wf=yaml.safe_load(Path('.github/workflows/ibnamir-native-skeleton-export.yml').read_text())
-          steps=wf['jobs']['build']['steps']
-          s=next(x for x in steps if x.get('name','').startswith('GREEN -'))['run']
-          Path('/tmp/green.sh').write_text(s)
+          import json,re
+          root=Path('/tmp/ibnamir-native')
+          main=(root/'app/src/main/java/com/qurani/ibnamr/MainActivity.java').read_text()
+          sec=(root/'app/src/main/java/com/qurani/ibnamr/Section.java').read_text()
+          grad=(root/'app/build.gradle').read_text()
+          man=(root/'app/src/main/AndroidManifest.xml').read_text()
+          exact='المصحف المعلم بقراءة الإمام بن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه بن ذكوان'
+          assert exact in main and exact in man
+          assert "applicationId 'com.qurani.ibnamr'" in grad and "namespace 'com.qurani.ibnamr'" in grad
+          assert 'versionCode 1' in grad and 'versionName "1.0.0"' in grad
+          expected=[
+          ('quran.pdf',5,608,'المصحف'),
+          ('ibn_amir_reading.pdf',1,4,'قراءة  بن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه بن ذكوان'),
+          ('quran_index.pdf',609,610,'الفهرس'),('dua.pdf',611,611,'الدعاء'),
+          ('waqf_symbols.pdf',612,616,'علامات الوقف ومصطلحات الضبط ودلالات الرمز والترميز اللوني للقراءات العشر في مصاحف السلسلة الفراتية'),
+          ('furati_intro.pdf',617,620,'من بين يدي السلسلة الفراتية'),
+          ('ibn_amir_usul.pdf',621,633,'شرح أصول قراءة الامام بن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه بن ذكوان')]
+          for f,a,b,t in expected:
+              assert f in sec and f'\"{f}\",{a},{b}' in sec and t in sec,(f,a,b)
+          sur=json.loads((root/'app/src/main/assets/surahs.json').read_text())
+          ver=json.loads((root/'app/src/main/assets/verses.json').read_text())
+          assert len(sur)==114 and len(ver)==6236,(len(sur),len(ver))
+          pages=[p for _,a,b,_ in expected for p in range(a,b+1)]
+          assert sorted(pages)==list(range(1,634)) and len(pages)==633
+          assert 1+4==5 and 604+4==608
+          print('IBNAMIR_GREEN_CONTRACT_OK=1')
           PY
-          bash /tmp/green.sh
       - name: Build and export compact shell plus local signing tools
         shell: bash
         run: |
