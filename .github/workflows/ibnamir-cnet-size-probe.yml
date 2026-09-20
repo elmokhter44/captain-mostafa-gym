@@ -19,11 +19,7 @@ jobs:
           OUT=qurani-ibnamir/cnet-size-probe.txt
           : > "$OUT"
           for kb in 64 128 256 512 768 1024 1536 2048; do
-            python3 - "$kb" > "/tmp/probes/$kb.txt" <<'PY'
-import sys
-n=int(sys.argv[1])*1024
-sys.stdout.write('A'*n)
-PY
+            head -c "$((kb*1024))" /dev/zero | tr '\0' 'A' > "/tmp/probes/$kb.txt"
             u="$(curl -fsS --retry 3 --retry-delay 2 --data-binary @"/tmp/probes/$kb.txt" https://paste.c-net.org/)"
             echo "KB_${kb}=$u" >> "$OUT"
           done
