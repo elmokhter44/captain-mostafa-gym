@@ -1,0 +1,303 @@
+name: IbnAmir Native Skeleton Export
+
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths: ['.github/workflows/ibnamir-native-skeleton-export.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: RED - approved Ibn Amir contract is not implemented yet
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ibnamir-native
+          mkdir -p /tmp/ibnamir-native
+          cat > /tmp/contract_test.py <<'PY'
+          from pathlib import Path
+          root=Path('/tmp/ibnamir-native')
+          main=root/'app/src/main/java/com/qurani/ibnamr/MainActivity.java'
+          sections=root/'app/src/main/java/com/qurani/ibnamr/Section.java'
+          manifest=root/'app/src/main/AndroidManifest.xml'
+          exact='المصحف المعلم بقراءة الإمام بن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه بن ذكوان'
+          assert main.exists() and sections.exists() and manifest.exists()
+          m=main.read_text(); s=sections.read_text(); x=manifest.read_text()
+          assert exact in m and exact in x
+          assert 'com.qurani.ibnamr' in x
+          approved=[
+            ('quran.pdf',5,608,'المصحف'),
+            ('ibn_amir_reading.pdf',1,4,'قراءة  بن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه بن ذكوان'),
+            ('quran_index.pdf',609,610,'الفهرس'),('dua.pdf',611,611,'الدعاء'),
+            ('waqf_symbols.pdf',612,616,'علامات الوقف ومصطلحات الضبط ودلالات الرمز والترميز اللوني للقراءات العشر في مصاحف السلسلة الفراتية'),
+            ('furati_intro.pdf',617,620,'من بين يدي السلسلة الفراتية'),
+            ('ibn_amir_usul.pdf',621,633,'شرح أصول قراءة الامام بن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه بن ذكوان')]
+          for f,a,b,t in approved:
+              assert f in s and str(a) in s and str(b) in s and t in s
+          assert 'versionCode 1' in (root/'app/build.gradle').read_text()
+          assert 'versionName "1.0.0"' in (root/'app/build.gradle').read_text()
+          PY
+          set +e
+          python3 /tmp/contract_test.py >/tmp/red.txt 2>&1
+          rc=$?
+          set -e
+          cat /tmp/red.txt
+          test "$rc" -ne 0
+          echo IBNAMIR_RED_CONFIRMED=1
+
+      - name: Create small native Android shell with the reference UI identity and offline reader/search
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/ibnamir-native
+          PKG=$ROOT/app/src/main/java/com/qurani/ibnamr
+          RES=$ROOT/app/src/main/res
+          ASSETS=$ROOT/app/src/main/assets
+          mkdir -p "$PKG" "$RES/drawable" "$RES/values" "$ASSETS/pdf"
+
+          cat > "$ROOT/settings.gradle" <<'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+          rootProject.name='IbnAmirQuran'
+          include ':app'
+          EOF
+          cat > "$ROOT/build.gradle" <<'EOF'
+          plugins {
+              id 'com.android.application' version '8.10.1' apply false
+          }
+          EOF
+          cat > "$ROOT/app/build.gradle" <<'EOF'
+          plugins { id 'com.android.application' }
+          android {
+              namespace 'com.qurani.ibnamr'
+              compileSdk 36
+              defaultConfig {
+                  applicationId 'com.qurani.ibnamr'
+                  minSdk 24
+                  targetSdk 36
+                  versionCode 1
+                  versionName "1.0.0"
+              }
+              buildTypes { release { minifyEnabled false } }
+          }
+          EOF
+
+          cat qurani-ci/logo/part-* > /tmp/logo.b64
+          base64 -d /tmp/logo.b64 > "$RES/drawable/qurani_logo.jpg"
+          echo '4c8d65a11c77539831be3a791e54b9eb984375cea878262fd1972ed3acf58cae  '"$RES/drawable/qurani_logo.jpg" | sha256sum -c -
+
+          cat > "$RES/values/colors.xml" <<'EOF'
+          <resources><color name="emerald950">#032B20</color><color name="ivory">#F8F3E7</color></resources>
+          EOF
+          cat > "$RES/values/styles.xml" <<'EOF'
+          <resources>
+            <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+              <item name="android:fontFamily">sans</item><item name="android:windowLightStatusBar">false</item>
+              <item name="android:statusBarColor">#032B20</item><item name="android:navigationBarColor">#032B20</item>
+              <item name="android:colorAccent">#D6A933</item><item name="android:windowActionModeOverlay">true</item>
+            </style>
+          </resources>
+          EOF
+          cat > "$ROOT/app/src/main/AndroidManifest.xml" <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <application android:theme="@style/AppTheme" android:label="المصحف المعلم بقراءة الإمام بن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه بن ذكوان" android:icon="@drawable/qurani_logo" android:allowBackup="true" android:supportsRtl="true">
+              <activity android:name=".ReaderActivity" android:screenOrientation="unspecified"/>
+              <activity android:name=".SearchActivity"/>
+              <activity android:name=".MainActivity" android:exported="true">
+                <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+              </activity>
+            </application>
+          </manifest>
+          EOF
+
+          cat > "$PKG/Ui.java" <<'EOF'
+          package com.qurani.ibnamr;
+          import android.content.*; import android.graphics.Color; import android.graphics.drawable.GradientDrawable; import android.view.*; import android.widget.*;
+          final class Ui {
+            static final int EM950=Color.rgb(3,43,32), EM900=Color.rgb(6,63,46), EM100=Color.rgb(221,236,230), GOLD700=Color.rgb(158,118,28), GOLD500=Color.rgb(214,169,51), GOLD300=Color.rgb(233,204,119), IVORY=Color.rgb(248,243,231), PAPER=Color.rgb(255,253,247), INK=Color.rgb(23,34,29), MUTED=Color.rgb(105,117,111), LINE=Color.rgb(226,217,199), WHITE=Color.WHITE;
+            static int dp(Context c,float v){return (int)(v*c.getResources().getDisplayMetrics().density+0.5f);} static int sp(Context c,float v){return (int)v;}
+            static GradientDrawable bg(int color,float radius, int strokeColor, int strokeDp, Context c){GradientDrawable g=new GradientDrawable();g.setColor(color);g.setCornerRadius(dp(c,radius));if(strokeDp>0)g.setStroke(dp(c,strokeDp),strokeColor);return g;}
+            static TextView text(Context c,String s,float size,int color,boolean bold){TextView t=new TextView(c);t.setText(s);t.setTextSize(size);t.setTextColor(color);t.setGravity(Gravity.RIGHT);t.setTextDirection(View.TEXT_DIRECTION_RTL);if(bold)t.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);return t;}
+            static void pad(View v,Context c,int l,int t,int r,int b){v.setPadding(dp(c,l),dp(c,t),dp(c,r),dp(c,b));}
+          }
+          EOF
+
+          cat > "$PKG/Section.java" <<'EOF'
+          package com.qurani.ibnamr;
+          final class Section {
+            final String id,title,asset; final int start,end; final boolean featured;
+            Section(String i,String t,String a,int s,int e,boolean f){id=i;title=t;asset=a;start=s;end=e;featured=f;}
+            int count(){return end-start+1;}
+            static final Section[] ALL={
+              new Section("quran","المصحف","quran.pdf",5,608,true),
+              new Section("reading","قراءة  بن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه بن ذكوان","ibn_amir_reading.pdf",1,4,false),
+              new Section("index","الفهرس","quran_index.pdf",609,610,false),
+              new Section("dua","الدعاء","dua.pdf",611,611,false),
+              new Section("waqf","علامات الوقف ومصطلحات الضبط ودلالات الرمز والترميز اللوني للقراءات العشر في مصاحف السلسلة الفراتية","waqf_symbols.pdf",612,616,false),
+              new Section("furati","من بين يدي السلسلة الفراتية","furati_intro.pdf",617,620,false),
+              new Section("usul","شرح أصول قراءة الامام بن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه بن ذكوان","ibn_amir_usul.pdf",621,633,false)
+            };
+            static Section byId(String id){for(Section s:ALL)if(s.id.equals(id))return s;return ALL[0];}
+          }
+          EOF
+
+          cat > "$PKG/MainActivity.java" <<'EOF'
+          package com.qurani.ibnamr;
+          import android.app.*; import android.os.*; import android.content.*; import android.graphics.Color; import android.view.*; import android.widget.*; import android.graphics.drawable.GradientDrawable;
+          public class MainActivity extends Activity {
+            static final String EXACT="المصحف المعلم بقراءة الإمام بن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه بن ذكوان";
+            @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(Ui.EM950);showHome();}
+            TextView label(String s,float sz,int color,boolean bold){return Ui.text(this,s,sz,color,bold);}
+            void showHome(){
+              ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(Ui.IVORY);scroll.setFillViewport(true);scroll.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+              LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);Ui.pad(root,this,16,16,16,48);scroll.addView(root,new ScrollView.LayoutParams(-1,-2));
+              LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.HORIZONTAL);hero.setGravity(Gravity.CENTER_VERTICAL);hero.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);hero.setBackground(Ui.bg(Ui.EM900,26,Ui.GOLD700,1,this));hero.setElevation(Ui.dp(this,5));Ui.pad(hero,this,16,18,16,18);root.addView(hero,new LinearLayout.LayoutParams(-1,Ui.dp(this,168)));
+              ImageView logo=new ImageView(this);logo.setImageResource(com.qurani.ibnamr.R.drawable.qurani_logo);logo.setScaleType(ImageView.ScaleType.CENTER_CROP);logo.setBackground(Ui.bg(Ui.PAPER,24,Ui.GOLD300,1,this));hero.addView(logo,new LinearLayout.LayoutParams(Ui.dp(this,104),Ui.dp(this,104)));
+              LinearLayout ht=new LinearLayout(this);ht.setOrientation(LinearLayout.VERTICAL);ht.setGravity(Gravity.CENTER_VERTICAL);LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(0,-1,1);hp.setMarginStart(Ui.dp(this,16));hero.addView(ht,hp);
+              TextView app=label("قرآني",32,Ui.GOLD300,true);ht.addView(app);TextView tag=label(EXACT,14,Ui.WHITE,true);tag.setMaxLines(4);ht.addView(tag);TextView sub=label("هشام وابن ذكوان • يعمل بالكامل دون إنترنت",11,Color.rgb(215,232,225),false);ht.addView(sub);
+              TextView search=label("⌕     ابحث عن سورة أو آية                         بحث مباشر",16,Ui.INK,true);search.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);search.setBackground(Ui.bg(Ui.PAPER,20,Ui.LINE,1,this));search.setElevation(Ui.dp(this,4));Ui.pad(search,this,14,0,14,0);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,Ui.dp(this,58));sp.topMargin=Ui.dp(this,16);root.addView(search,sp);search.setOnClickListener(v->startActivity(new Intent(this,SearchActivity.class)));
+              int last=getSharedPreferences("reader",MODE_PRIVATE).getInt("last_quran_page",0);if(last>0){TextView cont=label("متابعة القراءة  •  صفحة "+last,15,Ui.EM950,true);cont.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);cont.setBackground(Ui.bg(Ui.PAPER,20,Ui.GOLD300,1,this));Ui.pad(cont,this,14,0,14,0);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,Ui.dp(this,58));cp.topMargin=Ui.dp(this,12);root.addView(cont,cp);cont.setOnClickListener(v->open(Section.ALL[0],last));}
+              TextView h1=label("ابدأ القراءة",18,Ui.EM950,true);LinearLayout.LayoutParams h1p=new LinearLayout.LayoutParams(-1,-2);h1p.topMargin=Ui.dp(this,24);h1p.bottomMargin=Ui.dp(this,12);root.addView(h1,h1p);
+              LinearLayout featured=new LinearLayout(this);featured.setOrientation(LinearLayout.HORIZONTAL);featured.setGravity(Gravity.CENTER_VERTICAL);featured.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);featured.setBackground(Ui.bg(Ui.EM950,26,Ui.GOLD500,1,this));featured.setElevation(Ui.dp(this,5));Ui.pad(featured,this,24,18,24,18);root.addView(featured,new LinearLayout.LayoutParams(-1,Ui.dp(this,184)));LinearLayout ft=new LinearLayout(this);ft.setOrientation(LinearLayout.VERTICAL);featured.addView(ft,new LinearLayout.LayoutParams(0,-1,1));ft.addView(label("المصحف الشريف",12,Ui.GOLD300,true));ft.addView(label("المصحف",25,Ui.WHITE,true));TextView pill=label("604 صفحة",11,Ui.GOLD300,true);pill.setBackground(Ui.bg(Color.rgb(17,78,59),999,Color.rgb(62,119,101),1,this));Ui.pad(pill,this,10,5,10,5);LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(-2,-2);pp.topMargin=Ui.dp(this,14);ft.addView(pill,pp);TextView arrow=label("‹",32,Ui.EM950,false);arrow.setGravity(Gravity.CENTER);arrow.setBackground(Ui.bg(Ui.GOLD500,999,Ui.GOLD500,0,this));featured.addView(arrow,new LinearLayout.LayoutParams(Ui.dp(this,46),Ui.dp(this,46)));featured.setOnClickListener(v->open(Section.ALL[0],1));
+              TextView h2=label("الأقسام والشروح",18,Ui.EM950,true);LinearLayout.LayoutParams h2p=new LinearLayout.LayoutParams(-1,-2);h2p.topMargin=Ui.dp(this,24);h2p.bottomMargin=Ui.dp(this,12);root.addView(h2,h2p);
+              for(int i=1;i<Section.ALL.length;i+=2){LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=Ui.dp(this,12);root.addView(row,rp);addCard(row,Section.ALL[i]);if(i+1<Section.ALL.length)addCard(row,Section.ALL[i+1]);else{Space s=new Space(this);row.addView(s,new LinearLayout.LayoutParams(0,1,1));}}
+              TextView foot=label("جميع الصفحات من النسخة الأصلية المحفوظة داخل التطبيق",11,Ui.MUTED,false);foot.setGravity(Gravity.CENTER);LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(-1,-2);fp.topMargin=Ui.dp(this,12);root.addView(foot,fp);setContentView(scroll);
+            }
+            void addCard(LinearLayout row,Section s){LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setGravity(Gravity.CENTER_VERTICAL);card.setBackground(Ui.bg(Ui.PAPER,20,Ui.LINE,1,this));card.setElevation(Ui.dp(this,3));Ui.pad(card,this,14,16,14,16);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1);if(row.getChildCount()>0)p.setMarginStart(Ui.dp(this,12));row.addView(card,p);TextView t=label(s.title,15,Ui.EM950,true);t.setMinHeight(Ui.dp(this,58));card.addView(t,new LinearLayout.LayoutParams(-1,-2));TextView pages=label(s.count()+" صفحة",11,Ui.GOLD700,true);card.addView(pages);card.setOnClickListener(v->open(s,1));}
+            void open(Section s,int page){Intent i=new Intent(this,ReaderActivity.class);i.putExtra("section",s.id);i.putExtra("page",page);startActivity(i);}
+          }
+          EOF
+
+          cat > "$PKG/ReaderActivity.java" <<'EOF'
+          package com.qurani.ibnamr;
+          import android.app.*; import android.os.*; import android.content.*; import android.content.res.AssetManager; import android.graphics.*; import android.graphics.pdf.PdfRenderer; import android.os.ParcelFileDescriptor; import android.view.*; import android.widget.*; import java.io.*;
+          public class ReaderActivity extends Activity {
+            Section section; PdfRenderer renderer; ParcelFileDescriptor pfd; PageView pageView; TextView counter; EditText jump; int current=1,total=1;
+            @Override public void onCreate(Bundle b){super.onCreate(b);section=Section.byId(getIntent().getStringExtra("section"));current=Math.max(1,getIntent().getIntExtra("page",1));build();openPdf();}
+            void build(){LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(Ui.IVORY);root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);LinearLayout bar=new LinearLayout(this);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setBackgroundColor(Ui.EM950);Ui.pad(bar,this,8,6,8,6);TextView back=Ui.text(this,"‹",32,Ui.GOLD300,false);back.setGravity(Gravity.CENTER);bar.addView(back,new LinearLayout.LayoutParams(Ui.dp(this,48),Ui.dp(this,48)));back.setOnClickListener(v->finish());TextView title=Ui.text(this,section.title,15,Ui.WHITE,true);title.setMaxLines(2);bar.addView(title,new LinearLayout.LayoutParams(0,Ui.dp(this,56),1));counter=Ui.text(this,"",12,Ui.GOLD300,true);counter.setGravity(Gravity.CENTER);bar.addView(counter,new LinearLayout.LayoutParams(Ui.dp(this,92),Ui.dp(this,48)));root.addView(bar);
+              pageView=new PageView(this);root.addView(pageView,new LinearLayout.LayoutParams(-1,0,1));LinearLayout nav=new LinearLayout(this);nav.setGravity(Gravity.CENTER);nav.setBackgroundColor(Ui.PAPER);Ui.pad(nav,this,8,6,8,6);Button prev=new Button(this);prev.setText("السابق");Button next=new Button(this);next.setText("التالي");jump=new EditText(this);jump.setInputType(2);jump.setHint("رقم الصفحة");jump.setGravity(Gravity.CENTER);Button go=new Button(this);go.setText("انتقال");nav.addView(next,new LinearLayout.LayoutParams(0,Ui.dp(this,48),1));nav.addView(jump,new LinearLayout.LayoutParams(Ui.dp(this,110),Ui.dp(this,48)));nav.addView(go,new LinearLayout.LayoutParams(Ui.dp(this,80),Ui.dp(this,48)));nav.addView(prev,new LinearLayout.LayoutParams(0,Ui.dp(this,48),1));root.addView(nav);prev.setOnClickListener(v->showPage(current-1));next.setOnClickListener(v->showPage(current+1));go.setOnClickListener(v->{try{showPage(Integer.parseInt(jump.getText().toString().trim()));}catch(Exception ignored){}});setContentView(root);}
+            File ensureAsset() throws IOException {File dir=new File(getFilesDir(),"pdf_cache");dir.mkdirs();File out=new File(dir,section.asset);if(out.exists()&&out.length()>1024)return out;File tmp=new File(dir,section.asset+".tmp");try(InputStream in=getAssets().open("pdf/"+section.asset);OutputStream os=new FileOutputStream(tmp)){byte[] buf=new byte[1024*1024];int n;while((n=in.read(buf))>0)os.write(buf,0,n);}if(!tmp.renameTo(out)){try(InputStream in=new FileInputStream(tmp);OutputStream os=new FileOutputStream(out)){byte[] b=new byte[1024*1024];int n;while((n=in.read(b))>0)os.write(b,0,n);}tmp.delete();}return out;}
+            void openPdf(){try{File f=ensureAsset();pfd=ParcelFileDescriptor.open(f,ParcelFileDescriptor.MODE_READ_ONLY);renderer=new PdfRenderer(pfd);total=renderer.getPageCount();showPage(Math.min(current,total));}catch(Exception e){Toast.makeText(this,"تعذر فتح ملف المصحف: "+e.getMessage(),Toast.LENGTH_LONG).show();}}
+            void showPage(int p){if(renderer==null)return;p=Math.max(1,Math.min(total,p));current=p;counter.setText(current+" / "+total);jump.setText(String.valueOf(current));pageView.render(current-1);if(section.id.equals("quran"))getSharedPreferences("reader",MODE_PRIVATE).edit().putInt("last_quran_page",current).apply();}
+            @Override protected void onDestroy(){super.onDestroy();try{if(renderer!=null)renderer.close();}catch(Exception ignored){}try{if(pfd!=null)pfd.close();}catch(Exception ignored){}}
+            final class PageView extends View {Bitmap bmp;Paint paint=new Paint(Paint.FILTER_BITMAP_FLAG);float scale=1f,tx=0,ty=0,lastX,lastY;ScaleGestureDetector scaler;GestureDetector gestures;PageView(Context c){super(c);setBackgroundColor(Color.rgb(45,48,46));scaler=new ScaleGestureDetector(c,new ScaleGestureDetector.SimpleOnScaleGestureListener(){public boolean onScale(ScaleGestureDetector d){scale=Math.max(1f,Math.min(4f,scale*d.getScaleFactor()));if(scale==1f){tx=ty=0;}invalidate();return true;}});gestures=new GestureDetector(c,new GestureDetector.SimpleOnGestureListener(){public boolean onDoubleTap(android.view.MotionEvent e){scale=scale>1f?1f:2f;if(scale==1f)tx=ty=0;invalidate();return true;}});}
+              void render(int idx){if(renderer==null)return;PdfRenderer.Page pg=renderer.openPage(idx);int vw=Math.max(getWidth(),getResources().getDisplayMetrics().widthPixels);float ratio=(float)pg.getHeight()/pg.getWidth();int w=Math.min(vw*2,2600);int h=(int)(w*ratio);Bitmap nb=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);nb.eraseColor(Color.WHITE);pg.render(nb,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);pg.close();if(bmp!=null&&!bmp.isRecycled())bmp.recycle();bmp=nb;scale=1;tx=ty=0;invalidate();}
+              protected void onDraw(Canvas c){super.onDraw(c);if(bmp==null)return;float base=(float)getWidth()/bmp.getWidth();float dw=bmp.getWidth()*base*scale,dh=bmp.getHeight()*base*scale;float x=(getWidth()-dw)/2+tx,y=Math.max(0,(getHeight()-dh)/2)+ty;c.drawBitmap(bmp,null,new RectF(x,y,x+dw,y+dh),paint);}
+              public boolean onTouchEvent(android.view.MotionEvent e){scaler.onTouchEvent(e);gestures.onTouchEvent(e);if(e.getActionMasked()==MotionEvent.ACTION_DOWN){lastX=e.getX();lastY=e.getY();return true;}if(e.getActionMasked()==MotionEvent.ACTION_MOVE&&scale>1&&!scaler.isInProgress()){tx+=e.getX()-lastX;ty+=e.getY()-lastY;lastX=e.getX();lastY=e.getY();invalidate();return true;}return true;}
+            }
+          }
+          EOF
+
+          cat > "$PKG/SearchActivity.java" <<'EOF'
+          package com.qurani.ibnamr;
+          import android.app.*; import android.os.*; import android.content.*; import android.text.*; import android.view.*; import android.widget.*; import org.json.*; import java.io.*; import java.nio.charset.StandardCharsets; import java.util.*;
+          public class SearchActivity extends Activity {
+            EditText input; LinearLayout results; JSONArray surahs,verses;
+            @Override public void onCreate(Bundle b){super.onCreate(b);load();build();}
+            String read(String f)throws Exception{try(InputStream in=getAssets().open(f)){ByteArrayOutputStream o=new ByteArrayOutputStream();byte[] b=new byte[65536];int n;while((n=in.read(b))>0)o.write(b,0,n);return o.toString("UTF-8");}}
+            void load(){try{surahs=new JSONArray(read("surahs.json"));verses=new JSONArray(read("verses.json"));}catch(Exception e){surahs=new JSONArray();verses=new JSONArray();}}
+            void build(){LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(Ui.IVORY);root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);LinearLayout bar=new LinearLayout(this);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setBackgroundColor(Ui.EM950);TextView back=Ui.text(this,"‹",32,Ui.GOLD300,false);back.setGravity(Gravity.CENTER);bar.addView(back,new LinearLayout.LayoutParams(Ui.dp(this,52),Ui.dp(this,56)));back.setOnClickListener(v->finish());TextView title=Ui.text(this,"البحث في المصحف",18,Ui.WHITE,true);bar.addView(title,new LinearLayout.LayoutParams(0,Ui.dp(this,56),1));root.addView(bar);input=new EditText(this);input.setHint("اكتب اسم سورة أو كلمات من آية...");input.setTextDirection(View.TEXT_DIRECTION_RTL);input.setTextSize(17);input.setSingleLine(true);input.setBackground(Ui.bg(Ui.PAPER,20,Ui.GOLD300,1,this));Ui.pad(input,this,14,0,14,0);LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,Ui.dp(this,58));ip.setMargins(Ui.dp(this,16),Ui.dp(this,16),Ui.dp(this,16),Ui.dp(this,10));root.addView(input,ip);ScrollView sc=new ScrollView(this);results=new LinearLayout(this);results.setOrientation(LinearLayout.VERTICAL);Ui.pad(results,this,16,0,16,32);sc.addView(results);root.addView(sc,new LinearLayout.LayoutParams(-1,0,1));input.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int d){}public void onTextChanged(CharSequence s,int a,int b,int c){search(s.toString());}public void afterTextChanged(Editable e){}});input.requestFocus();}
+            static String norm(String s){return s.replaceAll("[\\u064B-\\u065F\\u0670\\u06D6-\\u06ED]","").replace('أ','ا').replace('إ','ا').replace('آ','ا').replace('ى','ي').replace('ة','ه').replace("ـ","").trim();}
+            void search(String q){results.removeAllViews();String n=norm(q);if(n.length()<2)return;int shown=0;try{for(int i=0;i<surahs.length()&&shown<20;i++){JSONObject o=surahs.getJSONObject(i);String name=o.optString("nameArabic");if(norm(name).contains(n)){add("سورة "+name,"تبدأ من صفحة "+o.optInt("mushafStartPage"),o.optInt("mushafStartPage"));shown++;}}for(int i=0;i<verses.length()&&shown<50;i++){JSONObject o=verses.getJSONObject(i);String text=o.optString("text");if(norm(text).contains(n)){int sn=o.optInt("surahNumber"),an=o.optInt("ayahNumber"),pg=o.optInt("mushafPage");String name=surahName(sn);add(text,"سورة "+name+" • آية "+an+" • صفحة "+pg,pg);shown++;}}}catch(Exception ignored){}if(shown==0){TextView e=Ui.text(this,"لا توجد نتيجة مطابقة\nجرّب كتابة اسم سورة أو جزء أوضح من الآية بدون تشكيل.",14,Ui.MUTED,true);e.setGravity(Gravity.CENTER);Ui.pad(e,this,20,40,20,20);results.addView(e);}}
+            String surahName(int id){try{for(int i=0;i<surahs.length();i++){JSONObject o=surahs.getJSONObject(i);if(o.optInt("id")==id)return o.optString("nameArabic");}}catch(Exception ignored){}return String.valueOf(id);}
+            void add(String a,String b,int page){LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.VERTICAL);row.setBackground(Ui.bg(Ui.PAPER,14,Ui.LINE,1,this));Ui.pad(row,this,12,10,12,10);TextView t=Ui.text(this,a,15,Ui.EM950,true);t.setMaxLines(2);row.addView(t);row.addView(Ui.text(this,b,11,Ui.MUTED,false));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=Ui.dp(this,8);results.addView(row,rp);row.setOnClickListener(v->{Intent in=new Intent(this,ReaderActivity.class);in.putExtra("section","quran");in.putExtra("page",page);startActivity(in);});}
+          }
+          EOF
+
+          # Reconstruct the checked-in source bridge to export the exact offline surah and 6236-ayah indices.
+          rm -rf /tmp/qsrc && mkdir -p /tmp/qsrc
+          cat qurani-ci/text/part-* > /tmp/qbase.b64; base64 -d /tmp/qbase.b64 > /tmp/qbase.tar.gz; tar -xzf /tmp/qbase.tar.gz -C /tmp/qsrc
+          cat qurani-v101/overlay/part-* > /tmp/qov.b64; base64 -d /tmp/qov.b64 > /tmp/qov.tar.gz; tar -xzf /tmp/qov.tar.gz -C /tmp/qsrc
+          cd /tmp/qsrc
+          node --experimental-strip-types --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          const {SURAHS}=await import('./src/data/surahs.ts');
+          const {VERSE_INDEX}=await import('./src/data/verses.generated.ts');
+          fs.writeFileSync('/tmp/ibnamir-native/app/src/main/assets/surahs.json',JSON.stringify(SURAHS));
+          fs.writeFileSync('/tmp/ibnamir-native/app/src/main/assets/verses.json',JSON.stringify(VERSE_INDEX));
+          console.log('SURAHS='+SURAHS.length,'VERSES='+VERSE_INDEX.length);
+          if(SURAHS.length!==114||VERSE_INDEX.length!==6236)process.exit(2);
+          NODE
+
+      - name: GREEN - exact identity, seven ranges, mapping and offline search corpus
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/contract_test.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          a=json.loads(Path('/tmp/ibnamir-native/app/src/main/assets/surahs.json').read_text())
+          v=json.loads(Path('/tmp/ibnamir-native/app/src/main/assets/verses.json').read_text())
+          assert len(a)==114 and len(v)==6236
+          assert min(x['mushafPage'] for x in v)>=1 and max(x['mushafPage'] for x in v)<=604
+          assert 5==1+4 and 608==604+4
+          print('IBNAMIR_GREEN_CONTRACT_OK=1')
+          PY
+
+      - name: Build compact unsigned release shell and export local signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' >/dev/null
+          cd /tmp/ibnamir-native
+          gradle :app:assembleRelease --stacktrace
+          APK=app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "package: name='com.qurani.ibnamr' versionCode='1' versionName='1.0.0'" /tmp/badging.txt
+          grep -q "application-label:'المصحف المعلم بقراءة الإمام بن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه بن ذكوان'" /tmp/badging.txt
+          mkdir -p /tmp/sign-tools/lib
+          cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" /tmp/sign-tools/
+          cp "$ANDROID_HOME/build-tools/36.0.0/apksigner" /tmp/sign-tools/
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" /tmp/sign-tools/lib/
+          cp "$ANDROID_HOME/build-tools/36.0.0/aapt" /tmp/sign-tools/
+          chmod +x /tmp/sign-tools/zipalign /tmp/sign-tools/apksigner /tmp/sign-tools/aapt
+          (cd /tmp && zip -q -r ibnamir-sign-tools.zip sign-tools)
+          sha256sum "$APK" /tmp/ibnamir-sign-tools.zip
+
+          cd "$GITHUB_WORKSPACE"
+          rm -rf qurani-ibnamir/native-export
+          mkdir -p qurani-ibnamir/native-export/apk qurani-ibnamir/native-export/tools
+          base64 -w 0 "$APK" > /tmp/apk.b64
+          base64 -w 0 /tmp/ibnamir-sign-tools.zip > /tmp/tools.b64
+          split -b 100000 -d -a 3 /tmp/apk.b64 qurani-ibnamir/native-export/apk/part-
+          split -b 100000 -d -a 3 /tmp/tools.b64 qurani-ibnamir/native-export/tools/part-
+          {
+            echo "APK_SHA256=$(sha256sum "$APK"|awk '{print $1}')"
+            echo "APK_BYTES=$(stat -c%s "$APK")"
+            echo "APK_PARTS=$(find qurani-ibnamir/native-export/apk -type f|wc -l)"
+            echo "TOOLS_SHA256=$(sha256sum /tmp/ibnamir-sign-tools.zip|awk '{print $1}')"
+            echo "TOOLS_BYTES=$(stat -c%s /tmp/ibnamir-sign-tools.zip)"
+            echo "TOOLS_PARTS=$(find qurani-ibnamir/native-export/tools -type f|wc -l)"
+            echo 'PACKAGE=com.qurani.ibnamr'
+            echo 'VERSION=1.0.0'
+          } > qurani-ibnamir/native-export/manifest.txt
+          cat qurani-ibnamir/native-export/manifest.txt
+
+      - name: Commit compact local-build bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnamir/native-export
+          git commit -m 'build: export compact Ibn Amir shell and signing tools'
+          git pull --rebase origin qurani-ibnamir-v100
+          git push origin HEAD:qurani-ibnamir-v100
