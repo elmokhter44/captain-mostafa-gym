@@ -24,13 +24,15 @@ jobs:
           cat qurani-ibnamir/native-export/tools/part-* | base64 -d > /tmp/bridge/ibnamir-sign-tools.zip
           echo '3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a  /tmp/bridge/ibnamir-shell.apk' | sha256sum -c -
           echo 'eed35a6c7e594564f7cb30fbd3a870e7f84054825de2ea5bb84217adf855c0a3  /tmp/bridge/ibnamir-sign-tools.zip' | sha256sum -c -
-      - name: Publish bridge through Uguu
+      - name: Publish base64 text through Uguu
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== UGUU_SHELL ==='
-          curl --fail --silent --show-error -F 'files[]=@/tmp/bridge/ibnamir-shell.apk' https://uguu.se/upload
+          base64 -w0 /tmp/bridge/ibnamir-shell.apk > /tmp/bridge/ibnamir-shell.txt
+          base64 -w0 /tmp/bridge/ibnamir-sign-tools.zip > /tmp/bridge/ibnamir-tools.txt
+          echo '=== UGUU_SHELL_TEXT ==='
+          curl --fail --silent --show-error -F 'files[]=@/tmp/bridge/ibnamir-shell.txt;type=text/plain' https://uguu.se/upload
           echo
-          echo '=== UGUU_TOOLS ==='
-          curl --fail --silent --show-error -F 'files[]=@/tmp/bridge/ibnamir-sign-tools.zip' https://uguu.se/upload
+          echo '=== UGUU_TOOLS_TEXT ==='
+          curl --fail --silent --show-error -F 'files[]=@/tmp/bridge/ibnamir-tools.txt;type=text/plain' https://uguu.se/upload
           echo
