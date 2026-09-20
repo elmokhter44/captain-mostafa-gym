@@ -1,4 +1,4 @@
-name: IbnAmir Small Shell Export
+name: IbnAmir Public Bridge
 
 on:
   push:
@@ -7,37 +7,36 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  export:
+  bridge:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct verified shell
+      - name: Reconstruct shell
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/bridge
-          cat qurani-ibnamir/native-export/apk/part-* | base64 -d > /tmp/bridge/ibnamir-shell.apk
-          echo '3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a  /tmp/bridge/ibnamir-shell.apk' | sha256sum -c -
-      - name: Commit small text chunks
+          cat qurani-ibnamir/native-export/apk/part-* | base64 -d > /tmp/ibnamir-shell.apk
+          echo '3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a  /tmp/ibnamir-shell.apk' | sha256sum -c -
+      - name: Try public mirrors
         shell: bash
         run: |
-          set -euo pipefail
-          rm -rf qurani-ibnamir/small-export
-          mkdir -p qurani-ibnamir/small-export/apk
-          base64 -w0 /tmp/bridge/ibnamir-shell.apk > /tmp/bridge/shell.b64
-          split -b 25000 -d -a 3 /tmp/bridge/shell.b64 qurani-ibnamir/small-export/apk/part-
-          cat > qurani-ibnamir/small-export/manifest.txt <<'EOF'
-          APK_SHA256=3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a
-          APK_BYTES=356216
-          BASE64_BYTES=474956
-          CHUNK_BYTES=25000
-          EOF
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add qurani-ibnamir/small-export
-          git commit -m 'ci: export Ibn Amir shell in small chunks'
-          git push origin HEAD:qurani-ibnamir-v100
+          set +e
+          echo '=== CATBOX ==='
+          curl -L --connect-timeout 10 --max-time 60 -fsS -F 'reqtype=fileupload' -F 'fileToUpload=@/tmp/ibnamir-shell.apk' https://catbox.moe/user/api.php || true
+          echo
+          echo '=== LITTERBOX ==='
+          curl -L --connect-timeout 10 --max-time 60 -fsS -F 'reqtype=fileupload' -F 'time=1h' -F 'fileToUpload=@/tmp/ibnamir-shell.apk' https://litterbox.catbox.moe/resources/internals/api.php || true
+          echo
+          echo '=== UGUU ==='
+          curl -L --connect-timeout 10 --max-time 60 -fsS -F 'files[]=@/tmp/ibnamir-shell.apk' https://uguu.se/upload.php || true
+          echo
+          echo '=== PIXELDRAIN ==='
+          curl -L --connect-timeout 10 --max-time 60 -fsS -T /tmp/ibnamir-shell.apk https://pixeldrain.com/api/file/ || true
+          echo
+          echo '=== BASHUPLOAD ==='
+          curl -L --connect-timeout 10 --max-time 60 -fsS -T /tmp/ibnamir-shell.apk https://bashupload.com/ibnamir-shell.apk || true
+          echo
