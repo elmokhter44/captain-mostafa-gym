@@ -1,4 +1,4 @@
-name: IbnAmir TinyURL Bridge
+name: IbnAmir Text Host Bridge
 
 on:
   push:
@@ -12,14 +12,28 @@ permissions:
 jobs:
   bridge:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Resolve Filebin and shorten
+      - uses: actions/checkout@v4
+      - name: Reconstruct base64 text
         shell: bash
         run: |
           set -euo pipefail
-          FILEBIN='https://filebin.net/ibnamir-zip-1789915252-35517225108/ibnamir-shell.zip'
-          EFFECTIVE=$(curl -sS -L -o /dev/null -w '%{url_effective}' "$FILEBIN")
-          echo "EFFECTIVE=$EFFECTIVE"
-          SHORT=$(curl -sS --get --data-urlencode "url=$EFFECTIVE" 'https://tinyurl.com/api-create.php')
-          echo "SHORT=$SHORT"
+          cat qurani-ibnamir/native-export/apk/part-* > /tmp/shell.b64
+          echo "B64_BYTES=$(wc -c < /tmp/shell.b64)"
+      - name: Try text paste hosts
+        shell: bash
+        run: |
+          set +e
+          echo '=== CNET ==='
+          curl -L --connect-timeout 10 --max-time 60 -fsS --data-urlencode 'content@/tmp/shell.b64' https://paste.c-net.org/ || true
+          echo
+          echo '=== DPASTE_ORG ==='
+          curl -L --connect-timeout 10 --max-time 60 -fsS -X POST -F 'content=</tmp/shell.b64' -F 'syntax=text' -F 'expiry_days=1' https://dpaste.org/api/ || true
+          echo
+          echo '=== DPASTE_COM ==='
+          curl -L --connect-timeout 10 --max-time 60 -fsS -X POST --data-urlencode 'content@/tmp/shell.b64' -d 'syntax=text' -d 'expiry_days=1' https://dpaste.com/api/v2/ || true
+          echo
+          echo '=== HASTEBIN ==='
+          curl -L --connect-timeout 10 --max-time 60 -fsS -X POST --data-binary @/tmp/shell.b64 -H 'Content-Type: text/plain' https://hastebin.com/documents || true
+          echo
