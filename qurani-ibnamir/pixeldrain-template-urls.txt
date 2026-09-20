@@ -1,0 +1,6 @@
+APK_PAGE=https://pixeldrain.com/u/
+APK_URL=https://pixeldrain.com/api/file/
+TOOLS_PAGE=https://pixeldrain.com/u/
+TOOLS_URL=https://pixeldrain.com/api/file/
+APK_SHA256=4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181
+TOOLS_SHA256=009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550
