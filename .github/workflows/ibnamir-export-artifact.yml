@@ -1,4 +1,4 @@
-name: IbnAmir Inspect Shell
+name: IbnAmir Strip Shell
 
 on:
   push:
@@ -6,27 +6,35 @@ on:
     paths: ['.github/workflows/ibnamir-export-artifact.yml']
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  inspect:
+  strip:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect shell contents
+      - name: Strip regenerable verse asset and commit wrapped bridge
         shell: bash
         run: |
           set -euo pipefail
           cat qurani-ibnamir/native-export/apk/part-* | base64 -d > /tmp/shell.apk
-          echo '=== ZIPLIST ==='
-          unzip -l /tmp/shell.apk
-          echo '=== ASSET JSON SIZES ==='
-          unzip -p /tmp/shell.apk assets/surahs.json | wc -c || true
-          unzip -p /tmp/shell.apk assets/verses.json | wc -c || true
-          echo '=== SURAH HEAD ==='
-          unzip -p /tmp/shell.apk assets/surahs.json | head -c 1200 || true
-          echo
-          echo '=== VERSES HEAD ==='
-          unzip -p /tmp/shell.apk assets/verses.json | head -c 1500 || true
-          echo
+          echo '3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a  /tmp/shell.apk' | sha256sum -c -
+          cp /tmp/shell.apk /tmp/stripped.apk
+          zip -d /tmp/stripped.apk assets/verses.json >/dev/null
+          unzip -t /tmp/stripped.apk >/dev/null
+          mkdir -p qurani-ibnamir/bridge
+          base64 -w 1000 /tmp/stripped.apk > qurani-ibnamir/bridge/stripped-shell.b64
+          sha256sum /tmp/stripped.apk | tee qurani-ibnamir/bridge/stripped-shell.sha256
+          printf 'APK_BYTES=' > qurani-ibnamir/bridge/stripped-shell.meta
+          wc -c < /tmp/stripped.apk >> qurani-ibnamir/bridge/stripped-shell.meta
+          printf 'B64_BYTES=' >> qurani-ibnamir/bridge/stripped-shell.meta
+          tr -d '\n' < qurani-ibnamir/bridge/stripped-shell.b64 | wc -c >> qurani-ibnamir/bridge/stripped-shell.meta
+          printf 'LINES=' >> qurani-ibnamir/bridge/stripped-shell.meta
+          wc -l < qurani-ibnamir/bridge/stripped-shell.b64 >> qurani-ibnamir/bridge/stripped-shell.meta
+          cat qurani-ibnamir/bridge/stripped-shell.meta
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add qurani-ibnamir/bridge/stripped-shell.*
+          git commit -m 'ci: add stripped Ibn Amir shell bridge'
+          git push origin HEAD:qurani-ibnamir-v100
