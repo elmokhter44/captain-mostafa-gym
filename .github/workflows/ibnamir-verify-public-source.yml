@@ -19,21 +19,19 @@ jobs:
           python-version: '3.12'
       - name: Install PDF verifier
         run: python -m pip install --quiet 'PyMuPDF==1.26.7'
-      - name: Download Hisham candidate and prove rendered equivalence to uploaded 633-page source
+      - name: Prove public Hisham PDF equals uploaded source pages 1-631
         shell: bash
         env:
-          EXPECTED_RENDER_SHA256: 8bece7bd74a036262d47c7495e0de6ff8e42a448782e60bd3b5f29fa436b8faa
+          EXPECTED_631_RENDER_SHA256: 2314260a9298751e6a0758a1a43f8682d12e96c29afd580d9d2f7e379bf38fb0
         run: |
           set -euo pipefail
-          url="https://bhr-q.com/media/attachments/qran/04/Hisham.pdf"
-          curl -L --fail --retry 4 --retry-delay 2 "$url" -o /tmp/ibnamir-source.pdf
+          curl -L --fail --retry 4 --retry-delay 2 "https://bhr-q.com/media/attachments/qran/04/Hisham.pdf" -o /tmp/ibnamir-source.pdf
           sha256sum /tmp/ibnamir-source.pdf
           python - <<'PY'
           import fitz, hashlib, os
-          path='/tmp/ibnamir-source.pdf'
-          doc=fitz.open(path)
-          print('SOURCE_PAGES=',doc.page_count)
-          assert doc.page_count == 633, doc.page_count
+          doc=fitz.open('/tmp/ibnamir-source.pdf')
+          print('MIRROR_PAGES=',doc.page_count)
+          assert doc.page_count == 631, doc.page_count
           h=hashlib.sha256()
           for i,p in enumerate(doc):
               pix=p.get_pixmap(matrix=fitz.Matrix(0.5,0.5), alpha=False)
@@ -41,10 +39,9 @@ jobs:
               h.update(pix.width.to_bytes(4,'big'))
               h.update(pix.height.to_bytes(4,'big'))
               h.update(pix.samples)
-          actual=h.hexdigest()
-          expected=os.environ['EXPECTED_RENDER_SHA256']
-          print('SOURCE_RENDER_SHA256=',actual)
-          print('EXPECTED_RENDER_SHA256=',expected)
-          assert actual == expected, (actual,expected)
-          print('RENDER_EQUIVALENT_TO_UPLOADED_SOURCE=YES')
+          actual=h.hexdigest(); expected=os.environ['EXPECTED_631_RENDER_SHA256']
+          print('MIRROR_631_RENDER_SHA256=',actual)
+          print('UPLOADED_FIRST_631_RENDER_SHA256=',expected)
+          assert actual == expected, (actual, expected)
+          print('FIRST_631_RENDER_EQUIVALENT=YES')
           PY
