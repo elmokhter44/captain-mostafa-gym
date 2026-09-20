@@ -1,0 +1,34 @@
+name: IbnAmir FileIO Probe
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths: ['.github/workflows/ibnamir-fileio-probe.yml']
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload text probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qurani-ibnamir
+          head -c 65536 /dev/zero | tr '\0' 'B' > /tmp/probe.txt
+          j="$(curl -fsS --retry 4 --retry-delay 2 -F 'file=@/tmp/probe.txt;type=text/plain' 'https://file.io/?expires=2d')"
+          echo "$j"
+          u="$(printf '%s' "$j" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("link") or d.get("url") or "")')"
+          test -n "$u"
+          echo "$u" > qurani-ibnamir/fileio-probe.txt
+      - name: Persist
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnamir/fileio-probe.txt
+          git commit -m 'ci: record fileio probe URL'
+          git pull --rebase origin qurani-ibnamir-v100
+          git push origin HEAD:qurani-ibnamir-v100
