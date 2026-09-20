@@ -1,0 +1,31 @@
+name: IbnAmir Inspect Master UI
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths: ['.github/workflows/ibnamir-inspect-master-ui.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct checked-in Qurani source bridge and print UI sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/qapp && mkdir -p /tmp/qapp
+          cat qurani-ci/text/part-* > /tmp/base.b64
+          base64 -d /tmp/base.b64 > /tmp/base.tar.gz
+          echo '8419ab562a4783684b34e1bc62a96be4dc3da00f8a85e5e0d298182ab1e79192  /tmp/base.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/base.tar.gz -C /tmp/qapp
+          cat qurani-v101/overlay/part-* > /tmp/ov.b64
+          base64 -d /tmp/ov.b64 > /tmp/ov.tar.gz
+          echo 'cbb6b45021274412968d6f6747fa54048d1d46be31e92a6cea31b5d80a2b9d7e  /tmp/ov.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/ov.tar.gz -C /tmp/qapp
+          cd /tmp/qapp
+          echo '===FILES==='; find src -maxdepth 4 -type f | sort
+          for f in src/features/home/HomeScreen.tsx src/app/theme.ts src/app/constants.ts src/data/sections.ts src/features/reader/PdfReaderScreen.tsx src/features/search/SearchScreen.tsx; do
+            if [ -f "$f" ]; then echo "===FILE:$f==="; cat "$f"; fi
+          done
+          echo '===RESOURCES==='; find assets -maxdepth 3 -type f -printf '%p %s\n' | sort | head -100 || true
