@@ -17,7 +17,7 @@ jobs:
           set -euo pipefail
           mkdir -p qurani-ibnamir
           head -c 65536 /dev/zero | tr '\0' 'B' > /tmp/probe.txt
-          j="$(curl -fsS --retry 4 --retry-delay 2 -F 'file=@/tmp/probe.txt;type=text/plain' 'https://file.io/?expires=2d')"
+          j="$(curl -LfsS --retry 4 --retry-delay 2 -F 'file=@/tmp/probe.txt;type=text/plain' 'https://www.file.io/?expires=2d')"
           echo "$j"
           u="$(printf '%s' "$j" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("link") or d.get("url") or "")')"
           test -n "$u"
