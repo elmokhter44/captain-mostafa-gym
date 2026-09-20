@@ -1,0 +1,77 @@
+name: IbnAmir Native Skeleton Export V2
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths: ['.github/workflows/ibnamir-native-skeleton-export-v2.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Generate compact app shell from the already-reviewed exporter
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pyyaml
+          python3 - <<'PY'
+          from pathlib import Path
+          import yaml
+          wf=yaml.safe_load(Path('.github/workflows/ibnamir-native-skeleton-export.yml').read_text())
+          steps=wf['jobs']['build']['steps']
+          st=next(x for x in steps if x.get('name','').startswith('Create small native Android shell'))
+          s=st['run']
+          a="const {SURAHS}=await import('./src/data/surahs.ts');"
+          b="const {VERSE_INDEX}=await import('./src/data/verses.generated.ts');"
+          assert a in s and b in s
+          s=s.replace(a,"const sm=await import('./src/data/surahs.ts');\nconst SURAHS=Object.values(sm).find(v=>Array.isArray(v)&&v.length===114);")
+          s=s.replace(b,"const vm=await import('./src/data/verses.generated.ts');\nconst VERSE_INDEX=Object.values(vm).find(v=>Array.isArray(v)&&v.length===6236);")
+          Path('/tmp/generate.sh').write_text(s)
+          PY
+          bash /tmp/generate.sh
+      - name: GREEN contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import yaml
+          wf=yaml.safe_load(Path('.github/workflows/ibnamir-native-skeleton-export.yml').read_text())
+          steps=wf['jobs']['build']['steps']
+          s=next(x for x in steps if x.get('name','').startswith('GREEN -'))['run']
+          Path('/tmp/green.sh').write_text(s)
+          PY
+          bash /tmp/green.sh
+      - name: Build and export compact shell plus local signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import yaml
+          wf=yaml.safe_load(Path('.github/workflows/ibnamir-native-skeleton-export.yml').read_text())
+          steps=wf['jobs']['build']['steps']
+          s=next(x for x in steps if x.get('name','').startswith('Build compact unsigned release shell'))['run']
+          Path('/tmp/build.sh').write_text(s)
+          PY
+          bash /tmp/build.sh
+      - name: Persist export on isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnamir/native-export
+          git commit -m 'build: export compact Ibn Amir shell and signing tools'
+          git pull --rebase origin qurani-ibnamir-v100
+          git push origin HEAD:qurani-ibnamir-v100
