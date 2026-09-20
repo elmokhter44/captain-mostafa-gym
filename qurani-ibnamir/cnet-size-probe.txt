@@ -1,0 +1,8 @@
+KB_64=https://paste.c-net.org/LuckierDecent
+KB_128=https://paste.c-net.org/SweetenHacked
+KB_256=https://paste.c-net.org/LansburyAlleged
+KB_512=https://paste.c-net.org/SparringWreaking
+KB_768=https://paste.c-net.org/UpperLauren
+KB_1024=https://paste.c-net.org/IstanbulSlide
+KB_1536=https://paste.c-net.org/AfootBeauties
+KB_2048=https://paste.c-net.org/VotersBehaved
