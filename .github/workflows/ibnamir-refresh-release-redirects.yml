@@ -1,0 +1,48 @@
+name: IbnAmir Refresh Master Release Redirects
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths: ['.github/workflows/ibnamir-refresh-release-redirects.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve fresh release redirects
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolve() {
+            local id="$1"
+            curl -fsSI \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/octet-stream' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$id" \
+              | tr -d '\r' | awk 'BEGIN{IGNORECASE=1} /^location: /{sub(/^location: /,""); print; exit}'
+          }
+          APK_URL="$(resolve 574949170)"
+          TOOLS_URL="$(resolve 574949167)"
+          test -n "$APK_URL"; test -n "$TOOLS_URL"
+          mkdir -p qurani-ibnamir
+          {
+            echo "APK_URL=$APK_URL"
+            echo "TOOLS_URL=$TOOLS_URL"
+            echo 'APK_SHA256=4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181'
+            echo 'TOOLS_SHA256=009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550'
+          } > qurani-ibnamir/fresh-release-redirects.txt
+      - name: Persist
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnamir/fresh-release-redirects.txt
+          git commit -m 'ci: refresh Ibn Amir master release redirects'
+          git pull --rebase origin qurani-ibnamir-v100
+          git push origin HEAD:qurani-ibnamir-v100
