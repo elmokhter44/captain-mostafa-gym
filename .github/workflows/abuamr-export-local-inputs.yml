@@ -38,4 +38,4 @@ jobs:
           compression-level: 0
           path: /tmp/abuamr-local-inputs/
 
-# refresh artifact for IbnAmir finalization 2026-09-20
+# refresh artifact for IbnAmir finalization 2026-09-20 r2
