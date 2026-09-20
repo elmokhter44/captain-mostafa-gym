@@ -50,4 +50,4 @@ jobs:
           git commit -m 'ci: refresh Abu Amr signed release redirects' || true
           git pull --rebase origin qurani-abuamr-v100
           git push origin HEAD:qurani-abuamr-v100
-# refresh-20260919-final
+# refresh-20260920-ibnamir-finalization
