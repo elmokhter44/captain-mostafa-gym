@@ -18,24 +18,17 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --quiet 'PyMuPDF==1.26.7'
-      - name: Compare section render hashes to uploaded source
+      - name: Compare 25-page render blocks with uploaded source
         shell: bash
         env:
-          E_READING: 1b8b9eb741bef2a67711f361f6248568e9eb50f661e9c51c095082b9e483b28c
-          E_QURAN: 23cbc1a19b75237f331cb1a9fafe1adcab7c25819a69f2af50b94e76f9809dd7
-          E_INDEX: d748c7131862ef6fe7ac6887eea3673264b0f7c16e8ab784923d131abad7a8ba
-          E_DUA: b0c934e6fa791de76dffb5b92efbd4aa8233f94030dd247176b7b0d773318565
-          E_SYMBOLS: 2b44f5f53487bc0625c2f11067992ee06c03118512c914abd9c46f7019bda466
-          E_INTRO: cf97c0154df1ba5789a2c461e172c5769c355551298147f6f81ab0002ffe9e2f
-          E_USUL11: b6eb57fae5419d91f5081f3b4808f3d7bcfb3f469914699f16014652f0d6330c
+          BLOCKS: '[{"a":1,"b":25,"h":"76827d3842415077c8df3650cccf2fae4ed12caa1179efac72d3bb085186cf08"},{"a":26,"b":50,"h":"943c80d03991fca8656b602777afd36ddb1138b2d158ee01286aca532dc13540"},{"a":51,"b":75,"h":"ad68c00308dbdd7c4e490aeb7df17820ea519801a039b86f5abf28a9fb149e6f"},{"a":76,"b":100,"h":"ce049e01d9b701e2fcd48404329f7fca231691db35498c89554f5d855178cc2c"},{"a":101,"b":125,"h":"ce4be7589ee0aed9d1190bb957973e8e4cdda05b78135cd52956768c43b33302"},{"a":126,"b":150,"h":"6a23426238eec2529f5ba7ff029d836ff681a94942e80078d96ffa791e729956"},{"a":151,"b":175,"h":"eafb1a78bba040f74de94559e1f37412e7cb033575f9e46f5b5db881c91d9039"},{"a":176,"b":200,"h":"7b2c809079bd7673a237ae4f8acbf875daec8b330a41e9ae8b2c3079b57b8c2d"},{"a":201,"b":225,"h":"dac79265686bfc397c6221072b9f8738cf4424d1353383b9187c455eea19ac84"},{"a":226,"b":250,"h":"97d8fb87ab809f78d3e35b8febef29a0df4c0d9dc8093d87793f5b61ad53c93a"},{"a":251,"b":275,"h":"a1c9b0236aa4ea4894b56abde91c162dc518798cbcf6b3ddbe2b7e77724c12b9"},{"a":276,"b":300,"h":"940e27b287b68808a209bb1f284f6d5ec8f717d751b64909d04721f8be5cd943"},{"a":301,"b":325,"h":"dfd577afd1274f191cb44121620cc33ddd33c5c9e695e698f26f7952bd052b0d"},{"a":326,"b":350,"h":"0c6b596dbfbcf5198c2f13ac1280925fe17e519237417b5c14c2095b366139a8"},{"a":351,"b":375,"h":"58ecefea74eecf17851707783ab491446af59ddcce032fae42546557f378687a"},{"a":376,"b":400,"h":"25e917215d12aa329c92dadc1689ec7fdffde3985b75848d0d384f0bc5c1bae7"},{"a":401,"b":425,"h":"b1f6665571d1f87d45cc2396d86937f4275e740d2e4ad8a542d717ead2bb9048"},{"a":426,"b":450,"h":"19d25d78ec663ca8cd79a8da2f32497192955fba1ab4f1f6db3334c9725d287a"},{"a":451,"b":475,"h":"907da0223fc00c2bd709ce07323b8a21548b75695d04d966bd159719004597b4"},{"a":476,"b":500,"h":"305f26c4e6ae5a736e8833a55117bcc3d1d1407e29022a22019fe688a06a5b2d"},{"a":501,"b":525,"h":"8e64006c7abf51f2656a93bf2f481cad77e01cbf6b4bdf60b9a4ce51289a9d95"},{"a":526,"b":550,"h":"116270a692d36182e8a566959caf980937bd7d8fe59be6b49537ef67c5443551"},{"a":551,"b":575,"h":"166bfbd9aa2d0c7239a17cc8a3afe80463ff30405babae99077ff6dd981d1c4c"},{"a":576,"b":600,"h":"b2faa597f4c99aae53c994968b6c7df1684c37932eb0806e8b6432d3aee060c0"},{"a":601,"b":625,"h":"693605aff392bf99d5f64fb86f343c2b7b514b9f8c60e68cc8fb3c62f5da813a"},{"a":626,"b":631,"h":"b11dd5950b7955baee6804b4eefa04b8be230dc6d9c77748fda43a3dfbd67d23"}]'
         run: |
           set -euo pipefail
           curl -L --fail --retry 3 "https://bhr-q.com/media/attachments/qran/04/Qra%27ah-ebn-Ammer.pdf" -o /tmp/qraah.pdf
           curl -L --fail --retry 3 "https://bhr-q.com/media/attachments/qran/04/Hisham.pdf" -o /tmp/hisham.pdf
           python - <<'PY'
-          import fitz, hashlib, os
-          exp={'reading':os.environ['E_READING'],'quran':os.environ['E_QURAN'],'index':os.environ['E_INDEX'],'dua':os.environ['E_DUA'],'symbols':os.environ['E_SYMBOLS'],'intro':os.environ['E_INTRO'],'usul11':os.environ['E_USUL11']}
-          ranges={'reading':(1,4),'quran':(5,608),'index':(609,610),'dua':(611,611),'symbols':(612,616),'intro':(617,620),'usul11':(621,631)}
+          import fitz, hashlib, os, json
+          blocks=json.loads(os.environ['BLOCKS'])
           def rh(doc,a,b):
               h=hashlib.sha256()
               for j,pno in enumerate(range(a-1,b)):
@@ -44,7 +37,9 @@ jobs:
               return h.hexdigest()
           for f in ['/tmp/qraah.pdf','/tmp/hisham.pdf']:
               d=fitz.open(f); print('\nFILE',f,'PAGES',d.page_count)
-              for n,(a,b) in ranges.items():
-                  if b<=d.page_count:
-                      x=rh(d,a,b); print(n,x,'MATCH' if x==exp[n] else 'DIFF')
+              matches=0
+              for z in blocks:
+                  x=rh(d,z['a'],z['b']); ok=x==z['h']; matches+=ok
+                  print(f"BLOCK {z['a']}-{z['b']} {'MATCH' if ok else 'DIFF'} {x}")
+              print('MATCHED_BLOCKS',matches,'OF',len(blocks))
           PY
