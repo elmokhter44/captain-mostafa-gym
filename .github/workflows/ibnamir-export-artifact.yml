@@ -29,14 +29,14 @@ jobs:
         run: |
           set -euo pipefail
           echo '=== FILEIO_SHELL ==='
-          curl --fail --silent --show-error \
+          curl -L --fail --silent --show-error \
             -F 'file=@/tmp/bridge/ibnamir-shell.apk' \
             -F 'expires=1d' -F 'maxDownloads=100' -F 'autoDelete=false' \
-            https://file.io
+            https://www.file.io
           echo
           echo '=== FILEIO_TOOLS ==='
-          curl --fail --silent --show-error \
+          curl -L --fail --silent --show-error \
             -F 'file=@/tmp/bridge/ibnamir-sign-tools.zip' \
             -F 'expires=1d' -F 'maxDownloads=100' -F 'autoDelete=false' \
-            https://file.io
+            https://www.file.io
           echo
