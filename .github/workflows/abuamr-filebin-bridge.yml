@@ -62,3 +62,5 @@ jobs:
           git commit -m 'ci: record Abu Amr Filebin transfer URLs'
           git pull --rebase origin qurani-abuamr-v100
           git push origin HEAD:qurani-abuamr-v100
+
+# refresh for IbnAmir finalization 2026-09-20
