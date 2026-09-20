@@ -1,0 +1,55 @@
+name: IbnAmir Template X0 Bridge
+
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths:
+      - '.github/workflows/ibnamir-template-x0-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: abuamr-transfer-v100
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify exact Abu Amr master inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'AbuAmr-skeleton-v1.0.0.apk' \
+            --pattern 'android-apk-tools-36.zip'
+          echo '4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181  AbuAmr-skeleton-v1.0.0.apk' | sha256sum -c -
+          echo '009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550  android-apk-tools-36.zip' | sha256sum -c -
+      - name: Upload exact binaries to x0.at
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_URL="$(curl -fsS --retry 5 --retry-delay 3 -F 'file=@AbuAmr-skeleton-v1.0.0.apk' -F 'keep_name=1' https://x0.at/)"
+          TOOLS_URL="$(curl -fsS --retry 5 --retry-delay 3 -F 'file=@android-apk-tools-36.zip' -F 'keep_name=1' https://x0.at/)"
+          case "$APK_URL" in https://x0.at/*) ;; *) echo "bad apk url: $APK_URL" >&2; exit 1;; esac
+          case "$TOOLS_URL" in https://x0.at/*) ;; *) echo "bad tools url: $TOOLS_URL" >&2; exit 1;; esac
+          mkdir -p qurani-ibnamir
+          {
+            echo "APK_URL=$APK_URL"
+            echo "TOOLS_URL=$TOOLS_URL"
+            echo 'APK_SHA256=4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181'
+            echo 'TOOLS_SHA256=009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550'
+          } | tee qurani-ibnamir/template-x0-bridge.txt
+      - name: Persist transfer URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnamir/template-x0-bridge.txt
+          git commit -m 'ci: record Ibn Amir x0 template URLs'
+          git pull --rebase origin qurani-ibnamir-v100
+          git push origin HEAD:qurani-ibnamir-v100
