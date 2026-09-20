@@ -1,4 +1,4 @@
-name: IbnAmir List Drive Source Files
+name: IbnAmir Verify Candidate Source
 
 on:
   push:
@@ -10,34 +10,55 @@ permissions:
   contents: read
 
 jobs:
-  list-drive:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install --quiet 'gdown>=5.2,<6'
-      - name: List Ibn Amir Google Drive folder without downloading files
+      - run: python -m pip install --quiet 'gdown>=5.2,<6' 'PyMuPDF==1.26.7'
+      - name: Check exact candidate ZIP and direct PDF against uploaded source
         shell: bash
         env:
-          DRIVE_FOLDER_ID: 1_3Wj7yc5gUjFHOK0G_6rUJnHh5JohMn5
+          EXPECTED_SHA256: 3e33b9dd9a8601ded905df385572fa14f7aa6be36d00c0245f714851e96441be
+          EXPECTED_RENDER_SHA256: 8bece7bd74a036262d47c7495e0de6ff8e42a448782e60bd3b5f29fa436b8faa
+          ZIP_ID: 1K2Bafk-myZBdt_Byhoo8c3eMQOLGWEYw
+          DIRECT_ID: 1cuRyYfk7yUZyg6pT4JxaJivVzQXQoFQd
         run: |
           set -euo pipefail
+          mkdir -p /tmp/candidates /tmp/unzip
+          gdown --id "$ZIP_ID" -O /tmp/candidates/candidate.zip
+          unzip -l /tmp/candidates/candidate.zip || true
+          unzip -o /tmp/candidates/candidate.zip -d /tmp/unzip
+          gdown --id "$DIRECT_ID" -O /tmp/candidates/direct.pdf
           python - <<'PY'
-          import gdown, os, json
-          folder_id=os.environ['DRIVE_FOLDER_ID']
-          files=gdown.download_folder(id=folder_id, output='/tmp/ibnamir-list/', quiet=True, remaining_ok=True, skip_download=True)
-          rows=[]
-          for f in files:
-              row={
-                  'id': getattr(f,'id',None),
-                  'path': getattr(f,'local_path',getattr(f,'path',None)),
-                  'name': getattr(f,'name',None),
-                  'url': 'https://drive.google.com/uc?id='+getattr(f,'id','') if getattr(f,'id',None) else None,
-                  'type': type(f).__name__,
-              }
-              rows.append(row)
-          print(json.dumps(rows, ensure_ascii=False, indent=2))
-          print('COUNT=',len(rows))
+          import glob,os,hashlib,fitz
+          expected=os.environ['EXPECTED_SHA256']; er=os.environ['EXPECTED_RENDER_SHA256']
+          paths=glob.glob('/tmp/unzip/**/*',recursive=True)+['/tmp/candidates/direct.pdf']
+          exact=[]; visual=[]
+          for p in paths:
+              if not os.path.isfile(p): continue
+              h=hashlib.sha256()
+              with open(p,'rb') as f:
+                  for b in iter(lambda:f.read(8<<20),b''): h.update(b)
+              sha=h.hexdigest(); pages='-'; rh='-'
+              try:
+                  d=fitz.open(p); pages=d.page_count
+                  if pages==633:
+                      r=hashlib.sha256()
+                      for i,pg in enumerate(d):
+                          pix=pg.get_pixmap(matrix=fitz.Matrix(.5,.5),alpha=False)
+                          r.update(i.to_bytes(4,'big')); r.update(pix.width.to_bytes(4,'big')); r.update(pix.height.to_bytes(4,'big')); r.update(pix.samples)
+                      rh=r.hexdigest()
+                      if rh==er: visual.append(p)
+                  d.close()
+              except Exception: pass
+              print(f'FILE size={os.path.getsize(p)} pages={pages} sha256={sha} render={rh} path={p}')
+              if sha==expected: exact.append(p)
+          print('EXACT_MATCHES',exact)
+          print('VISUAL_MATCHES',visual)
+          assert exact or visual, 'No exact or visually identical 633-page source found'
+          if exact: print('EXACT_SOURCE_MATCH=YES\nEXACT_SOURCE_PATH='+exact[0])
+          else: print('VISUAL_SOURCE_MATCH=YES\nVISUAL_SOURCE_PATH='+visual[0])
           PY
