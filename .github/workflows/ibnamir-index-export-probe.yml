@@ -1,0 +1,28 @@
+name: IbnAmir Index Export Probe
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths: ['.github/workflows/ibnamir-index-export-probe.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect exact offline data exports
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/qsrc && mkdir /tmp/qsrc
+          cat qurani-ci/text/part-* >/tmp/b.b64; base64 -d /tmp/b.b64 >/tmp/b.tgz; tar -xzf /tmp/b.tgz -C /tmp/qsrc
+          cat qurani-v101/overlay/part-* >/tmp/o.b64; base64 -d /tmp/o.b64 >/tmp/o.tgz; tar -xzf /tmp/o.tgz -C /tmp/qsrc
+          cd /tmp/qsrc
+          echo '=== SURAHS SOURCE ==='; sed -n '1,120p' src/data/surahs.ts
+          echo '=== VERSES SOURCE HEAD ==='; sed -n '1,30p' src/data/verses.generated.ts
+          echo '=== MODULE SHAPES ==='
+          node --experimental-strip-types --input-type=module - <<'NODE'
+          const sm=await import('./src/data/surahs.ts'); const vm=await import('./src/data/verses.generated.ts');
+          function show(n,m){console.log(n,'keys=',Object.keys(m));for(const [k,v] of Object.entries(m)){console.log(n,k,'type',typeof v,'array',Array.isArray(v),'len',v?.length,'subkeys',v&&typeof v==='object'&&!Array.isArray(v)?Object.keys(v).slice(0,20):[]);}}
+          show('S',sm);show('V',vm);
+          NODE
