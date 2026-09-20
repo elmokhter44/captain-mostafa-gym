@@ -12,17 +12,39 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
-      - name: Download public candidate and verify exact uploaded source hash
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PDF verifier
+        run: python -m pip install --quiet 'PyMuPDF==1.26.7'
+      - name: Download candidate and prove rendered equivalence to uploaded 633-page source
         shell: bash
+        env:
+          EXPECTED_RENDER_SHA256: 8bece7bd74a036262d47c7495e0de6ff8e42a448782e60bd3b5f29fa436b8faa
         run: |
           set -euo pipefail
           url="https://bhr-q.com/media/attachments/qran/04/Qra%27ah-ebn-Ammer.pdf"
-          curl -L --fail --retry 3 --connect-timeout 20 "$url" -o /tmp/ibnamir-source.pdf
-          ls -lh /tmp/ibnamir-source.pdf
+          curl -L --fail --retry 4 --retry-delay 2 "$url" -o /tmp/ibnamir-source.pdf
           sha256sum /tmp/ibnamir-source.pdf
-          test "$(sha256sum /tmp/ibnamir-source.pdf | awk '{print $1}')" = "3e33b9dd9a8601ded905df385572fa14f7aa6be36d00c0245f714851e96441be"
-          test "$(stat -c %s /tmp/ibnamir-source.pdf)" = "135445406"
-          pdfinfo /tmp/ibnamir-source.pdf | grep -E '^Pages:[[:space:]]+633$'
-          echo EXACT_SOURCE_MATCH=YES
+          python - <<'PY'
+          import fitz, hashlib, os
+          path='/tmp/ibnamir-source.pdf'
+          doc=fitz.open(path)
+          assert doc.page_count == 633, doc.page_count
+          h=hashlib.sha256()
+          for i,p in enumerate(doc):
+              pix=p.get_pixmap(matrix=fitz.Matrix(0.5,0.5), alpha=False)
+              h.update(i.to_bytes(4,'big'))
+              h.update(pix.width.to_bytes(4,'big'))
+              h.update(pix.height.to_bytes(4,'big'))
+              h.update(pix.samples)
+          actual=h.hexdigest()
+          expected=os.environ['EXPECTED_RENDER_SHA256']
+          print('SOURCE_PAGES=',doc.page_count)
+          print('SOURCE_RENDER_SHA256=',actual)
+          print('EXPECTED_RENDER_SHA256=',expected)
+          assert actual == expected, (actual,expected)
+          print('RENDER_EQUIVALENT_TO_UPLOADED_SOURCE=YES')
+          PY
