@@ -24,5 +24,20 @@ jobs:
           DRIVE_FOLDER_ID: 1_3Wj7yc5gUjFHOK0G_6rUJnHh5JohMn5
         run: |
           set -euo pipefail
-          gdown --folder "https://drive.google.com/drive/folders/${DRIVE_FOLDER_ID}" --json > /tmp/drive-list.json
-          cat /tmp/drive-list.json
+          python - <<'PY'
+          import gdown, os, json
+          folder_id=os.environ['DRIVE_FOLDER_ID']
+          files=gdown.download_folder(id=folder_id, output='/tmp/ibnamir-list/', quiet=True, remaining_ok=True, skip_download=True)
+          rows=[]
+          for f in files:
+              row={
+                  'id': getattr(f,'id',None),
+                  'path': getattr(f,'local_path',getattr(f,'path',None)),
+                  'name': getattr(f,'name',None),
+                  'url': 'https://drive.google.com/uc?id='+getattr(f,'id','') if getattr(f,'id',None) else None,
+                  'type': type(f).__name__,
+              }
+              rows.append(row)
+          print(json.dumps(rows, ensure_ascii=False, indent=2))
+          print('COUNT=',len(rows))
+          PY
