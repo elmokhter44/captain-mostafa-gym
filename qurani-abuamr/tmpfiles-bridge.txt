@@ -1,4 +1,4 @@
-APK_URL=https://tmpfiles.org/dl/wxwjNEmtRG0k/abuamr-skeleton-v1.0.0.apk
-TOOLS_URL=https://tmpfiles.org/dl/w9wENgmoRXXC/android-apk-tools-36.zip
+APK_URL=https://tmpfiles.org/dl/wmwaxwA8oV2r/abuamr-skeleton-v1.0.0.apk
+TOOLS_URL=https://tmpfiles.org/dl/w6wSxKAUoWs1/android-apk-tools-36.zip
 APK_SHA256=4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181
 TOOLS_SHA256=009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550
