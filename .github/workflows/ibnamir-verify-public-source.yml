@@ -1,4 +1,4 @@
-name: IbnAmir Locate Exact Source
+name: IbnAmir List Drive Source Files
 
 on:
   push:
@@ -10,42 +10,19 @@ permissions:
   contents: read
 
 jobs:
-  locate:
+  list-drive:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 10
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install source tools
-        run: python -m pip install --quiet 'gdown>=5.2,<6' 'PyMuPDF==1.26.7'
-      - name: Download Ibn Amir Google Drive library and locate exact uploaded source
+      - run: python -m pip install --quiet 'gdown>=5.2,<6'
+      - name: List Ibn Amir Google Drive folder without downloading files
         shell: bash
         env:
-          EXPECTED_SHA256: 3e33b9dd9a8601ded905df385572fa14f7aa6be36d00c0245f714851e96441be
           DRIVE_FOLDER_ID: 1_3Wj7yc5gUjFHOK0G_6rUJnHh5JohMn5
         run: |
           set -euo pipefail
-          mkdir -p /tmp/ibnamir-drive
-          gdown --folder "https://drive.google.com/drive/folders/${DRIVE_FOLDER_ID}" -O /tmp/ibnamir-drive --remaining-ok
-          find /tmp/ibnamir-drive -type f -printf '%s %p\n' | sort -nr | head -100
-          python - <<'PY'
-          import os, glob, hashlib, fitz
-          expected=os.environ['EXPECTED_SHA256']
-          exact=[]
-          for p in glob.glob('/tmp/ibnamir-drive/**/*',recursive=True):
-              if not os.path.isfile(p): continue
-              try:
-                  h=hashlib.sha256()
-                  with open(p,'rb') as f:
-                      for b in iter(lambda:f.read(8<<20),b''): h.update(b)
-                  sha=h.hexdigest()
-                  pages=fitz.open(p).page_count if p.lower().endswith('.pdf') else '-'
-                  print(f'FILE pages={pages} sha256={sha} size={os.path.getsize(p)} path={p}')
-                  if sha==expected: exact.append(p)
-              except Exception as e:
-                  print('SKIP',p,repr(e))
-          assert exact, 'Exact uploaded source SHA256 not found in Drive folder'
-          print('EXACT_SOURCE_MATCH=YES')
-          print('EXACT_SOURCE_PATH='+exact[0])
-          PY
+          gdown --folder "https://drive.google.com/drive/folders/${DRIVE_FOLDER_ID}" --json > /tmp/drive-list.json
+          cat /tmp/drive-list.json
