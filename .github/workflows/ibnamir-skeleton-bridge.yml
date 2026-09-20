@@ -1,0 +1,26 @@
+name: IbnAmir Template Skeleton Bridge
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths: ['.github/workflows/ibnamir-skeleton-bridge.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download exact Abu Amr v1.0.0 master skeleton
+        run: |
+          set -euo pipefail
+          gh release download abuamr-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'AbuAmr-skeleton-v1.0.0.apk' -D /tmp
+          test -s /tmp/AbuAmr-skeleton-v1.0.0.apk
+          sha256sum /tmp/AbuAmr-skeleton-v1.0.0.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IBNAMIR-ABUAMR-MASTER-SKELETON
+          compression-level: 0
+          retention-days: 1
+          path: /tmp/AbuAmr-skeleton-v1.0.0.apk
