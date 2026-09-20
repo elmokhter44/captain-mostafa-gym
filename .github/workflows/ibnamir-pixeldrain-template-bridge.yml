@@ -35,7 +35,11 @@ jobs:
           upload() {
             local f="$1" j id
             j="$(curl -fsS --retry 6 --retry-delay 3 --retry-all-errors -T "$f" https://pixeldrain.com/api/file/)"
-            id="$(printf '%s' "$j" | jq -r '.id // .data.id // empty')"
+            printf 'PIXELDRAIN_RESPONSE_%s=%s\n' "$f" "$j" >&2
+            id="$(printf '%s' "$j" | jq -r '[.. | .id? // empty][0] // empty')"
+            if [ -z "$id" ]; then
+              id="$(printf '%s' "$j" | jq -r '[.. | .value? // empty][0] // empty')"
+            fi
             test -n "$id"
             printf '%s' "$id"
           }
@@ -57,6 +61,6 @@ jobs:
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add qurani-ibnamir/pixeldrain-template-urls.txt
-          git commit -m 'ci: record Ibn Amir pixeldrain template URLs'
+          git commit -m 'ci: refresh Ibn Amir pixeldrain template URLs'
           git pull --rebase origin qurani-ibnamir-v100
           git push origin HEAD:qurani-ibnamir-v100
