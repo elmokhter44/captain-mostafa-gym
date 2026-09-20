@@ -7,8 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: write
-  contents: read
+  contents: write
 
 jobs:
   bridge:
@@ -17,39 +16,37 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Free old Actions artifact storage
-        shell: bash
-        run: |
-          set -euo pipefail
-          repo="$GITHUB_REPOSITORY"
-          page=1
-          deleted=0
-          while :; do
-            json="$(gh api "repos/$repo/actions/artifacts?per_page=100&page=$page")"
-            count="$(printf '%s' "$json" | jq '.artifacts|length')"
-            [ "$count" -eq 0 ] && break
-            printf '%s' "$json" | jq -r '.artifacts[].id' | while read -r id; do
-              gh api --method DELETE "repos/$repo/actions/artifacts/$id" || true
-            done
-            page=$((page+1))
-          done
-          echo 'artifact cleanup requested'
+      - uses: actions/checkout@v4
+        with:
+          ref: qurani-ibnamir-v100
+          fetch-depth: 0
       - name: Download exact Abu Amr master APK and Android tools
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/bridge
+          rm -rf /tmp/bridge ibnamir-bridge
+          mkdir -p /tmp/bridge ibnamir-bridge/apk ibnamir-bridge/tools
           gh release download abuamr-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'AbuAmr-skeleton-v1.0.0.apk' -D /tmp/bridge
           gh release download abuamr-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'android-apk-tools-36.zip' -D /tmp/bridge
           echo '4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181  /tmp/bridge/AbuAmr-skeleton-v1.0.0.apk' | sha256sum -c -
           echo '009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550  /tmp/bridge/android-apk-tools-36.zip' | sha256sum -c -
-          ls -lh /tmp/bridge
-      - uses: actions/upload-artifact@v4
-        with:
-          name: IBNAMIR-LOCAL-BRIDGE-FINAL
-          compression-level: 0
-          retention-days: 1
-          overwrite: true
-          path: |
-            /tmp/bridge/AbuAmr-skeleton-v1.0.0.apk
-            /tmp/bridge/android-apk-tools-36.zip
+      - name: Encode and split into repository-safe UTF-8 chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -w0 /tmp/bridge/AbuAmr-skeleton-v1.0.0.apk > /tmp/apk.b64
+          base64 -w0 /tmp/bridge/android-apk-tools-36.zip > /tmp/tools.b64
+          split -b 4000000 -d -a 3 /tmp/apk.b64 ibnamir-bridge/apk/part-
+          split -b 4000000 -d -a 3 /tmp/tools.b64 ibnamir-bridge/tools/part-
+          printf '%s\n' '4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181  AbuAmr-skeleton-v1.0.0.apk' > ibnamir-bridge/APK-SHA256.txt
+          printf '%s\n' '009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550  android-apk-tools-36.zip' > ibnamir-bridge/TOOLS-SHA256.txt
+          wc -c ibnamir-bridge/apk/part-* ibnamir-bridge/tools/part-*
+      - name: Commit bridge chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ibnamir-bridge
+          git commit -m 'chore: stage Ibn Amir local bridge chunks' || exit 0
+          git push origin HEAD:qurani-ibnamir-v100
