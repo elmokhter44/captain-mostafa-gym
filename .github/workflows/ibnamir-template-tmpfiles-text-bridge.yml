@@ -1,0 +1,71 @@
+name: IbnAmir Template TmpFiles Text Bridge
+
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths:
+      - '.github/workflows/ibnamir-template-tmpfiles-text-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: abuamr-transfer-v100
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify exact Abu Amr master inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'AbuAmr-skeleton-v1.0.0.apk' \
+            --pattern 'android-apk-tools-36.zip'
+          echo '4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181  AbuAmr-skeleton-v1.0.0.apk' | sha256sum -c -
+          echo '009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550  android-apk-tools-36.zip' | sha256sum -c -
+      - name: Base64 split and upload text chunks to tmpfiles.org
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/txtbridge && mkdir -p /tmp/txtbridge/apk
+          base64 -w 0 AbuAmr-skeleton-v1.0.0.apk > /tmp/txtbridge/apk.b64
+          base64 -w 0 android-apk-tools-36.zip > /tmp/txtbridge/tools.b64.txt
+          split -b 8M -d -a 2 --additional-suffix=.txt /tmp/txtbridge/apk.b64 /tmp/txtbridge/apk/part-
+          upload() {
+            local f="$1" json url
+            json="$(curl -fsS --retry 5 --retry-delay 3 -F "file=@$f;type=text/plain" -F 'expire=172800' https://tmpfiles.org/api/v1/upload)"
+            url="$(printf '%s' "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["url"])')"
+            printf '%s' "${url/https:\/\/tmpfiles.org\//https:\/\/tmpfiles.org\/dl\/}"
+          }
+          mkdir -p qurani-ibnamir
+          OUT=qurani-ibnamir/template-tmpfiles-text-bridge.txt
+          : > "$OUT"
+          echo 'APK_SHA256=4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181' >> "$OUT"
+          echo 'TOOLS_SHA256=009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550' >> "$OUT"
+          i=0
+          for f in /tmp/txtbridge/apk/part-*.txt; do
+            u="$(upload "$f")"
+            printf 'APK_PART_%02d_URL=%s\n' "$i" "$u" >> "$OUT"
+            printf 'APK_PART_%02d_SHA256=%s\n' "$i" "$(sha256sum "$f" | awk '{print $1}')" >> "$OUT"
+            i=$((i+1))
+          done
+          echo "APK_PART_COUNT=$i" >> "$OUT"
+          tu="$(upload /tmp/txtbridge/tools.b64.txt)"
+          echo "TOOLS_B64_URL=$tu" >> "$OUT"
+          echo "TOOLS_B64_SHA256=$(sha256sum /tmp/txtbridge/tools.b64.txt | awk '{print $1}')" >> "$OUT"
+          cat "$OUT"
+      - name: Persist text transfer URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnamir/template-tmpfiles-text-bridge.txt
+          git commit -m 'ci: record Ibn Amir tmpfiles text bridge URLs'
+          git pull --rebase origin qurani-ibnamir-v100
+          git push origin HEAD:qurani-ibnamir-v100
