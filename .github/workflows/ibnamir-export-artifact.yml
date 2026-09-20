@@ -1,4 +1,4 @@
-name: IbnAmir Wrapped Bridge
+name: IbnAmir Resolve Filebin
 
 on:
   push:
@@ -7,26 +7,23 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  export:
+  resolve:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - name: Reconstruct and commit wrapped base64
+      - name: Resolve Filebin download redirect
         shell: bash
         run: |
-          set -euo pipefail
-          cat qurani-ibnamir/native-export/apk/part-* | base64 -d > /tmp/ibnamir-shell.apk
-          echo '3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a  /tmp/ibnamir-shell.apk' | sha256sum -c -
-          mkdir -p qurani-ibnamir/bridge
-          base64 -w 1000 /tmp/ibnamir-shell.apk > qurani-ibnamir/bridge/shell.b64
-          echo "LINES=$(wc -l < qurani-ibnamir/bridge/shell.b64)"
-          echo "BYTES=$(wc -c < qurani-ibnamir/bridge/shell.b64)"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add qurani-ibnamir/bridge/shell.b64
-          git commit -m 'ci: add wrapped Ibn Amir shell bridge'
-          git push origin HEAD:qurani-ibnamir-v100
+          set -x
+          URL='https://filebin.net/ibnamir-zip-1789915252-35517225108/ibnamir-shell.zip'
+          rm -f /tmp/cj /tmp/h1 /tmp/h2 /tmp/body
+          curl -sS -c /tmp/cj -D /tmp/h1 -o /tmp/body "$URL" || true
+          echo '=== FIRST_HEADERS ==='; cat /tmp/h1 || true
+          echo '=== COOKIES ==='; cat /tmp/cj || true
+          curl -sS -b /tmp/cj -D /tmp/h2 -o /dev/null "$URL" || true
+          echo '=== SECOND_HEADERS ==='; cat /tmp/h2 || true
+          echo '=== EFFECTIVE ==='
+          curl -sS -b /tmp/cj -L -o /dev/null -w '%{url_effective}\n%{http_code}\n' "$URL" || true
