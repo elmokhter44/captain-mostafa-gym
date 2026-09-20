@@ -1,0 +1,63 @@
+name: IbnAmir Filebin Template Bridge
+
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths:
+      - '.github/workflows/ibnamir-filebin-template-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: abuamr-transfer-v100
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify exact Abu Amr master assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'AbuAmr-skeleton-v1.0.0.apk' \
+            --pattern 'android-apk-tools-36.zip'
+          echo '4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181  AbuAmr-skeleton-v1.0.0.apk' | sha256sum -c -
+          echo '009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550  android-apk-tools-36.zip' | sha256sum -c -
+      - name: Upload base64 text to Filebin
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -w 76 AbuAmr-skeleton-v1.0.0.apk > /tmp/abuamr-apk.b64.txt
+          base64 -w 76 android-apk-tools-36.zip > /tmp/android-tools.b64.txt
+          BIN="ibnamir$(date +%s)$RANDOM"
+          APK_URL="https://filebin.net/$BIN/abuamr-apk.b64.txt"
+          TOOLS_URL="https://filebin.net/$BIN/android-tools.b64.txt"
+          curl -fsS --retry 5 --retry-delay 3 -H 'Content-Type: text/plain' --data-binary @/tmp/android-tools.b64.txt "$TOOLS_URL" >/tmp/tools-resp
+          curl -fsS --retry 5 --retry-delay 3 -H 'Content-Type: text/plain' --data-binary @/tmp/abuamr-apk.b64.txt "$APK_URL" >/tmp/apk-resp
+          curl -fsSI "$TOOLS_URL" >/tmp/tools-head
+          curl -fsSI "$APK_URL" >/tmp/apk-head
+          mkdir -p qurani-ibnamir
+          {
+            echo "BIN=$BIN"
+            echo "APK_B64_URL=$APK_URL"
+            echo "TOOLS_B64_URL=$TOOLS_URL"
+            echo 'APK_SHA256=4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181'
+            echo 'TOOLS_SHA256=009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550'
+            echo "APK_B64_BYTES=$(stat -c%s /tmp/abuamr-apk.b64.txt)"
+            echo "TOOLS_B64_BYTES=$(stat -c%s /tmp/android-tools.b64.txt)"
+          } > qurani-ibnamir/filebin-template-urls.txt
+      - name: Persist transfer URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnamir/filebin-template-urls.txt
+          git commit -m 'ci: record Ibn Amir Filebin template URLs'
+          git pull --rebase origin qurani-ibnamir-v100
+          git push origin HEAD:qurani-ibnamir-v100
