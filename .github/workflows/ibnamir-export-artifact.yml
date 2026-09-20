@@ -24,18 +24,23 @@ jobs:
           cat qurani-ibnamir/native-export/tools/part-* | base64 -d > /tmp/bridge/ibnamir-sign-tools.zip
           echo '3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a  /tmp/bridge/ibnamir-shell.apk' | sha256sum -c -
           echo 'eed35a6c7e594564f7cb30fbd3a870e7f84054825de2ea5bb84217adf855c0a3  /tmp/bridge/ibnamir-sign-tools.zip' | sha256sum -c -
-      - name: Publish bridge through ntfy attachments
+      - name: Publish base64 chunks through dpaste
         shell: bash
         run: |
           set -euo pipefail
-          TOPIC="ibnamir-bridge-20260920-8c5f3a91"
-          echo '=== NTFY_SHELL ==='
-          curl --fail --silent --show-error -T /tmp/bridge/ibnamir-shell.apk \
-            -H 'Filename: ibnamir-shell.apk' \
-            "https://ntfy.sh/${TOPIC}-shell"
-          echo
-          echo '=== NTFY_TOOLS ==='
-          curl --fail --silent --show-error -T /tmp/bridge/ibnamir-sign-tools.zip \
-            -H 'Filename: ibnamir-sign-tools.zip' \
-            "https://ntfy.sh/${TOPIC}-tools"
-          echo
+          base64 -w0 /tmp/bridge/ibnamir-shell.apk > /tmp/bridge/shell.b64
+          base64 -w0 /tmp/bridge/ibnamir-sign-tools.zip > /tmp/bridge/tools.b64
+          split -b 500000 -d -a 2 /tmp/bridge/tools.b64 /tmp/bridge/tools-part-
+          post() {
+            local f="$1" title="$2"
+            echo "=== DPASTE_${title} bytes=$(wc -c < "$f") ==="
+            curl --fail --silent --show-error -A 'QuranKarem-build/1.0' \
+              --data-urlencode "content@${f}" \
+              --data-urlencode "title=${title}" \
+              --data-urlencode 'expiry_days=1' \
+              https://dpaste.com/api/v2/
+            echo
+            sleep 2
+          }
+          post /tmp/bridge/shell.b64 SHELL
+          for f in /tmp/bridge/tools-part-*; do post "$f" "$(basename "$f")"; done
