@@ -1,0 +1,77 @@
+name: IbnAmir Template Paste Bridge
+
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths:
+      - '.github/workflows/ibnamir-template-paste-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: abuamr-transfer-v100
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exact Abu Amr master APK and Android tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'AbuAmr-skeleton-v1.0.0.apk' \
+            --pattern 'android-apk-tools-36.zip'
+          echo '4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181  AbuAmr-skeleton-v1.0.0.apk' | sha256sum -c -
+          echo '009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550  android-apk-tools-36.zip' | sha256sum -c -
+      - name: Split and upload base64 chunks to paste.rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/bridge && mkdir -p /tmp/bridge/apk /tmp/bridge/tools
+          split -b 8M -d -a 2 AbuAmr-skeleton-v1.0.0.apk /tmp/bridge/apk/part-
+          split -b 8M -d -a 2 android-apk-tools-36.zip /tmp/bridge/tools/part-
+          OUT=qurani-ibnamir/template-paste-bridge.txt
+          mkdir -p qurani-ibnamir
+          : > "$OUT"
+          echo 'APK_SHA256=4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181' >> "$OUT"
+          echo 'TOOLS_SHA256=009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550' >> "$OUT"
+          upload_parts() {
+            kind="$1"; dir="$2"; i=0
+            for f in "$dir"/part-*; do
+              b64="/tmp/${kind}-${i}.b64"
+              base64 -w 0 "$f" > "$b64"
+              url=''
+              for attempt in 1 2 3 4 5; do
+                url="$(curl -fsS --retry 2 --retry-delay 2 --data-binary @"$b64" https://paste.rs/ || true)"
+                case "$url" in https://paste.rs/*) break;; esac
+                sleep 8
+              done
+              case "$url" in https://paste.rs/*) ;; *) echo "paste upload failed for $kind part $i: $url" >&2; exit 1;; esac
+              bytes="$(stat -c%s "$f")"
+              sha="$(sha256sum "$f" | awk '{print $1}')"
+              printf '%s_PART_%02d_URL=%s\n' "$kind" "$i" "$url" >> "$OUT"
+              printf '%s_PART_%02d_BYTES=%s\n' "$kind" "$i" "$bytes" >> "$OUT"
+              printf '%s_PART_%02d_SHA256=%s\n' "$kind" "$i" "$sha" >> "$OUT"
+              i=$((i+1))
+              sleep 6
+            done
+            printf '%s_PART_COUNT=%s\n' "$kind" "$i" >> "$OUT"
+          }
+          upload_parts APK /tmp/bridge/apk
+          upload_parts TOOLS /tmp/bridge/tools
+          cat "$OUT"
+      - name: Persist transfer URLs on isolated Ibn Amir branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnamir/template-paste-bridge.txt
+          git commit -m 'ci: record Ibn Amir template paste bridge URLs'
+          git pull --rebase origin qurani-ibnamir-v100
+          git push origin HEAD:qurani-ibnamir-v100
