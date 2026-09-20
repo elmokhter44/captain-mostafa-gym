@@ -19,13 +19,13 @@ jobs:
           python-version: '3.12'
       - name: Install PDF verifier
         run: python -m pip install --quiet 'PyMuPDF==1.26.7'
-      - name: Prove public Hisham PDF equals uploaded source pages 1-631
+      - name: Prove public Ibn Amir reading PDF equals uploaded source pages 1-631
         shell: bash
         env:
           EXPECTED_631_RENDER_SHA256: 2314260a9298751e6a0758a1a43f8682d12e96c29afd580d9d2f7e379bf38fb0
         run: |
           set -euo pipefail
-          curl -L --fail --retry 4 --retry-delay 2 "https://bhr-q.com/media/attachments/qran/04/Hisham.pdf" -o /tmp/ibnamir-source.pdf
+          curl -L --fail --retry 4 --retry-delay 2 "https://bhr-q.com/media/attachments/qran/04/Qra%27ah-ebn-Ammer.pdf" -o /tmp/ibnamir-source.pdf
           sha256sum /tmp/ibnamir-source.pdf
           python - <<'PY'
           import fitz, hashlib, os
