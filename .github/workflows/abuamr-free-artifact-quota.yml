@@ -38,3 +38,5 @@ jobs:
           echo 'Remaining:'
           gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
             --jq '.artifacts[] | select(.expired == false) | [.id,.name,.size_in_bytes] | @tsv'
+
+# refresh cleanup for IbnAmir finalization 2026-09-20
