@@ -1,0 +1,60 @@
+name: IbnAmir Ephemeral Local Bridge
+
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths: ['.github/workflows/ibnamir-ephemeral-tunnel.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tunnel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare exact verified master files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/share
+          gh release download abuamr-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'AbuAmr-skeleton-v1.0.0.apk' -D /tmp/share
+          gh release download abuamr-transfer-v100 --repo "$GITHUB_REPOSITORY" -p 'android-apk-tools-36.zip' -D /tmp/share
+          echo '4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181  /tmp/share/AbuAmr-skeleton-v1.0.0.apk' | sha256sum -c -
+          echo '009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550  /tmp/share/android-apk-tools-36.zip' | sha256sum -c -
+          printf '%s\n' 'Ibn Amir temporary build bridge' > /tmp/share/health.txt
+      - name: Start temporary public tunnel and publish URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8765 --directory /tmp/share >/tmp/http.log 2>&1 &
+          curl -LfsS --retry 5 --retry-delay 2 https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /tmp/cloudflared
+          chmod +x /tmp/cloudflared
+          /tmp/cloudflared tunnel --url http://127.0.0.1:8765 --no-autoupdate >/tmp/cf.log 2>&1 &
+          for i in $(seq 1 60); do
+            URL="$(grep -oE 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/cf.log | head -1 || true)"
+            if [ -n "$URL" ]; then break; fi
+            sleep 1
+          done
+          test -n "${URL:-}"
+          curl -fsS "$URL/health.txt" | grep -q 'Ibn Amir temporary build bridge'
+          mkdir -p qurani-ibnamir
+          {
+            echo "BASE_URL=$URL"
+            echo 'APK_FILE=AbuAmr-skeleton-v1.0.0.apk'
+            echo 'TOOLS_FILE=android-apk-tools-36.zip'
+            echo 'APK_SHA256=4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181'
+            echo 'TOOLS_SHA256=009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550'
+          } > qurani-ibnamir/ephemeral-tunnel.txt
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnamir/ephemeral-tunnel.txt
+          git commit -m 'ci: publish temporary Ibn Amir build bridge URL'
+          git pull --rebase origin qurani-ibnamir-v100
+          git push origin HEAD:qurani-ibnamir-v100
+          echo "TUNNEL_READY=$URL"
+          sleep 900
