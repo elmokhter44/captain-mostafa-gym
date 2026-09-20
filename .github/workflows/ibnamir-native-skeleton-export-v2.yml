@@ -33,9 +33,15 @@ jobs:
           s=st['run']
           a="const {SURAHS}=await import('./src/data/surahs.ts');"
           b="const {VERSE_INDEX}=await import('./src/data/verses.generated.ts');"
-          assert a in s and b in s
-          s=s.replace(a,"const sm=await import('./src/data/surahs.ts');\nconst sv=[...Object.values(sm),...Object.values(sm.default||{})];\nconst SURAHS=sv.find(v=>Array.isArray(v)&&v.length===114);")
-          s=s.replace(b,"const vm=await import('./src/data/verses.generated.ts');\nconst vv=[...Object.values(vm),...Object.values(vm.default||{})];\nconst VERSE_INDEX=vv.find(v=>Array.isArray(v)&&v.length===6236);")
+          assert a in s and b in s and 'cd /tmp/qsrc' in s
+          s=s.replace(a,"const {SURAH_INDEX:SURAHS}=await import('./src/data/surahs.ts');")
+          inject="""cd /tmp/qsrc
+          cp \"$GITHUB_WORKSPACE/qurani-v101/generate-verse-index.py\" scripts/generate-verse-index.py
+          curl -fsSL --retry 5 --retry-all-errors 'https://api.alquran.cloud/v1/quran/quran-uthmani' -o /tmp/quran-uthmani.json
+          python3 scripts/generate-verse-index.py /tmp/quran-uthmani.json src/data/verses.generated.ts | tee /tmp/verse-index-report.txt
+          grep -q 'Generated 6236 ayahs' /tmp/verse-index-report.txt
+          grep -q 'all 114 surah start pages match' /tmp/verse-index-report.txt"""
+          s=s.replace('cd /tmp/qsrc',inject,1)
           Path('/tmp/generate.sh').write_text(s)
           PY
           bash /tmp/generate.sh
@@ -45,7 +51,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import json,re
+          import json
           root=Path('/tmp/ibnamir-native')
           main=(root/'app/src/main/java/com/qurani/ibnamr/MainActivity.java').read_text()
           sec=(root/'app/src/main/java/com/qurani/ibnamr/Section.java').read_text()
