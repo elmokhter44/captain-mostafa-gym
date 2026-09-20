@@ -1,0 +1,43 @@
+name: IbnAmir Fix Skeleton Exporter
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths: ['.github/workflows/ibnamir-fix-exporter.yml']
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch index export to discover array export names safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/ibnamir-native-skeleton-export.yml')
+          s=p.read_text()
+          old="""const {SURAHS}=await import('./src/data/surahs.ts');
+          const {VERSE_INDEX}=await import('./src/data/verses.generated.ts');
+          fs.writeFileSync('/tmp/ibnamir-native/app/src/main/assets/surahs.json',JSON.stringify(SURAHS));
+          fs.writeFileSync('/tmp/ibnamir-native/app/src/main/assets/verses.json',JSON.stringify(VERSE_INDEX));
+          console.log('SURAHS='+SURAHS.length,'VERSES='+VERSE_INDEX.length);
+          if(SURAHS.length!==114||VERSE_INDEX.length!==6236)process.exit(2);"""
+          new="""const sm=await import('./src/data/surahs.ts');
+          const vm=await import('./src/data/verses.generated.ts');
+          const SURAHS=Object.values(sm).find(v=>Array.isArray(v)&&v.length===114);
+          const VERSE_INDEX=Object.values(vm).find(v=>Array.isArray(v)&&v.length===6236);
+          if(!SURAHS||!VERSE_INDEX){console.log('SURAH_KEYS',Object.keys(sm),'VERSE_KEYS',Object.keys(vm));process.exit(2);}
+          fs.writeFileSync('/tmp/ibnamir-native/app/src/main/assets/surahs.json',JSON.stringify(SURAHS));
+          fs.writeFileSync('/tmp/ibnamir-native/app/src/main/assets/verses.json',JSON.stringify(VERSE_INDEX));
+          console.log('SURAHS='+SURAHS.length,'VERSES='+VERSE_INDEX.length);"""
+          if old not in s: raise SystemExit('expected block not found')
+          p.write_text(s.replace(old,new))
+          PY
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .github/workflows/ibnamir-native-skeleton-export.yml
+          git commit -m 'fix: export offline indexes regardless of symbol name'
+          git pull --rebase origin qurani-ibnamir-v100
+          git push origin HEAD:qurani-ibnamir-v100
