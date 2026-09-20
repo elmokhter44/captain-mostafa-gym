@@ -1,4 +1,4 @@
-name: IbnAmir Resolve Filebin
+name: IbnAmir TinyURL Bridge
 
 on:
   push:
@@ -10,20 +10,16 @@ permissions:
   contents: read
 
 jobs:
-  resolve:
+  bridge:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Resolve Filebin download redirect
+      - name: Resolve Filebin and shorten
         shell: bash
         run: |
-          set -x
-          URL='https://filebin.net/ibnamir-zip-1789915252-35517225108/ibnamir-shell.zip'
-          rm -f /tmp/cj /tmp/h1 /tmp/h2 /tmp/body
-          curl -sS -c /tmp/cj -D /tmp/h1 -o /tmp/body "$URL" || true
-          echo '=== FIRST_HEADERS ==='; cat /tmp/h1 || true
-          echo '=== COOKIES ==='; cat /tmp/cj || true
-          curl -sS -b /tmp/cj -D /tmp/h2 -o /dev/null "$URL" || true
-          echo '=== SECOND_HEADERS ==='; cat /tmp/h2 || true
-          echo '=== EFFECTIVE ==='
-          curl -sS -b /tmp/cj -L -o /dev/null -w '%{url_effective}\n%{http_code}\n' "$URL" || true
+          set -euo pipefail
+          FILEBIN='https://filebin.net/ibnamir-zip-1789915252-35517225108/ibnamir-shell.zip'
+          EFFECTIVE=$(curl -sS -L -o /dev/null -w '%{url_effective}' "$FILEBIN")
+          echo "EFFECTIVE=$EFFECTIVE"
+          SHORT=$(curl -sS --get --data-urlencode "url=$EFFECTIVE" 'https://tinyurl.com/api-create.php')
+          echo "SHORT=$SHORT"
