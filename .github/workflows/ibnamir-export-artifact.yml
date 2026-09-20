@@ -24,21 +24,15 @@ jobs:
           cat qurani-ibnamir/native-export/tools/part-* | base64 -d > /tmp/bridge/ibnamir-sign-tools.zip
           echo '3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a  /tmp/bridge/ibnamir-shell.apk' | sha256sum -c -
           echo 'eed35a6c7e594564f7cb30fbd3a870e7f84054825de2ea5bb84217adf855c0a3  /tmp/bridge/ibnamir-sign-tools.zip' | sha256sum -c -
-      - name: Publish base64 text chunks to paste.rs
+      - name: Publish bridge as text files on tmpfiles
         shell: bash
         run: |
           set -euo pipefail
-          base64 -w0 /tmp/bridge/ibnamir-shell.apk > /tmp/bridge/shell.b64
-          base64 -w0 /tmp/bridge/ibnamir-sign-tools.zip > /tmp/bridge/tools.b64
-          echo "SHELL_B64_BYTES=$(wc -c < /tmp/bridge/shell.b64)"
-          echo "TOOLS_B64_BYTES=$(wc -c < /tmp/bridge/tools.b64)"
-          echo '=== PASTE_SHELL ==='
-          curl --fail --silent --show-error --data-binary @/tmp/bridge/shell.b64 https://paste.rs/
+          base64 -w0 /tmp/bridge/ibnamir-shell.apk > /tmp/bridge/ibnamir-shell.b64.txt
+          base64 -w0 /tmp/bridge/ibnamir-sign-tools.zip > /tmp/bridge/ibnamir-tools.b64.txt
+          echo '=== TMPFILES_SHELL_TEXT ==='
+          curl --fail --silent --show-error -F 'file=@/tmp/bridge/ibnamir-shell.b64.txt' https://tmpfiles.org/api/v1/upload
           echo
-          split -b 650000 -d -a 2 /tmp/bridge/tools.b64 /tmp/bridge/toolchunk-
-          for f in /tmp/bridge/toolchunk-*; do
-            echo "=== PASTE_TOOLS_$(basename "$f") bytes=$(wc -c < "$f") ==="
-            curl --fail --silent --show-error --data-binary @"$f" https://paste.rs/
-            echo
-            sleep 2
-          done
+          echo '=== TMPFILES_TOOLS_TEXT ==='
+          curl --fail --silent --show-error -F 'file=@/tmp/bridge/ibnamir-tools.b64.txt' https://tmpfiles.org/api/v1/upload
+          echo
