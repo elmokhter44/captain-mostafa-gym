@@ -1,4 +1,4 @@
-name: IbnAmir Export Shell Tools
+name: IbnAmir Small Shell Export
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   export:
@@ -15,28 +15,29 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct verified shell and Android signing tools
+      - name: Reconstruct verified shell
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/bridge
           cat qurani-ibnamir/native-export/apk/part-* | base64 -d > /tmp/bridge/ibnamir-shell.apk
-          cat qurani-ibnamir/native-export/tools/part-* | base64 -d > /tmp/bridge/ibnamir-sign-tools.zip
           echo '3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a  /tmp/bridge/ibnamir-shell.apk' | sha256sum -c -
-          echo 'eed35a6c7e594564f7cb30fbd3a870e7f84054825de2ea5bb84217adf855c0a3  /tmp/bridge/ibnamir-sign-tools.zip' | sha256sum -c -
-      - name: Publish bridge through file.io
+      - name: Commit small text chunks
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== FILEIO_SHELL ==='
-          curl -L --fail --silent --show-error \
-            -F 'file=@/tmp/bridge/ibnamir-shell.apk' \
-            -F 'expires=1d' -F 'maxDownloads=100' -F 'autoDelete=false' \
-            https://www.file.io
-          echo
-          echo '=== FILEIO_TOOLS ==='
-          curl -L --fail --silent --show-error \
-            -F 'file=@/tmp/bridge/ibnamir-sign-tools.zip' \
-            -F 'expires=1d' -F 'maxDownloads=100' -F 'autoDelete=false' \
-            https://www.file.io
-          echo
+          rm -rf qurani-ibnamir/small-export
+          mkdir -p qurani-ibnamir/small-export/apk
+          base64 -w0 /tmp/bridge/ibnamir-shell.apk > /tmp/bridge/shell.b64
+          split -b 25000 -d -a 3 /tmp/bridge/shell.b64 qurani-ibnamir/small-export/apk/part-
+          cat > qurani-ibnamir/small-export/manifest.txt <<'EOF'
+          APK_SHA256=3f2da2463e14e5fde52446e594b82febcb09889f9b4457e8da2b1a2aba55546a
+          APK_BYTES=356216
+          BASE64_BYTES=474956
+          CHUNK_BYTES=25000
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add qurani-ibnamir/small-export
+          git commit -m 'ci: export Ibn Amir shell in small chunks'
+          git push origin HEAD:qurani-ibnamir-v100
