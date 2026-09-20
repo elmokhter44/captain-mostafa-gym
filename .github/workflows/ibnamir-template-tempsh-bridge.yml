@@ -1,0 +1,58 @@
+name: IbnAmir Template TempSH Bridge
+
+on:
+  push:
+    branches: [qurani-ibnamir-v100]
+    paths:
+      - '.github/workflows/ibnamir-template-tempsh-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: abuamr-transfer-v100
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify exact Abu Amr master inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'AbuAmr-skeleton-v1.0.0.apk' \
+            --pattern 'android-apk-tools-36.zip'
+          echo '4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181  AbuAmr-skeleton-v1.0.0.apk' | sha256sum -c -
+          echo '009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550  android-apk-tools-36.zip' | sha256sum -c -
+      - name: Upload exact binaries to temp.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          upload() {
+            curl -fsS --retry 5 --retry-delay 3 -F "file=@$1" https://temp.sh/upload
+          }
+          APK_URL="$(upload AbuAmr-skeleton-v1.0.0.apk)"
+          TOOLS_URL="$(upload android-apk-tools-36.zip)"
+          case "$APK_URL" in https://temp.sh/*) ;; *) echo "bad apk url: $APK_URL" >&2; exit 1;; esac
+          case "$TOOLS_URL" in https://temp.sh/*) ;; *) echo "bad tools url: $TOOLS_URL" >&2; exit 1;; esac
+          mkdir -p qurani-ibnamir
+          {
+            echo "APK_URL=$APK_URL"
+            echo "TOOLS_URL=$TOOLS_URL"
+            echo 'APK_SHA256=4c979705e9c25607122f5a9e476d9cfe51ccb346da8ae9b8004379e8462c2181'
+            echo 'TOOLS_SHA256=009421949da0e28cc7682a4e84f1f497bcbd36ad6b1743c5e50dfaaf389d0550'
+          } | tee qurani-ibnamir/template-tempsh-bridge.txt
+      - name: Persist transfer URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add qurani-ibnamir/template-tempsh-bridge.txt
+          git commit -m 'ci: record Ibn Amir temp.sh template URLs'
+          git pull --rebase origin qurani-ibnamir-v100
+          git push origin HEAD:qurani-ibnamir-v100
