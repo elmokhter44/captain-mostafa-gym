@@ -65,6 +65,10 @@ jobs:
           from PIL import Image
           Image.open('/tmp/qurani-logo.jpg').convert('RGBA').save('qurani-app/assets/branding/qurani-icon.png', optimize=True)
           PY
+          cd qurani-app
+          python3 scripts/generate-icons.py
+          cd ..
+          test -f qurani-app/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
           test -f qurani-app/src/features/reader/ReaderScreen.tsx
           test -f qurani-app/android/app/build.gradle
 
