@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 jobs:
@@ -236,11 +236,19 @@ jobs:
           PY
           du -sh series-output
 
-      - name: Upload compact overlays and Android tools
-        uses: actions/upload-artifact@v4
-        with:
-          name: quran-series-v100-overlays-v2
-          path: series-output
-          if-no-files-found: error
-          compression-level: 6
-          retention-days: 7
+      - name: Persist compact build payload to branch (no Actions artifact quota)
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .series-generated
+          mkdir -p .series-generated/parts
+          tar -C series-output -czf /tmp/quran-series-build-payload.tar.gz base.apk overlays build-report.json tools
+          sha256sum /tmp/quran-series-build-payload.tar.gz | tee .series-generated/SHA256SUMS.txt
+          stat -c 'payload_bytes=%s' /tmp/quran-series-build-payload.tar.gz | tee .series-generated/INFO.txt
+          split -b 45M -d -a 2 /tmp/quran-series-build-payload.tar.gz .series-generated/parts/payload.part-
+          sha256sum .series-generated/parts/* >> .series-generated/SHA256SUMS.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f .series-generated
+          git commit -m 'ci: persist Quran series build payload' || true
+          git push origin HEAD:qurani-series-v100
