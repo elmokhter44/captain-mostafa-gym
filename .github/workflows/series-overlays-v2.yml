@@ -1,0 +1,242 @@
+name: Quran Series v1.0.0 Overlay Builder v2
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths:
+      - '.github/workflows/series-overlays-v2.yml'
+      - 'qurani-series/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      REALM_DISABLE_ANALYTICS: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+          cache-read-only: false
+
+      - name: Reconstruct verified master source from repository payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app
+          mkdir -p qurani-app
+          cat qurani-ci/text/part-* > /tmp/qurani-src.b64
+          base64 -d /tmp/qurani-src.b64 > /tmp/qurani-src.tar.gz
+          echo '8419ab562a4783684b34e1bc62a96be4dc3da00f8a85e5e0d298182ab1e79192  /tmp/qurani-src.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/qurani-src.tar.gz -C qurani-app
+          cat qurani-v101/overlay/part-* > /tmp/qurani-v101-overlay.b64
+          base64 -d /tmp/qurani-v101-overlay.b64 > /tmp/qurani-v101-overlay.tar.gz
+          echo 'cbb6b45021274412968d6f6747fa54048d1d46be31e92a6cea31b5d80a2b9d7e  /tmp/qurani-v101-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/qurani-v101-overlay.tar.gz -C qurani-app
+          cp qurani-v101/generate-verse-index.py qurani-app/scripts/generate-verse-index.py
+          cp qurani-v101/ZoomablePdfPage.tsx qurani-app/src/features/reader/ZoomablePdfPage.tsx
+          chmod +x qurani-app/scripts/generate-verse-index.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          b64=''.join(p.read_text() for p in sorted(Path('qurani-ci/logo').glob('part-*')))
+          Path('/tmp/qurani-logo.jpg').write_bytes(base64.b64decode(b64,validate=True))
+          PY
+          echo '4c8d65a11c77539831be3a791e54b9eb984375cea878262fd1972ed3acf58cae  /tmp/qurani-logo.jpg' | sha256sum -c -
+          python3 -m pip install --quiet pillow 'PyMuPDF==1.26.4'
+          mkdir -p qurani-app/assets/branding
+          python3 - <<'PY'
+          from PIL import Image
+          Image.open('/tmp/qurani-logo.jpg').convert('RGBA').save('qurani-app/assets/branding/qurani-icon.png', optimize=True)
+          PY
+          test -f qurani-app/src/features/reader/ReaderScreen.tsx
+          test -f qurani-app/android/app/build.gradle
+
+      - name: Decode series build scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/quran-series-scripts
+          base64 -d qurani-series/apply_series_common.py.gz.b64 | gzip -dc > /tmp/quran-series-scripts/apply_series_common.py
+          base64 -d qurani-series/build_all_overlays.py.gz.b64 | gzip -dc > /tmp/quran-series-scripts/build_all_overlays.py
+          python3 -m py_compile /tmp/quran-series-scripts/apply_series_common.py /tmp/quran-series-scripts/build_all_overlays.py
+
+      - name: Install dependencies and Android SDK build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          npm install --no-audit --no-fund
+          cd ..
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
+          keytool -genkeypair -v -keystore qurani-app/android/app/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Series Build,O=QuranKarem,C=EG' >/dev/null 2>&1 || true
+          cd qurani-app/android
+          gradle wrapper --gradle-version 9.3.1
+          chmod +x gradlew
+
+      - name: Build reproducible base APK with non-production placeholder PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app/android/app/src/main/assets/pdf
+          mkdir -p qurani-app/android/app/src/main/assets/pdf
+          python3 - <<'PY'
+          import fitz
+          from pathlib import Path
+          out=Path('qurani-app/android/app/src/main/assets/pdf')
+          counts={
+            'quran.pdf':604,
+            'quran_index.pdf':2,
+            'intro.pdf':4,
+            'qalun_usul.pdf':11,
+            'warsh_usul.pdf':17,
+            'warsh_summary.pdf':4,
+            'warsh_lines_guide.pdf':5,
+            'handwritten_warsh_qalun.pdf':32,
+          }
+          for name,count in counts.items():
+              d=fitz.open()
+              for _ in range(count): d.new_page(width=512.402,height=652.68)
+              d.save(out/name)
+              d.close()
+          PY
+          cd qurani-app/android
+          ./gradlew assembleRelease --stacktrace --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk /tmp/qurani-base.apk
+          test -s /tmp/qurani-base.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging /tmp/qurani-base.apk | grep -q "package: name='com.qurani.app'"
+
+      - name: RED - prove old reader lacks the requested batch contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > qurani-app/__tests__/series-reader-contract.node.test.ts <<'EOF'
+          import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import {readFileSync} from 'node:fs';
+          test('reader uses one-page horizontal swipe and tap bottom menu', () => {
+            const reader = readFileSync('src/features/reader/ReaderScreen.tsx', 'utf8');
+            assert.match(reader, /horizontal/);
+            assert.match(reader, /pagingEnabled/);
+            assert.match(reader, /contentOffset\.x/);
+            assert.doesNotMatch(reader, /contentOffset\.y/);
+            for (const label of ['البحث','حفظ علامة','الانتقال إلى العلامة','الفهرس','المزيد']) assert.ok(reader.includes(label));
+            assert.doesNotMatch(reader, /التالي|السابق/);
+          });
+          test('section cards have no subtitles', () => {
+            const card = readFileSync('src/features/home/SectionCard.tsx', 'utf8');
+            assert.doesNotMatch(card, /section\.subtitle/);
+          });
+          test('reader theme can be persisted', () => {
+            const settings = readFileSync('src/repositories/SettingsRepository.ts', 'utf8');
+            assert.match(settings, /setTheme/);
+          });
+          EOF
+          cd qurani-app
+          if node --experimental-strip-types --test __tests__/series-reader-contract.node.test.ts >/tmp/red.txt 2>&1; then
+            cat /tmp/red.txt
+            echo 'ERROR: RED test unexpectedly passed before implementation'
+            exit 1
+          fi
+          cat /tmp/red.txt
+          echo 'RED phase confirmed'
+
+      - name: Apply approved common series UI and reader behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          python3 /tmp/quran-series-scripts/apply_series_common.py .
+
+      - name: GREEN - requested reader contract and typecheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          node --experimental-strip-types --test __tests__/series-reader-contract.node.test.ts | tee /tmp/green.txt
+          grep -q '# fail 0' /tmp/green.txt
+          cat > tsconfig.series.json <<'EOF'
+          {"extends":"./tsconfig.json","exclude":["node_modules","android","__tests__","**/*.node.test.ts"]}
+          EOF
+          npx tsc --noEmit -p tsconfig.series.json
+
+      - name: Prepare build-only series placeholder PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app/android/app/src/main/assets/pdf
+          mkdir -p qurani-app/android/app/src/main/assets/pdf
+          python3 - <<'PY'
+          import fitz
+          from pathlib import Path
+          out=Path('qurani-app/android/app/src/main/assets/pdf')
+          for name,count in {'reading.pdf':4,'quran.pdf':604,'quran_index.pdf':2,'dua.pdf':1,'waqf_symbols.pdf':5,'furati_intro.pdf':4,'usul.pdf':18}.items():
+              d=fitz.open()
+              for _ in range(count): d.new_page(width=512.402,height=652.68)
+              d.save(out/name)
+              d.close()
+          PY
+
+      - name: Build 12 skeleton variants and extract compact overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          python3 /tmp/quran-series-scripts/build_all_overlays.py . /tmp/qurani-base.apk ../qurani-series/apps.json ../series-output
+
+      - name: Package Android finalization tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          mkdir -p series-output/tools/android-apk-tools/lib
+          cp "$BT/apksigner" "$BT/zipalign" "$BT/aapt" "$BT/aapt2" series-output/tools/android-apk-tools/
+          cp "$BT/lib/apksigner.jar" series-output/tools/android-apk-tools/lib/
+          cp /tmp/qurani-base.apk series-output/base.apk
+          sha256sum series-output/base.apk series-output/tools/android-apk-tools/* series-output/tools/android-apk-tools/lib/apksigner.jar > series-output/tools/SHA256SUMS.txt
+
+      - name: Validate all 12 overlay outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find series-output/overlays -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 12
+          test -s series-output/build-report.json
+          python3 - <<'PY'
+          import json
+          r=json.load(open('series-output/build-report.json'))
+          assert len(r)==12
+          for x in r:
+              assert x['badgingOk'] is True
+              assert x['nativeLibsIdenticalToBase'] is True
+              assert x['overlayReconstructsSkeleton'] is True
+              assert x['versionCode']==1 and x['versionName']=='1.0.0'
+              assert x['changedEntries']
+          print('overlay validation passed for 12 apps')
+          PY
+          du -sh series-output
+
+      - name: Upload compact overlays and Android tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: quran-series-v100-overlays-v2
+          path: series-output
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 7
