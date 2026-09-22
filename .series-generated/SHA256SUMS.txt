@@ -1,0 +1,2 @@
+ec4ce96491895c5a43c026358123e04d12413af63b8a905a46a6949c78548072  /tmp/quran-series-build-payload.tar.gz
+ec4ce96491895c5a43c026358123e04d12413af63b8a905a46a6949c78548072  .series-generated/parts/payload.part-00
