@@ -1,0 +1,45 @@
+name: Quran Final Signing Fix
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-final-signing-fix.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  patch-and-run:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qurani-series-v100
+          fetch-depth: 0
+      - name: Force v1 compatibility signing and dispatch final build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/quran-series-final-user-drive.yml')
+          s=p.read_text()
+          old1='"$BT/apksigner" sign --ks /tmp/qseries/key/Quran-Series-v1.keystore'
+          new1='"$BT/apksigner" sign --min-sdk-version 21 --ks /tmp/qseries/key/Quran-Series-v1.keystore'
+          old2='"$BT/apksigner" verify --verbose --print-certs "$FINAL"'
+          new2='"$BT/apksigner" verify --min-sdk-version 21 --verbose --print-certs "$FINAL"'
+          assert s.count(old1)==1, s.count(old1)
+          assert s.count(old2)==1, s.count(old2)
+          s=s.replace(old1,new1).replace(old2,new2)
+          p.write_text(s)
+          PY
+          git config user.name 'Quran Build Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/workflows/quran-series-final-user-drive.yml
+          git commit -m 'fix: force v1 and v2 compatible APK signatures'
+          git push origin HEAD:qurani-series-v100
+          gh workflow run quran-series-final-user-drive.yml --ref qurani-series-v100
