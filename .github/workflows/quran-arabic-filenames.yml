@@ -1,0 +1,71 @@
+name: Quran Arabic APK Filenames
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-arabic-filenames.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rename-assets:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: quran-series-v1.0.0-final
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download existing verified APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/apks /tmp/arabic
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -D /tmp/apks -p '*.apk'
+          test "$(find /tmp/apks -maxdepth 1 -name '*.apk' | wc -l)" -ge 12
+
+      - name: Create Arabic filename copies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp '/tmp/apks/01-AbuAmr-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام أبي عمرو البصري براوييه السوسي والدوري.apk'
+          cp '/tmp/apks/02-IbnAmir-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام ابن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه ابن ذكوان.apk'
+          cp '/tmp/apks/03-IbnKathir-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام عبدالله بن كثير براوييه البزي وقنبل.apk'
+          cp '/tmp/apks/04-Khalaf-Hamza-Sakt-v1.0.0.apk' '/tmp/arabic/المصحف المعلم برواية الإمام خلف عن حمزة بوجه السكت على الساكن المفصول.apk'
+          cp '/tmp/apks/05-AlKisai-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام الكسائي براوييه الليث والدوري.apk'
+          cp '/tmp/apks/06-Khallad-Hamza-NoSakt-v1.0.0.apk' '/tmp/arabic/المصحف المعلم برواية الإمام خلاد عن حمزة بوجه ترك السكت مطلقًا.apk'
+          cp '/tmp/apks/07-AbuJaafar-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام أبي جعفر المدني براوييه ابن وردان وابن جماز.apk'
+          cp '/tmp/apks/08-Yaqub-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام يعقوب الحضرمي براوييه رويس وروح.apk'
+          cp '/tmp/apks/09-Khalaf10-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام خلف العاشر البزار براوييه إسحاق وإدريس.apk'
+          cp '/tmp/apks/10-Asim-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام عاصم ابن أبي النجود برواية حفص وبالحاشية ما خالفه فيه شعبة.apk'
+          cp '/tmp/apks/11-Warsh-Azraq-v1.0.0.apk' '/tmp/arabic/مصحف ورش عن نافع من طريق الأزرق.apk'
+          cp '/tmp/apks/12-Qalun-Qasr-v1.0.0.apk' '/tmp/arabic/مصحف قالون عن نافع بوجه قصر المنفصل وإسكان ميم الجمع.apk'
+          test "$(find /tmp/arabic -maxdepth 1 -name '*.apk' | wc -l)" -eq 12
+
+      - name: Verify copies are byte-identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp '/tmp/apks/01-AbuAmr-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام أبي عمرو البصري براوييه السوسي والدوري.apk'
+          cmp '/tmp/apks/02-IbnAmir-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام ابن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه ابن ذكوان.apk'
+          cmp '/tmp/apks/03-IbnKathir-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام عبدالله بن كثير براوييه البزي وقنبل.apk'
+          cmp '/tmp/apks/04-Khalaf-Hamza-Sakt-v1.0.0.apk' '/tmp/arabic/المصحف المعلم برواية الإمام خلف عن حمزة بوجه السكت على الساكن المفصول.apk'
+          cmp '/tmp/apks/05-AlKisai-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام الكسائي براوييه الليث والدوري.apk'
+          cmp '/tmp/apks/06-Khallad-Hamza-NoSakt-v1.0.0.apk' '/tmp/arabic/المصحف المعلم برواية الإمام خلاد عن حمزة بوجه ترك السكت مطلقًا.apk'
+          cmp '/tmp/apks/07-AbuJaafar-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام أبي جعفر المدني براوييه ابن وردان وابن جماز.apk'
+          cmp '/tmp/apks/08-Yaqub-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام يعقوب الحضرمي براوييه رويس وروح.apk'
+          cmp '/tmp/apks/09-Khalaf10-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام خلف العاشر البزار براوييه إسحاق وإدريس.apk'
+          cmp '/tmp/apks/10-Asim-v1.0.0.apk' '/tmp/arabic/المصحف المعلم بقراءة الإمام عاصم ابن أبي النجود برواية حفص وبالحاشية ما خالفه فيه شعبة.apk'
+          cmp '/tmp/apks/11-Warsh-Azraq-v1.0.0.apk' '/tmp/arabic/مصحف ورش عن نافع من طريق الأزرق.apk'
+          cmp '/tmp/apks/12-Qalun-Qasr-v1.0.0.apk' '/tmp/arabic/مصحف قالون عن نافع بوجه قصر المنفصل وإسكان ميم الجمع.apk'
+
+      - name: Upload Arabic-named APKs to same release
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in /tmp/arabic/*.apk; do
+            gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber
+          done
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '[.assets[].name | select(endswith(".apk"))] | length'
