@@ -1,0 +1,289 @@
+# payload tree
+base.apk	69169205 bytes
+build-report.json	8202 bytes
+overlays/abuamr/files/AndroidManifest.xml	6152 bytes
+overlays/abuamr/files/assets/index.android.bundle	1703172 bytes
+overlays/abuamr/files/resources.arsc	970528 bytes
+overlays/abuamr/manifest.json	1038 bytes
+overlays/abujaafar/files/AndroidManifest.xml	6172 bytes
+overlays/abujaafar/files/assets/index.android.bundle	1703092 bytes
+overlays/abujaafar/files/resources.arsc	970536 bytes
+overlays/abujaafar/manifest.json	1055 bytes
+overlays/alkisai/files/AndroidManifest.xml	6160 bytes
+overlays/alkisai/files/assets/index.android.bundle	1703112 bytes
+overlays/alkisai/files/resources.arsc	970512 bytes
+overlays/alkisai/manifest.json	1027 bytes
+overlays/asim/files/AndroidManifest.xml	6140 bytes
+overlays/asim/files/assets/index.android.bundle	1703068 bytes
+overlays/asim/files/resources.arsc	970528 bytes
+overlays/asim/manifest.json	1034 bytes
+overlays/ibnamir/files/AndroidManifest.xml	6160 bytes
+overlays/ibnamir/files/assets/index.android.bundle	1703068 bytes
+overlays/ibnamir/files/resources.arsc	970528 bytes
+overlays/ibnamir/manifest.json	1040 bytes
+overlays/ibnkathir/files/AndroidManifest.xml	6172 bytes
+overlays/ibnkathir/files/assets/index.android.bundle	1703060 bytes
+overlays/ibnkathir/files/resources.arsc	970524 bytes
+overlays/ibnkathir/manifest.json	1041 bytes
+overlays/khalaf10/files/AndroidManifest.xml	6164 bytes
+overlays/khalaf10/files/assets/index.android.bundle	1702980 bytes
+overlays/khalaf10/files/resources.arsc	970488 bytes
+overlays/khalaf10/manifest.json	1005 bytes
+overlays/khalafhamza/files/AndroidManifest.xml	6184 bytes
+overlays/khalafhamza/files/assets/index.android.bundle	1703000 bytes
+overlays/khalafhamza/files/resources.arsc	970496 bytes
+overlays/khalafhamza/manifest.json	1017 bytes
+overlays/khalladhamza/files/AndroidManifest.xml	6188 bytes
+overlays/khalladhamza/files/assets/index.android.bundle	1702964 bytes
+overlays/khalladhamza/files/resources.arsc	970480 bytes
+overlays/khalladhamza/manifest.json	1004 bytes
+overlays/qalunqasr/files/AndroidManifest.xml	6172 bytes
+overlays/qalunqasr/files/assets/index.android.bundle	1702996 bytes
+overlays/qalunqasr/files/resources.arsc	970500 bytes
+overlays/qalunqasr/manifest.json	1017 bytes
+overlays/warshazraq/files/AndroidManifest.xml	6176 bytes
+overlays/warshazraq/files/assets/index.android.bundle	1702940 bytes
+overlays/warshazraq/files/resources.arsc	970468 bytes
+overlays/warshazraq/manifest.json	987 bytes
+overlays/yaqub/files/AndroidManifest.xml	6148 bytes
+overlays/yaqub/files/assets/index.android.bundle	1703040 bytes
+overlays/yaqub/files/resources.arsc	970516 bytes
+overlays/yaqub/manifest.json	1026 bytes
+tools/SHA256SUMS.txt	657 bytes
+tools/android-apk-tools/aapt	1591768 bytes
+tools/android-apk-tools/aapt2	5735384 bytes
+tools/android-apk-tools/apksigner	2959 bytes
+tools/android-apk-tools/lib/apksigner.jar	1100545 bytes
+tools/android-apk-tools/zipalign	227696 bytes
+
+# build-report.json
+[
+  {
+    "slug": "abuamr",
+    "package": "com.qurani.series.abuamr",
+    "title": "المصحف المعلم بقراءة الإمام أبي عمر البصري براويه السوسي وبالحاشية ماخالفة فيه الدوري",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "badgingOk": true,
+    "nativeLibsIdenticalToBase": true,
+    "overlayReconstructsSkeleton": true,
+    "changedEntries": [
+      "AndroidManifest.xml",
+      "assets/index.android.bundle",
+      "resources.arsc"
+    ],
+    "deletedEntries": [],
+    "overlayBytes": 2679852,
+    "skeletonBytes": 69172036,
+    "skeletonSha256": "b56b93458406f467227228dc06889726c3147d270806eb990a4eec67d6b2dd07"
+  },
+  {
+    "slug": "ibnamir",
+    "package": "com.qurani.series.ibnamir",
+    "title": "المصحف المعلم بقراءة الامام بن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه بن ذكوان",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "badgingOk": true,
+    "nativeLibsIdenticalToBase": true,
+    "overlayReconstructsSkeleton": true,
+    "changedEntries": [
+      "AndroidManifest.xml",
+      "assets/index.android.bundle",
+      "resources.arsc"
+    ],
+    "deletedEntries": [],
+    "overlayBytes": 2679756,
+    "skeletonBytes": 69171932,
+    "skeletonSha256": "dd6c8f42b15a60af2fcfc0c1d177a22fe097bec9711f42ecc3cfb7a95e780d30"
+  },
+  {
+    "slug": "ibnkathir",
+    "package": "com.qurani.series.ibnkathir",
+    "title": "المصحف المعلم بقراءة الإمام عبدالله بن كثير برواية البزي وبالحاشية ما خالفه فيه قنبل",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "badgingOk": true,
+    "nativeLibsIdenticalToBase": true,
+    "overlayReconstructsSkeleton": true,
+    "changedEntries": [
+      "AndroidManifest.xml",
+      "assets/index.android.bundle",
+      "resources.arsc"
+    ],
+    "deletedEntries": [],
+    "overlayBytes": 2679756,
+    "skeletonBytes": 69171924,
+    "skeletonSha256": "0c453079554f647ce1126d51f90334f026fbc850747d441a27aa10c1592d9c8e"
+  },
+  {
+    "slug": "khalafhamza",
+    "package": "com.qurani.series.khalafhamza",
+    "title": "المصحف المعلم برواية الامام خلف عن حمزة بوجه السكت على الساكن المفصول",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "badgingOk": true,
+    "nativeLibsIdenticalToBase": true,
+    "overlayReconstructsSkeleton": true,
+    "changedEntries": [
+      "AndroidManifest.xml",
+      "assets/index.android.bundle",
+      "resources.arsc"
+    ],
+    "deletedEntries": [],
+    "overlayBytes": 2679680,
+    "skeletonBytes": 69171840,
+    "skeletonSha256": "cfc0904b19ff717f52d5120c966c1780ae2378915261b5aac5098e423c962f76"
+  },
+  {
+    "slug": "alkisai",
+    "package": "com.qurani.series.alkisai",
+    "title": "المصحف المعلم بقراءة الامام الكسائى برواية الليث وبالحاشية ما خالفه فيه الدوري",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "badgingOk": true,
+    "nativeLibsIdenticalToBase": true,
+    "overlayReconstructsSkeleton": true,
+    "changedEntries": [
+      "AndroidManifest.xml",
+      "assets/index.android.bundle",
+      "resources.arsc"
+    ],
+    "deletedEntries": [],
+    "overlayBytes": 2679784,
+    "skeletonBytes": 69171964,
+    "skeletonSha256": "247b3b8af5cfbc989101a656ec28a7a017aa2542740e529d2287eecb9f31fd32"
+  },
+  {
+    "slug": "khalladhamza",
+    "package": "com.qurani.series.khalladhamza",
+    "title": "المصحف المعلم برواية الامام خلاد عن حمزة بوجه ترك السكت مطلقآ",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "badgingOk": true,
+    "nativeLibsIdenticalToBase": true,
+    "overlayReconstructsSkeleton": true,
+    "changedEntries": [
+      "AndroidManifest.xml",
+      "assets/index.android.bundle",
+      "resources.arsc"
+    ],
+    "deletedEntries": [],
+    "overlayBytes": 2679632,
+    "skeletonBytes": 69171784,
+    "skeletonSha256": "2f64d8c8034316b9b8c2f2e43e4ebafebe5260b8230a2cbaf7e1f5b86242f151"
+  },
+  {
+    "slug": "abujaafar",
+    "package": "com.qurani.series.abujaafar",
+    "title": "المصحف المعلم بقراءة الامام أبي جعفر المدني برواية ابن وردان وبالحاشية ما خالفه فيه ابن جماز",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "badgingOk": true,
+    "nativeLibsIdenticalToBase": true,
+    "overlayReconstructsSkeleton": true,
+    "changedEntries": [
+      "AndroidManifest.xml",
+      "assets/index.android.bundle",
+      "resources.arsc"
+    ],
+    "deletedEntries": [],
+    "overlayBytes": 2679800,
+    "skeletonBytes": 69171968,
+    "skeletonSha256": "0964611db9ecf2191c57eca057685581f30a9e23609aa9476f7e12b9c246bb52"
+  },
+  {
+    "slug": "yaqub",
+    "package": "com.qurani.series.yaqub",
+    "title": "المصحف المعلم بقراءة الامام يعقوب الحضرمي برواية رويس وبالحاشية ما خالفه فيه روح",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "badgingOk": true,
+    "nativeLibsIdenticalToBase": true,
+    "overlayReconstructsSkeleton": true,
+    "changedEntries": [
+      "AndroidManifest.xml",
+      "assets/index.android.bundle",
+      "resources.arsc"
+    ],
+    "deletedEntries": [],
+    "overlayBytes": 2679704,
+    "skeletonBytes": 69171896,
+    "skeletonSha256": "b1f21e521292910776abc27b68da6657d944eae0ab15192a3e141a611d906314"
+  },
+  {
+    "slug": "khalaf10",
+    "package": "com.qurani.series.khalaf10",
+    "title": "المصحف المعلم بقراءة الإمام خلف العاشر البزار برواية إسحاق وإدريس",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "badgingOk": true,
+    "nativeLibsIdenticalToBase": true,
+    "overlayReconstructsSkeleton": true,
+    "changedEntries": [
+      "AndroidManifest.xml",
+      "assets/index.android.bundle",
+      "resources.arsc"
+    ],
+    "deletedEntries": [],
+    "overlayBytes": 2679632,
+    "skeletonBytes": 69171808,
+    "skeletonSha256": "cb3d1462f579cb7118e5242e817272f1b9ef7f259e017d112f1e5a21ec138ca9"
+  },
+  {
+    "slug": "asim",
+    "package": "com.qurani.series.asim",
+    "title": "المصحف المعلم بقراءة الإمام عاصم ابن أبي النجود برواية حفص وبالحاشية ما خالفه فيه شعبة",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "badgingOk": true,
+    "nativeLibsIdenticalToBase": true,
+    "overlayReconstructsSkeleton": true,
+    "changedEntries": [
+      "AndroidManifest.xml",
+      "assets/index.android.bundle",
+      "resources.arsc"
+    ],
+    "deletedEntries": [],
+    "overlayBytes": 2679736,
+    "skeletonBytes": 69171936,
+    "skeletonSha256": "c2d801f80d58f7eb40146fd9ebdce8c54fb183c43cc224cc50f420a3696f0700"
+  },
+  {
+    "slug": "warshazraq",
+    "package": "com.qurani.series.warshazraq",
+    "title": "المصحف المعلم برواية الإمام ورش عن نافع من طريق الأزرق",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "badgingOk": true,
+    "nativeLibsIdenticalToBase": true,
+    "overlayReconstructsSkeleton": true,
+    "changedEntries": [
+      "AndroidManifest.xml",
+      "assets/index.android.bundle",
+      "resources.arsc"
+    ],
+    "deletedEntries": [],
+    "overlayBytes": 2679584,
+    "skeletonBytes": 69171748,
+    "skeletonSha256": "ead942cc08a9cfb50498cc16d5976d2497403c8523f440ea387d6079d328d0d6"
+  },
+  {
+    "slug": "qalunqasr",
+    "package": "com.qurani.series.qalunqasr",
+    "title": "المصحف المعلم برواية الإمام قالون عن نافع بقصر المنفصل وإسكان ميم الجمع",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "badgingOk": true,
+    "nativeLibsIdenticalToBase": true,
+    "overlayReconstructsSkeleton": true,
+    "changedEntries": [
+      "AndroidManifest.xml",
+      "assets/index.android.bundle",
+      "resources.arsc"
+    ],
+    "deletedEntries": [],
+    "overlayBytes": 2679668,
+    "skeletonBytes": 69171832,
+    "skeletonSha256": "3871e1bc7f44d1479631bbb62fd780dcc00e9f55eeacd3745de4b412f8c39e07"
+  }
+]
