@@ -1,0 +1,52 @@
+name: Quran Skeleton PDF Diagnose
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-skeleton-pdf-diagnose.yml']
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect skeleton PDF layout and bundle references
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/qd && mkdir -p /tmp/qd/payload /tmp/qd/out
+          cat .series-generated/parts/payload.part-* > /tmp/qd/payload.tar.gz
+          tar -xzf /tmp/qd/payload.tar.gz -C /tmp/qd/payload
+          python3 - <<'PY'
+          import json,zipfile
+          from pathlib import Path
+          root=Path('/tmp/qd/payload')
+          app=[x for x in json.load(open(root/'build-report.json')) if x['slug']=='abuamr'][0]
+          overlay=root/'overlays'/'abuamr'/'files'
+          repl={p.relative_to(overlay).as_posix():p.read_bytes() for p in overlay.rglob('*') if p.is_file()}
+          out=Path('/tmp/qd/out/abuamr.apk')
+          with zipfile.ZipFile(root/'base.apk') as zin, zipfile.ZipFile(out,'w') as zout:
+              for info in zin.infolist():
+                  if info.filename.startswith('META-INF/'): continue
+                  zout.writestr(info,repl.get(info.filename,zin.read(info.filename)))
+          with zipfile.ZipFile(out) as z:
+              print('=== PDF ASSETS ===')
+              for n in z.namelist():
+                  if n.lower().endswith('.pdf'): print(n, len(z.read(n)))
+              bundle=z.read('assets/index.android.bundle')
+              print('=== BUNDLE PDF STRINGS ===')
+              import re
+              for s in sorted(set(re.findall(rb'[^\x00-\x1f\x7f]{0,120}\.pdf[^\x00-\x1f\x7f]{0,120}',bundle))):
+                  try: print(s.decode('utf-8','ignore'))
+                  except: pass
+              print('=== BUNDLE RANGE/SECTION CONTEXT ===')
+              txt=bundle.decode('utf-8','ignore')
+              for key in ['reading.pdf','quran.pdf','quran_index.pdf','dua.pdf','waqf_symbols.pdf','furati_intro.pdf','usul.pdf','608','609','610','611','612','616','617','620','621']:
+                  print('\nKEY',key)
+                  start=0; c=0
+                  while True:
+                      i=txt.find(key,start)
+                      if i<0 or c>=5: break
+                      print(txt[max(0,i-260):i+360])
+                      start=i+len(key); c+=1
+          PY
