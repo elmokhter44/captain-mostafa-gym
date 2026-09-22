@@ -1,0 +1,50 @@
+name: Quran V1 Signing Probe
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-v1-signing-probe.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android build tools
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;36.0.0'
+      - name: Reconstruct one APK and force v1 plus v2 signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/payload /tmp/probe
+          cat .series-generated/parts/payload.part-* > /tmp/payload.tar.gz
+          tar -xzf /tmp/payload.tar.gz -C /tmp/payload
+          python3 - <<'PY'
+          import json,zipfile
+          from pathlib import Path
+          root=Path('/tmp/payload'); app=next(x for x in json.load(open(root/'build-report.json')) if x['slug']=='abuamr')
+          ov=root/'overlays'/'abuamr'/'files'; repl={p.relative_to(ov).as_posix():p.read_bytes() for p in ov.rglob('*') if p.is_file()}
+          with zipfile.ZipFile(root/'base.apk') as zin, zipfile.ZipFile('/tmp/probe/unsigned.apk','w') as zout:
+              for info in zin.infolist():
+                  if info.filename.startswith('META-INF/'): continue
+                  zout.writestr(info,repl.get(info.filename,zin.read(info.filename)))
+          PY
+          keytool -genkeypair -keystore /tmp/probe/key.jks -storepass android -keypass android -alias probe -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=Probe'
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          "$BT/aapt" dump badging /tmp/probe/unsigned.apk | head -5
+          "$BT/zipalign" -P 16 -f 4 /tmp/probe/unsigned.apk /tmp/probe/aligned.apk
+          "$BT/apksigner" sign --min-sdk-version 21 --ks /tmp/probe/key.jks --ks-key-alias probe --ks-pass pass:android --key-pass pass:android --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out /tmp/probe/signed.apk /tmp/probe/aligned.apk
+          "$BT/apksigner" verify --min-sdk-version 21 --verbose --print-certs /tmp/probe/signed.apk | tee /tmp/probe/verify.txt
+          grep -q 'Verified using v1 scheme (JAR signing): true' /tmp/probe/verify.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/probe/verify.txt
+          echo V1_V2_PROBE_OK
