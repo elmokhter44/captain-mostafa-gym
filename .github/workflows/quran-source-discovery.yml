@@ -1,0 +1,65 @@
+name: Discover Quran source PDF links
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-source-discovery.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Discover exact PDF hrefs from reader pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet requests beautifulsoup4
+          python3 - <<'PY'
+          import json, requests
+          from bs4 import BeautifulSoup
+          from urllib.parse import urljoin
+          pages={
+            'nafi':'https://www.bhr-q.com/ar/مصاحف-نافع-المدني',
+            'ibnkathir':'https://www.bhr-q.com/ar/مصاحف-ابن-كثير',
+            'abuamr':'https://www.bhr-q.com/ar/مصاحف-ابي-عمرو-البصري',
+            'ibnamir':'https://www.bhr-q.com/ar/مصاحف-عبد-الله-الشامي',
+            'asim':'https://www.bhr-q.com/ar/مصاحف-عاصم-ابن-ابي-النجود',
+            'hamza':'https://www.bhr-q.com/ar/مصاحف-حمزة-ابن-حبيب-الكوفي',
+            'kisai':'https://www.bhr-q.com/ar/الكسائي',
+            'abujaafar':'https://www.bhr-q.com/ar/مصاحف-ابو-جعفر-المخزومي-المدني',
+            'yaqub':'https://www.bhr-q.com/ar/مصاحف-يعقوب-بن-اسحق-البصري',
+            'khalaf10':'https://www.bhr-q.com/ar/مصاحف-خلف-البزار-الأسدي-البغدادي',
+          }
+          out={}
+          s=requests.Session(); s.headers['User-Agent']='Mozilla/5.0 QuranKaremSourceDiscovery/1.0'
+          for key,url in pages.items():
+            r=s.get(url,timeout=30); r.raise_for_status()
+            soup=BeautifulSoup(r.text,'html.parser')
+            items=[]
+            for a in soup.find_all('a', href=True):
+              href=urljoin(r.url,a['href'])
+              if '.pdf' not in href.lower(): continue
+              parent=a
+              for _ in range(3):
+                if parent.parent: parent=parent.parent
+              text=' '.join(parent.get_text(' ',strip=True).split())[:500]
+              items.append({'href':href,'anchor':' '.join(a.get_text(' ',strip=True).split()),'context':text})
+            # de-dupe by href
+            seen=set(); out[key]=[]
+            for x in items:
+              if x['href'] not in seen:
+                seen.add(x['href']); out[key].append(x)
+            print(key, len(out[key]))
+            for x in out[key]: print(' ',x)
+          open('qurani-series/source-links.json','w',encoding='utf-8').write(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add qurani-series/source-links.json
+          git commit -m 'ci: record discovered Quran source links' || true
+          git push origin HEAD:qurani-series-v100
