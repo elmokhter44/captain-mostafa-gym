@@ -62,8 +62,6 @@ jobs:
           cfg=json.load(open('/tmp/qseries/source-config.json'))
           report=json.load(open(root/'build-report.json',encoding='utf-8'))
           assert len(report)==12
-          byslug={x['slug']:x for x in report}
-          # Reconstruct each unsigned skeleton from the validated base + overlay.
           for app in report:
               slug=app['slug']; overlay=root/'overlays'/slug/'files'
               repl={p.relative_to(overlay).as_posix():p.read_bytes() for p in overlay.rglob('*') if p.is_file()}
@@ -73,7 +71,6 @@ jobs:
                   for info in zin.infolist():
                       if info.filename.startswith('META-INF/'): continue
                       zout.writestr(info,repl.get(info.filename,zin.read(info.filename)))
-          # Download only user-provided Drive files.
           def get(app):
               p=Path('/tmp/qseries/sources')/(app['slug']+'.pdf')
               url=f"https://drive.google.com/file/d/{app['id']}/view"
@@ -92,7 +89,6 @@ jobs:
               source_rows=list(ex.map(get,cfg))
           json.dump(source_rows,open('/tmp/qseries/reports/source-pdfs.json','w'),ensure_ascii=False,indent=2)
           print('USER_DRIVE_PDFS_OK=12')
-          # Split by approved contiguous ranges. Direct PDF page-object copy; no raster/JPG conversion.
           split_rows=[]
           for app in cfg:
               slug,total=app['slug'],app['total']
@@ -112,7 +108,6 @@ jobs:
               src.close(); split_rows.append({'slug':slug,'total':total,'ranges':rr,'no_gaps':True,'no_overlaps':True})
           json.dump(split_rows,open('/tmp/qseries/reports/pdf-splits.json','w'),ensure_ascii=False,indent=2)
           print('PDF_SPLITS_OK=12')
-          # Replace every PDF asset with only the seven approved source-derived PDFs.
           wanted=['reading.pdf','quran.pdf','quran_index.pdf','dua.pdf','waqf_symbols.pdf','furati_intro.pdf','usul.pdf']
           for app in cfg:
               slug=app['slug']; split=Path('/tmp/qseries/splits')/slug
@@ -154,10 +149,10 @@ jobs:
           : > /tmp/qseries/reports/apk-verification.txt
           while IFS=$'\t' read -r slug pkg filename; do
             "$BT/zipalign" -P 16 -f 4 "/tmp/qseries/$slug-unsigned.apk" "/tmp/qseries/$slug-aligned.apk"
-            "$BT/apksigner" sign --ks /tmp/qseries/key/release.keystore --ks-key-alias quran-series-release --ks-pass "pass:$PASS" --key-pass "pass:$PASS" --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out "/tmp/qseries/final/$filename" "/tmp/qseries/$slug-aligned.apk"
+            "$BT/apksigner" sign --min-sdk-version 21 --ks /tmp/qseries/key/release.keystore --ks-key-alias quran-series-release --ks-pass "pass:$PASS" --key-pass "pass:$PASS" --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out "/tmp/qseries/final/$filename" "/tmp/qseries/$slug-aligned.apk"
             unzip -t "/tmp/qseries/final/$filename" >/dev/null
             "$BT/zipalign" -c -P 16 4 "/tmp/qseries/final/$filename"
-            "$BT/apksigner" verify --verbose "/tmp/qseries/final/$filename" | tee "/tmp/qseries/reports/$slug-apksigner.txt"
+            "$BT/apksigner" verify --min-sdk-version 21 --verbose "/tmp/qseries/final/$filename" | tee "/tmp/qseries/reports/$slug-apksigner.txt"
             grep -q 'Verified using v1 scheme (JAR signing): true' "/tmp/qseries/reports/$slug-apksigner.txt"
             grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' "/tmp/qseries/reports/$slug-apksigner.txt"
             "$BT/aapt" dump badging "/tmp/qseries/final/$filename" | tee "/tmp/qseries/reports/$slug-badging.txt"
