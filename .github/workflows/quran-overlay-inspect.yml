@@ -33,3 +33,5 @@ jobs:
           git add qurani-series/overlay-payload-inspect.txt
           git commit -m 'ci: record overlay payload structure' || true
           git push origin HEAD:qurani-series-v100
+
+# trigger inspection
