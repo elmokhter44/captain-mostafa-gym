@@ -214,7 +214,14 @@ jobs:
           cp "$BT/apksigner" "$BT/zipalign" "$BT/aapt" "$BT/aapt2" series-output/tools/android-apk-tools/
           cp "$BT/lib/apksigner.jar" series-output/tools/android-apk-tools/lib/
           cp /tmp/qurani-base.apk series-output/base.apk
-          sha256sum series-output/base.apk series-output/tools/android-apk-tools/* series-output/tools/android-apk-tools/lib/apksigner.jar > series-output/tools/SHA256SUMS.txt
+          sha256sum \
+            series-output/base.apk \
+            series-output/tools/android-apk-tools/apksigner \
+            series-output/tools/android-apk-tools/zipalign \
+            series-output/tools/android-apk-tools/aapt \
+            series-output/tools/android-apk-tools/aapt2 \
+            series-output/tools/android-apk-tools/lib/apksigner.jar \
+            > series-output/tools/SHA256SUMS.txt
 
       - name: Validate all 12 overlay outputs
         shell: bash
