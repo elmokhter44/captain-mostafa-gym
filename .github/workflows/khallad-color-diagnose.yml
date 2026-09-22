@@ -1,0 +1,49 @@
+name: Khallad Color Diagnose
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/khallad-color-diagnose.yml']
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct Khallad and print color markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/kd && mkdir -p /tmp/kd/payload
+          cat .series-generated/parts/payload.part-* > /tmp/kd/payload.tar.gz
+          tar -xzf /tmp/kd/payload.tar.gz -C /tmp/kd/payload
+          python3 - <<'PY'
+          import json,zipfile,re
+          from pathlib import Path
+          root=Path('/tmp/kd/payload')
+          app=[x for x in json.load(open(root/'build-report.json')) if x['slug']=='khalladhamza'][0]
+          ov=root/'overlays'/'khalladhamza'/'files'
+          repl={p.relative_to(ov).as_posix():p.read_bytes() for p in ov.rglob('*') if p.is_file()}
+          out=Path('/tmp/kd/khallad.apk')
+          with zipfile.ZipFile(root/'base.apk') as zin, zipfile.ZipFile(out,'w') as zout:
+              for info in zin.infolist():
+                  if info.filename.startswith('META-INF/'): continue
+                  zout.writestr(info,repl.get(info.filename,zin.read(info.filename)))
+          with zipfile.ZipFile(out) as z:
+              bundle=z.read('assets/index.android.bundle')
+              txt=bundle.decode('utf-8','ignore')
+              colors=sorted(set(re.findall(r'#[0-9A-Fa-f]{6,8}',txt)))
+              print('BUNDLE_HEX_COLORS=',colors)
+              for word in ['khallad','خلاد','blue','أزرق','primary','accent','theme']:
+                  print('\nWORD',word)
+                  start=0; c=0
+                  while True:
+                      i=txt.lower().find(word.lower(),start)
+                      if i<0 or c>=8: break
+                      print(txt[max(0,i-250):i+450])
+                      start=i+len(word); c+=1
+              print('\nOVERLAY_FILES')
+              for p in sorted(ov.rglob('*')):
+                  if p.is_file(): print(p.relative_to(ov),p.stat().st_size)
+          PY
+          if command -v aapt >/dev/null; then aapt dump resources /tmp/kd/khallad.apk | grep -Ei 'color|blue|0b5e|1e88|1565|1976|2196|2563|2962' | head -200 || true; fi
