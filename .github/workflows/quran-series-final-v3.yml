@@ -1,0 +1,214 @@
+name: Quran Series 12 Final v3
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-series-final-v3.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: quran-series-v1.0.0-final
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet 'PyMuPDF==1.26.7' 'gdown==5.2.0'
+          sudo apt-get update -qq && sudo apt-get install -y -qq zip unzip jq
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;36.0.0'
+
+      - name: Build, verify and sign 12 APKs from exact user Drive PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Refusing to regenerate signing identity: final release already exists" >&2
+            exit 1
+          fi
+          ROOT=/tmp/qfinal
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT"/{payload,skeletons,sources,splits,final,reports,key}
+          cat .series-generated/parts/payload.part-* > "$ROOT/payload.tar.gz"
+          tar -xzf "$ROOT/payload.tar.gz" -C "$ROOT/payload"
+          test -s "$ROOT/payload/base.apk"
+          test -s "$ROOT/payload/build-report.json"
+
+          cat > "$ROOT/config.json" <<'JSON'
+          [
+            {"slug":"abuamr","url":"https://drive.google.com/file/d/1BVoetPB5RCq5cSV1zxaxb0nj98B0faup/view?usp=drivesdk","pages":638,"bytes":137991754,"sha":"a95be4076c733428c88d07a87999f8bf8d467122995d13e12e8b92f93832ef57","apk":"01-AbuAmr-v1.0.0.apk"},
+            {"slug":"ibnamir","url":"https://drive.google.com/file/d/1zxcrxi4Q2J0jaKZS1hFPQEF3GhNIDlTZ/view?usp=drivesdk","pages":633,"bytes":135445406,"sha":"3e33b9dd9a8601ded905df385572fa14f7aa6be36d00c0245f714851e96441be","apk":"02-IbnAmir-v1.0.0.apk"},
+            {"slug":"ibnkathir","url":"https://drive.google.com/file/d/1hFgLvZYo_tqrpTn82kzzRy30kr3agtg5/view?usp=drivesdk","pages":632,"bytes":131415456,"sha":"a95070794325c798af8071e568ed33a4623428725c6e26bf04e9373562aa142e","apk":"03-IbnKathir-v1.0.0.apk"},
+            {"slug":"khalafhamza","url":"https://drive.google.com/file/d/14dV4ewJ75I-feQSTz0oNsMvUSz2vnlPG/view?usp=drivesdk","pages":636,"bytes":137313638,"sha":"d95049235cb2cc186a78c96c0b3fb3039adedded10973b7ddd24c6d4837101e1","apk":"04-Khalaf-Hamza-Sakt-v1.0.0.apk"},
+            {"slug":"alkisai","url":"https://drive.google.com/file/d/1a2PHF7eHXmKtn8bgd_SHbSKSyc4vp1b3/view?usp=drivesdk","pages":633,"bytes":129020600,"sha":"db44dc8dbf497297759b07c1eb2a56ad4d9b6d4f4be2fd51b30e365b68444ca5","apk":"05-AlKisai-v1.0.0.apk"},
+            {"slug":"khalladhamza","url":"https://drive.google.com/file/d/1iLjNkH1nB-eovs6xXJmsh0Zd_dBagpWS/view?usp=drivesdk","pages":636,"bytes":136567781,"sha":"9780c61fd038c587774a11dfc13be0a9c7a8b947ebbf9cd485ef4ae9bbb61f09","apk":"06-Khallad-Hamza-NoSakt-v1.0.0.apk"},
+            {"slug":"abujaafar","url":"https://drive.google.com/file/d/1ka0xEX2tK95HTJos_eU0W_yjtzYVFeKM/view?usp=drivesdk","pages":634,"bytes":129529544,"sha":"eb13b40d97872c71aada1f14f6f0c674112c9101a2035f166f884e2980241120","apk":"07-AbuJaafar-v1.0.0.apk"},
+            {"slug":"yaqub","url":"https://drive.google.com/file/d/1-HMgAHqQbJz97EQnPUDd7tFmUJ-uHsJu/view?usp=drivesdk","pages":630,"bytes":129466830,"sha":"dbe7e1c26c550b63066920212b352818994b7bedb949f19bd971242cdd0a6340","apk":"08-Yaqub-v1.0.0.apk"},
+            {"slug":"khalaf10","url":"https://drive.google.com/file/d/1vHJkNHxGLxLqby6pszUoxhGcOP4-wK6F/view?usp=drivesdk","pages":628,"bytes":127737232,"sha":"4d4a3bafe2279fd2a54725a8d6839a24e0a84feadb6a1e0a66a2eabbe759832a","apk":"09-Khalaf10-v1.0.0.apk"},
+            {"slug":"asim","url":"https://drive.google.com/file/d/1dtHbfD19xNUxc9rPNT2gHuxTTSK8XLBh/view?usp=drivesdk","pages":633,"bytes":131227502,"sha":"ef0e7975e251ddc74f718f0b26c12ccace057378ce77c641019ac50691b98ec4","apk":"10-Asim-v1.0.0.apk"},
+            {"slug":"warshazraq","url":"https://drive.google.com/file/d/1eZsEfvK2WYERoHXRqdIxgfC8K6hqAcgI/view?usp=drivesdk","pages":637,"bytes":132692854,"sha":"7481a5928e503ad7b37629231283e4123f123461a90723696e298052c9188bb4","apk":"11-Warsh-Azraq-v1.0.0.apk"},
+            {"slug":"qalunqasr","url":"https://drive.google.com/file/d/1qTjYqpjs9S6v0UM2nZMXvUSsmBXxum3b/view?usp=drivesdk","pages":632,"bytes":128662407,"sha":"d5f06bf757b32cb3e0be67cb4212eab4555e4c5114ce7cecca89b898b7064385","apk":"12-Qalun-Qasr-v1.0.0.apk"}
+          ]
+          JSON
+
+          python3 - <<'PY'
+          import json,zipfile,hashlib,pathlib,time,gdown,fitz
+          R=pathlib.Path('/tmp/qfinal'); P=R/'payload'
+          cfg=json.load(open(R/'config.json')); report=json.load(open(P/'build-report.json'))
+          assert len(cfg)==len(report)==12
+          br={x['slug']:x for x in report}
+          assert len({x['package'] for x in report})==12
+          def sh(p):
+              h=hashlib.sha256()
+              with open(p,'rb') as f:
+                  for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
+              return h.hexdigest()
+          # skeletons
+          for c in cfg:
+              slug=c['slug']; ov=P/'overlays'/slug/'files'; repl={p.relative_to(ov).as_posix():p.read_bytes() for p in ov.rglob('*') if p.is_file()}
+              assert set(repl)==set(br[slug]['changedEntries'])
+              with zipfile.ZipFile(P/'base.apk') as zin, zipfile.ZipFile(R/'skeletons'/f'{slug}.apk','w') as zout:
+                  for i in zin.infolist():
+                      if i.filename.startswith('META-INF/'): continue
+                      zout.writestr(i,repl.get(i.filename,zin.read(i.filename)))
+          # exact sources + direct PDF object splits
+          source_report=[]; split_report=[]
+          for c in cfg:
+              slug=c['slug']; src=R/'sources'/f'{slug}.pdf'
+              for n in range(4):
+                  try:
+                      if src.exists(): src.unlink()
+                      if not gdown.download(c['url'],str(src),quiet=True,fuzzy=True): raise RuntimeError('download failed')
+                      d=fitz.open(src); pc=d.page_count; d.close()
+                      if src.stat().st_size!=c['bytes'] or sh(src)!=c['sha'] or pc!=c['pages']: raise RuntimeError(f'integrity mismatch {slug}')
+                      break
+                  except Exception:
+                      if n==3: raise
+                      time.sleep(5*(n+1))
+              source_report.append({'slug':slug,'pages':c['pages'],'bytes':c['bytes'],'sha256':c['sha'],'user_drive_url':c['url'],'verified':True})
+              ranges=[('reading.pdf',1,4),('quran.pdf',5,608),('quran_index.pdf',609,610),('dua.pdf',611,611),('waqf_symbols.pdf',612,616),('furati_intro.pdf',617,620),('usul.pdf',621,c['pages'])]
+              assert ranges[0][1]==1 and ranges[-1][2]==c['pages']
+              assert all(ranges[i][2]+1==ranges[i+1][1] for i in range(len(ranges)-1))
+              doc=fitz.open(src); od=R/'splits'/slug; od.mkdir(parents=True,exist_ok=True); rr=[]
+              for name,a,b in ranges:
+                  out=fitz.open(); out.insert_pdf(doc,from_page=a-1,to_page=b-1); q=od/name; out.save(q,garbage=4,deflate=True); out.close()
+                  chk=fitz.open(q); assert chk.page_count==b-a+1
+                  for j in sorted(set([0,chk.page_count-1])):
+                      x=doc[a-1+j].get_pixmap(matrix=fitz.Matrix(.3,.3),alpha=False); y=chk[j].get_pixmap(matrix=fitz.Matrix(.3,.3),alpha=False); assert (x.width,x.height,x.samples)==(y.width,y.height,y.samples)
+                  chk.close(); rr.append({'asset':name,'from':a,'to':b,'pages':b-a+1,'sha256':sh(q)})
+              doc.close(); split_report.append({'slug':slug,'total':c['pages'],'ranges':rr,'no_gaps':True,'no_overlaps':True,'rasterized':False})
+          json.dump(source_report,open(R/'reports'/'sources.json','w'),ensure_ascii=False,indent=2)
+          json.dump(split_report,open(R/'reports'/'splits.json','w'),ensure_ascii=False,indent=2)
+          print('SOURCES_AND_SPLITS_OK=12')
+          PY
+
+          PASS="$(python3 - <<'PY'
+          import secrets; print(secrets.token_urlsafe(42))
+          PY
+          )"
+          printf '%s' "$PASS" > "$ROOT/key/keystore-password.txt"
+          keytool -genkeypair -keystore "$ROOT/key/Quran-Series-v1.keystore" -storepass "$PASS" -keypass "$PASS" -alias quran-series-release -keyalg RSA -keysize 4096 -validity 10000 -dname 'CN=Quran Karem Series,O=QuranKarem,C=EG' >/dev/null 2>&1
+          keytool -list -v -keystore "$ROOT/key/Quran-Series-v1.keystore" -storepass "$PASS" -alias quran-series-release > "$ROOT/reports/signing-certificate.txt"
+          (cd "$ROOT/key" && zip -q Quran-Series-signing-backup.zip Quran-Series-v1.keystore keystore-password.txt)
+
+          cat > "$ROOT/key/recovery-public.pem" <<'PEM'
+          -----BEGIN PUBLIC KEY-----
+          MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAo8KThJ3EfVRpWlFe/Iu1
+          anTPmufdwELGfheLoJgIs/g3L+AzSgLCZ59+keWpmI3uBpM1obQYa7cUh/E94m+Y
+          DigxLHyXb7F1Ne0SpmS55rYCiAsEOEsRs10c5CgBfd0IzarydDShnFEOv7iksPsd
+          7HK9PA+Gba3Dn1PZN3OLcl3W2jiYskgqw8szJriCtnuzDWaQGo3m7UPhNQ64VdZ0
+          4T1R/7G0Xcy0GJgRpnzxy59sTOuL+eOXADP/3t1Yj+bRw+d5SlnPIc/hGGZYlZvw
+          jy0EG53PM1xhfXgUrEtlSi2qzDtttEfwZ2Ow81aTWEyUb+TSiqMex2Y2KmAgKB8M
+          BZL0W6QAVGUFgPe3Ch8N4C5NUnh1j7HqDhhhicDYCFKRmzpMAIDC6QQvCFtjQtCk
+          aR+Ln+WRHplzb27mG2Bq/wrJyS3EdPws+TDg2SVzyXVEEhCyNSZtq65L4CZ3vLh5
+          thagwJy9ekto3U3VPu9UUngJmHnqNCrpvUeSm+QwGR97LdP7xunfjp5qQSG9ey0q
+          BIiSIr1nsJSOH6DEaxV5MSD6B+8RhLUd/H26V0/HeVgWRGF8b9tg0qEGP4mfh4zf
+          zhjOcKFfmKXaRmrx2vdlAhc021V/AiGr2Z3Jza1wzvrB3PniHJxlH0tijeZk75BN
+          0FrODSUsSAE3K7ZGtbpOT9ECAwEAAQ==
+          -----END PUBLIC KEY-----
+          PEM
+          openssl rand -out "$ROOT/key/aes.key" 32
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in "$ROOT/key/Quran-Series-signing-backup.zip" -out "$ROOT/key/Quran-Series-signing-backup.zip.enc" -pass file:"$ROOT/key/aes.key"
+          openssl pkeyutl -encrypt -pubin -inkey "$ROOT/key/recovery-public.pem" -in "$ROOT/key/aes.key" -out "$ROOT/key/Quran-Series-backup-key.rsa" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+          rm -f "$ROOT/key/Quran-Series-signing-backup.zip" "$ROOT/key/aes.key"
+
+          python3 - <<'PY'
+          import json,zipfile,pathlib
+          R=pathlib.Path('/tmp/qfinal'); cfg=json.load(open(R/'config.json'))
+          for c in cfg:
+              slug=c['slug']; sp=R/'splits'/slug
+              repl={f'assets/pdf/{n}':(sp/n).read_bytes() for n in ['reading.pdf','quran.pdf','quran_index.pdf','dua.pdf','waqf_symbols.pdf','furati_intro.pdf','usul.pdf']}
+              seen=set()
+              with zipfile.ZipFile(R/'skeletons'/f'{slug}.apk') as zin, zipfile.ZipFile(R/f'{slug}-unsigned.apk','w') as zout:
+                  for i in zin.infolist():
+                      if i.filename.startswith('META-INF/'): continue
+                      if i.filename in repl: seen.add(i.filename)
+                      zout.writestr(i,repl.get(i.filename,zin.read(i.filename)))
+                  for name,data in repl.items():
+                      if name not in seen: zout.writestr(name,data)
+          PY
+
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          python3 - <<'PY' > "$ROOT/map.tsv"
+          import json
+          R='/tmp/qfinal'; cfg=json.load(open(R+'/config.json')); b={x['slug']:x for x in json.load(open(R+'/payload/build-report.json'))}
+          for c in cfg: print('\t'.join([c['slug'],b[c['slug']]['package'],c['apk']]))
+          PY
+          while IFS=$'\t' read -r slug pkg apkname; do
+            "$BT/zipalign" -P 16 -f 4 "$ROOT/$slug-unsigned.apk" "$ROOT/$slug-aligned.apk"
+            "$BT/apksigner" sign --min-sdk-version 21 --ks "$ROOT/key/Quran-Series-v1.keystore" --ks-key-alias quran-series-release --ks-pass "pass:$PASS" --key-pass "pass:$PASS" --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out "$ROOT/final/$apkname" "$ROOT/$slug-aligned.apk"
+            unzip -t "$ROOT/final/$apkname" >/dev/null
+            "$BT/zipalign" -c -P 16 -v 4 "$ROOT/final/$apkname" >/dev/null
+            "$BT/apksigner" verify --min-sdk-version 21 --verbose --print-certs "$ROOT/final/$apkname" | tee "$ROOT/reports/$slug-sign.txt"
+            grep -q 'Verified using v1 scheme (JAR signing): true' "$ROOT/reports/$slug-sign.txt"
+            grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' "$ROOT/reports/$slug-sign.txt"
+            "$BT/aapt" dump badging "$ROOT/final/$apkname" > "$ROOT/reports/$slug-badging.txt"
+            grep -q "package: name='$pkg' versionCode='1' versionName='1.0.0'" "$ROOT/reports/$slug-badging.txt"
+          done < "$ROOT/map.tsv"
+          test "$(find "$ROOT/final" -maxdepth 1 -name '*.apk' | wc -l)" -eq 12
+
+          python3 - <<'PY'
+          import json,zipfile,pathlib,hashlib
+          R=pathlib.Path('/tmp/qfinal'); cfg=json.load(open(R/'config.json')); b={x['slug']:x for x in json.load(open(R/'payload/build-report.json'))}; names=['dua.pdf','furati_intro.pdf','quran.pdf','quran_index.pdf','reading.pdf','usul.pdf','waqf_symbols.pdf']; out=[]
+          for c in cfg:
+              slug=c['slug']; apk=R/'final'/c['apk']; sp=R/'splits'/slug
+              with zipfile.ZipFile(apk) as z:
+                  got=sorted(pathlib.Path(n).name for n in z.namelist() if n.startswith('assets/pdf/') and n.endswith('.pdf')); assert got==names,(slug,got)
+                  for n in names: assert z.read('assets/pdf/'+n)==(sp/n).read_bytes(),(slug,n)
+                  if slug=='khalladhamza':
+                      bb=z.read('assets/index.android.bundle'); assert b'#0B5ED7' in bb or b'#0b5ed7' in bb
+              h=hashlib.sha256(apk.read_bytes()).hexdigest()
+              out.append({'slug':slug,'apk':c['apk'],'package':b[slug]['package'],'versionName':'1.0.0','versionCode':1,'pages':c['pages'],'source_sha256':c['sha'],'apk_sha256':h,'zip_ok':True,'zipalign_16kb':True,'v1':True,'v2':True,'offline_pdf_exact':True,'rasterized':False})
+          assert len(out)==12 and len({x['package'] for x in out})==12
+          json.dump(out,open(R/'reports/Quran-Series-v1.0.0-verification.json','w'),ensure_ascii=False,indent=2)
+          print('FINAL_12_APKS_VERIFIED=1')
+          PY
+
+      - name: Publish fixed final release
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/qfinal
+          cat > "$ROOT/reports/release-notes.md" <<'MD'
+          # Quran Karem — 12 Apps v1.0.0 Final
+
+          12 independent signed Android APKs built only from the exact user-provided Google Drive PDFs. Each source was verified by byte size, SHA-256 and physical PDF page count before packaging. PDF page objects were copied directly into offline assets; no JPG conversion was used.
+          MD
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title 'Quran Karem - 12 Apps v1.0.0 Final' --notes-file "$ROOT/reports/release-notes.md"
+          gh release upload "$TAG" "$ROOT"/final/*.apk "$ROOT/reports/Quran-Series-v1.0.0-verification.json" "$ROOT/reports/signing-certificate.txt" "$ROOT/key/Quran-Series-signing-backup.zip.enc" "$ROOT/key/Quran-Series-backup-key.rsa" --repo "$GITHUB_REPOSITORY"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,assets --jq '{url:.url,assets:[.assets[]|{name:.name,url:.url,size:.size}]}' | tee "$ROOT/reports/release-assets.json"
+          test "$(jq '[.assets[]|select(.name|endswith(".apk"))]|length' "$ROOT/reports/release-assets.json")" -eq 12
+          echo RELEASE_WITH_12_APKS_OK
