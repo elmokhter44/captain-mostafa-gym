@@ -1,0 +1,54 @@
+name: Quran Signing Fix and Final Rerun
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-signing-fix-dispatch.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  patch-and-rerun:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qurani-series-v100
+          fetch-depth: 0
+      - name: Force APK Signature v1 plus v2 and dispatch final builder
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          F=.github/workflows/quran-series-final-drive.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/quran-series-final-drive.yml')
+          s=p.read_text()
+          old='"$BT/apksigner" sign --ks /tmp/qseries/key/release.keystore'
+          new='"$BT/apksigner" sign --min-sdk-version 21 --ks /tmp/qseries/key/release.keystore'
+          if new not in s:
+              assert old in s, 'sign command not found'
+              s=s.replace(old,new,1)
+          oldv='"$BT/apksigner" verify --verbose "/tmp/qseries/final/$filename"'
+          newv='"$BT/apksigner" verify --min-sdk-version 21 --verbose "/tmp/qseries/final/$filename"'
+          if newv not in s:
+              assert oldv in s, 'verify command not found'
+              s=s.replace(oldv,newv,1)
+          p.write_text(s)
+          PY
+          grep -q 'apksigner" sign --min-sdk-version 21' "$F"
+          grep -q 'apksigner" verify --min-sdk-version 21' "$F"
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add "$F"
+          if ! git diff --cached --quiet; then
+            git commit -m 'ci: force APK v1 and v2 signatures'
+            git push origin HEAD:qurani-series-v100
+          fi
+          sleep 2
+          gh workflow run quran-series-final-drive.yml --repo "$GITHUB_REPOSITORY" --ref qurani-series-v100
