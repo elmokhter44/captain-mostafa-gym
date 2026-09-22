@@ -1,0 +1,36 @@
+name: Inspect compiled Quran series range markers
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-bundle-range-inspect.yml']
+permissions:
+  contents: write
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/p && mkdir /tmp/p
+          cat .series-generated/parts/payload.part-* >/tmp/p.tgz
+          tar -xzf /tmp/p.tgz -C /tmp/p
+          python3 - <<'PY'
+          import json,re
+          from pathlib import Path
+          rep=json.load(open('/tmp/p/build-report.json'))
+          out=[]
+          for a in rep:
+            p=Path('/tmp/p/overlays')/a['slug']/'files/assets/index.android.bundle'
+            b=p.read_bytes().decode('utf-8','replace')
+            nums=sorted(set(re.findall(r'(?<!\d)(?:60[0-9]|61[0-9]|62[0-9]|63[0-9]|64[0-9])(?!\d)',b)))
+            contexts=[]
+            for needle in [str(x) for x in range(620,641)]:
+              for m in list(re.finditer(r'(?<!\d)'+re.escape(needle)+r'(?!\d)',b))[:10]:
+                contexts.append({'n':needle,'context':b[max(0,m.start()-120):m.end()+120]})
+            out.append({'slug':a['slug'],'package':a['package'],'numeric_markers':nums,'contexts':contexts})
+          Path('qurani-series/bundle-range-inspect.json').write_text(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+          git config user.name github-actions[bot]; git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add qurani-series/bundle-range-inspect.json && git commit -m 'ci: record compiled bundle range markers' && git push origin HEAD:qurani-series-v100
