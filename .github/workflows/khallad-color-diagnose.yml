@@ -10,16 +10,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect Khallad-specific build logic
+      - name: Compare Khallad and Abu Amr overlay resources
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/kd
-          base64 -d qurani-series/apply_series_common.py.gz.b64 | gzip -dc > /tmp/kd/apply.py
-          base64 -d qurani-series/build_all_overlays.py.gz.b64 | gzip -dc > /tmp/kd/build.py
-          echo '=== COMMON ==='
-          grep -ni -C 8 -E 'khallad|خلاد|blue|2196|0B5E|1565|1976|2563|2962' /tmp/kd/apply.py || true
-          echo '=== OVERLAY BUILDER ==='
-          grep -ni -C 12 -E 'khallad|خلاد|blue|2196|0B5E|1565|1976|2563|2962' /tmp/kd/build.py || true
-          echo '=== APP-SPEC KHALLAD ==='
-          grep -Rni -C 5 -E 'khallad|خلاد|أزرق|blue' qurani-series qurani-abuamr 2>/dev/null | head -300 || true
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;36.0.0' >/dev/null
+          rm -rf /tmp/kd && mkdir -p /tmp/kd/payload
+          cat .series-generated/parts/payload.part-* > /tmp/kd/payload.tar.gz
+          tar -xzf /tmp/kd/payload.tar.gz -C /tmp/kd/payload
+          python3 - <<'PY'
+          import json,zipfile,hashlib
+          from pathlib import Path
+          root=Path('/tmp/kd/payload'); report=json.load(open(root/'build-report.json'))
+          for slug in ['abuamr','khalladhamza']:
+              app=[x for x in report if x['slug']==slug][0]
+              ov=root/'overlays'/slug/'files'
+              print(slug,'changedEntries=',app['changedEntries'])
+              for p in sorted(ov.rglob('*')):
+                  if p.is_file(): print(slug,p.relative_to(ov),p.stat().st_size,hashlib.sha256(p.read_bytes()).hexdigest())
+              repl={p.relative_to(ov).as_posix():p.read_bytes() for p in ov.rglob('*') if p.is_file()}
+              out=Path('/tmp/kd')/(slug+'.apk')
+              with zipfile.ZipFile(root/'base.apk') as zin, zipfile.ZipFile(out,'w') as zout:
+                  for info in zin.infolist():
+                      if info.filename.startswith('META-INF/'): continue
+                      zout.writestr(info,repl.get(info.filename,zin.read(info.filename)))
+          PY
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          "$AAPT" dump resources /tmp/kd/abuamr.apk > /tmp/kd/abu.txt
+          "$AAPT" dump resources /tmp/kd/khalladhamza.apk > /tmp/kd/khal.txt
+          echo '=== COLOR-RELATED DIFF ==='
+          diff -u /tmp/kd/abu.txt /tmp/kd/khal.txt | grep -Ei -C 3 'color|0x[0-9a-f]{8}|resource' | head -400 || true
+          echo '=== FULL RESOURCE DIFF FIRST 400 ==='
+          diff -u /tmp/kd/abu.txt /tmp/kd/khal.txt | head -400 || true
