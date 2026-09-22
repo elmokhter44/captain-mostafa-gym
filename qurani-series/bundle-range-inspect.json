@@ -1,0 +1,74 @@
+[
+  {
+    "slug": "abuamr",
+    "package": "com.qurani.series.abuamr",
+    "numeric_markers": [],
+    "contexts": []
+  },
+  {
+    "slug": "ibnamir",
+    "package": "com.qurani.series.ibnamir",
+    "numeric_markers": [],
+    "contexts": []
+  },
+  {
+    "slug": "ibnkathir",
+    "package": "com.qurani.series.ibnkathir",
+    "numeric_markers": [],
+    "contexts": []
+  },
+  {
+    "slug": "khalafhamza",
+    "package": "com.qurani.series.khalafhamza",
+    "numeric_markers": [],
+    "contexts": []
+  },
+  {
+    "slug": "alkisai",
+    "package": "com.qurani.series.alkisai",
+    "numeric_markers": [],
+    "contexts": []
+  },
+  {
+    "slug": "khalladhamza",
+    "package": "com.qurani.series.khalladhamza",
+    "numeric_markers": [],
+    "contexts": []
+  },
+  {
+    "slug": "abujaafar",
+    "package": "com.qurani.series.abujaafar",
+    "numeric_markers": [],
+    "contexts": []
+  },
+  {
+    "slug": "yaqub",
+    "package": "com.qurani.series.yaqub",
+    "numeric_markers": [],
+    "contexts": []
+  },
+  {
+    "slug": "khalaf10",
+    "package": "com.qurani.series.khalaf10",
+    "numeric_markers": [],
+    "contexts": []
+  },
+  {
+    "slug": "asim",
+    "package": "com.qurani.series.asim",
+    "numeric_markers": [],
+    "contexts": []
+  },
+  {
+    "slug": "warshazraq",
+    "package": "com.qurani.series.warshazraq",
+    "numeric_markers": [],
+    "contexts": []
+  },
+  {
+    "slug": "qalunqasr",
+    "package": "com.qurani.series.qalunqasr",
+    "numeric_markers": [],
+    "contexts": []
+  }
+]
