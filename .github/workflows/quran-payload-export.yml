@@ -1,0 +1,28 @@
+name: Quran Payload Export
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-payload-export.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify payload
+        run: |
+          set -euo pipefail
+          test -s .series-generated/parts/payload.part-00
+          sha256sum .series-generated/parts/payload.part-00
+      - name: Upload build payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: quran-series-build-payload
+          path: .series-generated/parts/payload.part-00
+          retention-days: 1
+          if-no-files-found: error
