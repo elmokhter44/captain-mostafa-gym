@@ -10,36 +10,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Compare Khallad and Abu Amr overlay resources
+      - name: Inspect theme literals and bundle contexts
         shell: bash
         run: |
           set -euo pipefail
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;36.0.0' >/dev/null
           rm -rf /tmp/kd && mkdir -p /tmp/kd/payload
+          base64 -d qurani-series/apply_series_common.py.gz.b64 | gzip -dc > /tmp/kd/apply.py
+          base64 -d qurani-series/build_all_overlays.py.gz.b64 | gzip -dc > /tmp/kd/build.py
+          echo '=== HEX LITERALS COMMON SOURCE ==='
+          grep -nE '#[0-9A-Fa-f]{6,8}' /tmp/kd/apply.py | head -300 || true
+          echo '=== HEX LITERALS OVERLAY BUILDER ==='
+          grep -nE '#[0-9A-Fa-f]{6,8}' /tmp/kd/build.py | head -300 || true
+          echo '=== BUNDLE/PATCH LOGIC ==='
+          grep -ni -C 8 -E 'index.android.bundle|bundle|replace\(|reading|usul|title|theme|color' /tmp/kd/build.py | head -500 || true
           cat .series-generated/parts/payload.part-* > /tmp/kd/payload.tar.gz
           tar -xzf /tmp/kd/payload.tar.gz -C /tmp/kd/payload
           python3 - <<'PY'
-          import json,zipfile,hashlib
+          import json,zipfile,re
           from pathlib import Path
           root=Path('/tmp/kd/payload'); report=json.load(open(root/'build-report.json'))
-          for slug in ['abuamr','khalladhamza']:
-              app=[x for x in report if x['slug']==slug][0]
-              ov=root/'overlays'/slug/'files'
-              print(slug,'changedEntries=',app['changedEntries'])
-              for p in sorted(ov.rglob('*')):
-                  if p.is_file(): print(slug,p.relative_to(ov),p.stat().st_size,hashlib.sha256(p.read_bytes()).hexdigest())
-              repl={p.relative_to(ov).as_posix():p.read_bytes() for p in ov.rglob('*') if p.is_file()}
-              out=Path('/tmp/kd')/(slug+'.apk')
-              with zipfile.ZipFile(root/'base.apk') as zin, zipfile.ZipFile(out,'w') as zout:
-                  for info in zin.infolist():
-                      if info.filename.startswith('META-INF/'): continue
-                      zout.writestr(info,repl.get(info.filename,zin.read(info.filename)))
+          app=[x for x in report if x['slug']=='khalladhamza'][0]; ov=root/'overlays'/'khalladhamza'/'files'
+          repl={p.relative_to(ov).as_posix():p.read_bytes() for p in ov.rglob('*') if p.is_file()}
+          out=Path('/tmp/kd/khallad.apk')
+          with zipfile.ZipFile(root/'base.apk') as zin, zipfile.ZipFile(out,'w') as zout:
+              for info in zin.infolist():
+                  if info.filename.startswith('META-INF/'): continue
+                  zout.writestr(info,repl.get(info.filename,zin.read(info.filename)))
+          with zipfile.ZipFile(out) as z: txt=z.read('assets/index.android.bundle').decode('utf-8','ignore')
+          print('=== LIKELY BRAND COLOR CONTEXTS ===')
+          for key in ['#0A84FF','#1877F2','#2196F3','#0033CC','#004CB7','#005C98']:
+              print('\nCOLOR',key)
+              start=0; c=0
+              while True:
+                  i=txt.find(key,start)
+                  if i<0 or c>=6: break
+                  print(txt[max(0,i-350):i+450].replace('\n',' '))
+                  start=i+len(key); c+=1
           PY
-          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
-          "$AAPT" dump resources /tmp/kd/abuamr.apk > /tmp/kd/abu.txt
-          "$AAPT" dump resources /tmp/kd/khalladhamza.apk > /tmp/kd/khal.txt
-          echo '=== COLOR-RELATED DIFF ==='
-          diff -u /tmp/kd/abu.txt /tmp/kd/khal.txt | grep -Ei -C 3 'color|0x[0-9a-f]{8}|resource' | head -400 || true
-          echo '=== FULL RESOURCE DIFF FIRST 400 ==='
-          diff -u /tmp/kd/abu.txt /tmp/kd/khal.txt | head -400 || true
