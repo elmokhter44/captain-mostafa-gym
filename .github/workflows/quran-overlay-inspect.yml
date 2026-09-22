@@ -1,0 +1,35 @@
+name: Inspect persisted Quran overlay payload
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-overlay-inspect.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract compact payload metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/payload && mkdir -p /tmp/payload
+          cat .series-generated/parts/payload.part-* > /tmp/payload.tar.gz
+          tar -xzf /tmp/payload.tar.gz -C /tmp/payload
+          {
+            echo '# payload tree'
+            find /tmp/payload -type f -printf '%P\t%s bytes\n' | sort
+            echo
+            echo '# build-report.json'
+            cat /tmp/payload/build-report.json
+          } > qurani-series/overlay-payload-inspect.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add qurani-series/overlay-payload-inspect.txt
+          git commit -m 'ci: record overlay payload structure' || true
+          git push origin HEAD:qurani-series-v100
