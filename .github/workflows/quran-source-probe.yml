@@ -1,0 +1,59 @@
+name: Probe narrator-specific Quran PDF editions
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-source-probe.yml']
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install --quiet 'PyMuPDF==1.26.7' requests
+      - name: Probe candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import requests,fitz,hashlib,json,concurrent.futures,time
+          urls={
+          'abuamr_alsosi':'https://www.bhr-q.com/media/attachments/qran/03/Alsosi.pdf',
+          'ibnamir_hisham':'https://www.bhr-q.com/media/attachments/qran/04/Hisham.pdf',
+          'ibnkathir_bazi':'https://bhr-q.com/media/attachments/qran/02/Albazi.pdf',
+          'khalaf1':'https://www.bhr-q.com/media/attachments/qran/06/Khalf1.pdf',
+          'khalaf2':'https://www.bhr-q.com/media/attachments/qran/06/khalf2.pdf',
+          'kisai_laith1':'https://www.bhr-q.com/media/attachments/qran/07/Laith1.pdf',
+          'kisai_laith2':'https://www.bhr-q.com/media/attachments/qran/07/Laith2.pdf',
+          'khallad1':'https://www.bhr-q.com/media/attachments/qran/06/Khallad1.pdf',
+          'khallad2':'https://www.bhr-q.com/media/attachments/qran/06/Khallad2.pdf',
+          'abujaafar_wardan':'https://www.bhr-q.com/media/attachments/qran/08/ebn-wardan.pdf',
+          'yaqub_roias':'https://www.bhr-q.com/media/attachments/qran/09/Roias.pdf',
+          'khalaf10_ishaq':'https://www.bhr-q.com/media/attachments/qran/10/Es7aq.pdf',
+          'asim_hafs':'https://www.bhr-q.com/media/attachments/qran/05/Hafs.pdf',
+          'warsh_azraq':'https://bhr-q.com/media/attachments/qran/01/Warsh-Azraq.pdf',
+          'qalun1':'https://www.bhr-q.com/media/attachments/qran/01/Qalown1.pdf',
+          'qalun2':'https://bhr-q.com/media/attachments/qran/01/Qalown2.pdf',
+          'qalun3':'https://bhr-q.com/media/attachments/qran/01/Qalown3.pdf',
+          'qalun4':'https://bhr-q.com/media/attachments/qran/01/Qalown4.pdf'
+          }
+          def probe(kv):
+            key,url=kv; p=f'/tmp/{key}.pdf'; last=None
+            for i in range(3):
+              try:
+                r=requests.get(url,timeout=(20,180),headers={'User-Agent':'Mozilla/5.0'},allow_redirects=True); r.raise_for_status(); open(p,'wb').write(r.content)
+                d=fitz.open(p); texts=[]
+                for n in [0,1,2,max(0,d.page_count-1)]:
+                  try: texts.append(' '.join(d[n].get_text().split())[:350])
+                  except: texts.append('')
+                res={'key':key,'url':url,'pages':d.page_count,'bytes':len(r.content),'sha256':hashlib.sha256(r.content).hexdigest(),'sample_text':texts}; d.close(); return res
+              except Exception as e: last=e; time.sleep(2)
+            return {'key':key,'url':url,'error':repr(last)}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex: rows=list(ex.map(probe,urls.items()))
+          rows=sorted(rows,key=lambda x:x['key'])
+          open('qurani-series/source-probe.json','w',encoding='utf8').write(json.dumps(rows,ensure_ascii=False,indent=2))
+          for r in rows: print(r)
+          PY
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add qurani-series/source-probe.json && git commit -m 'ci: record narrator-specific PDF probe' && git push origin HEAD:qurani-series-v100
