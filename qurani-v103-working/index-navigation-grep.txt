@@ -1,0 +1,37 @@
+/tmp/qurani/src/services/ReaderNavigationService.ts:3:export function toSurahTarget(surah: {mushafStartPage: number}): ReaderTarget {
+/tmp/qurani/src/services/ReaderNavigationService.ts:4:  if (!Number.isInteger(surah.mushafStartPage) || surah.mushafStartPage < 1 || surah.mushafStartPage > 604) {
+/tmp/qurani/src/services/ReaderNavigationService.ts:7:  return {sectionId: 'quran', logicalPage: surah.mushafStartPage};
+/tmp/qurani/src/database/seed.ts:34:    INDEX_HOTSPOTS.forEach(hotspot => {
+/tmp/qurani/src/database/seed.ts:35:      realm.create('IndexHotspot', hotspot, Realm.UpdateMode.Modified);
+/tmp/qurani/src/database/schema.ts:30:      mushafStartPage: {type: 'int', indexed: true},
+/tmp/qurani/src/database/schema.ts:31:      sourcePdfPage: 'int',
+/tmp/qurani/src/database/schema.ts:51:      sourcePdfPage: 'int',
+/tmp/qurani/src/database/schema.ts:63:      sourcePdfPage: 'int',
+/tmp/qurani/src/data/surahs.ts:3:export type SurahSeed = Readonly<{id: number; nameArabic: string; mushafStartPage: number; sourcePdfPage: number}>;
+/tmp/qurani/src/data/surahs.ts:122:export const SURAH_INDEX: readonly SurahSeed[] = RAW_SURAH_STARTS.map(([id, nameArabic, mushafStartPage]) => ({
+/tmp/qurani/src/data/surahs.ts:123:  id, nameArabic, mushafStartPage, sourcePdfPage: mushafToSourcePage(mushafStartPage),
+/tmp/qurani/src/data/surahs.ts:129:  if (surah.mushafStartPage < 1 || surah.mushafStartPage > 604) throw new Error(`Invalid mushaf page for ${surah.nameArabic}`);
+/tmp/qurani/src/data/surahs.ts:130:  if (index > 0 && surah.mushafStartPage < SURAH_INDEX[index - 1]!.mushafStartPage) throw new Error(`Non-monotonic page for ${surah.nameArabic}`);
+/tmp/qurani/src/repositories/BookmarkRepository.ts:4:function plain(v: any): BookmarkRecord { return {id: v.id, sectionId: v.sectionId, logicalPage: v.logicalPage, sourcePdfPage: v.sourcePdfPage, label: v.label ?? undefined, createdAt: new Date(v.createdAt)}; }
+/tmp/qurani/src/repositories/IndexHotspotRepository.ts:6:  forSourcePage(indexPdfPage: number): IndexHotspotSeed[] {
+/tmp/qurani/src/repositories/SurahRepository.ts:7:    return Array.from(this.realm.objects<any>('SurahIndex').sorted('id')).map(v => ({id: v.id, nameArabic: v.nameArabic, normalizedName: v.normalizedName, mushafStartPage: v.mushafStartPage, sourcePdfPage: v.sourcePdfPage}));
+/tmp/qurani/src/repositories/SurahRepository.ts:11:    return v ? {id: v.id, nameArabic: v.nameArabic, normalizedName: v.normalizedName, mushafStartPage: v.mushafStartPage, sourcePdfPage: v.sourcePdfPage} : null;
+/tmp/qurani/src/repositories/types.ts:2:export type SurahRecord = Readonly<{id: number; nameArabic: string; normalizedName: string; mushafStartPage: number; sourcePdfPage: number}>;
+/tmp/qurani/src/repositories/types.ts:3:export type BookmarkRecord = Readonly<{id: string; sectionId: string; logicalPage: number; sourcePdfPage: number; label?: string; createdAt: Date}>;
+/tmp/qurani/src/repositories/types.ts:4:export type ReadingProgressRecord = Readonly<{id: string; sectionId: string; logicalPage: number; sourcePdfPage: number; scrollOffset: number; updatedAt: Date}>;
+/tmp/qurani/src/repositories/ReadingProgressRepository.ts:4:function plain(v: any): ReadingProgressRecord { return {id: v.id, sectionId: v.sectionId, logicalPage: v.logicalPage, sourcePdfPage: v.sourcePdfPage, scrollOffset: v.scrollOffset, updatedAt: new Date(v.updatedAt)}; }
+/tmp/qurani/src/repositories/ReadingProgressRepository.ts:8:  save(sectionId: string, logicalPage: number, sourcePdfPage: number, scrollOffset = 0): ReadingProgressRecord {
+/tmp/qurani/src/repositories/ReadingProgressRepository.ts:9:    const record: ReadingProgressRecord = {id: sectionId, sectionId, logicalPage, sourcePdfPage, scrollOffset, updatedAt: new Date()};
+/tmp/qurani/src/features/search/SearchScreen.tsx:15:  | Readonly<{kind: 'surah'; key: string; id: number; nameArabic: string; mushafStartPage: number; sourcePdfPage: number}>
+/tmp/qurani/src/features/search/SearchScreen.tsx:22:  const all = useMemo(() => services.surahs.list().map(({id, nameArabic, mushafStartPage, sourcePdfPage}) => ({id, nameArabic, mushafStartPage, sourcePdfPage})), [services]);
+/tmp/qurani/src/features/search/SearchScreen.tsx:63:              <Text style={styles.page}>تبدأ من صفحة {item.mushafStartPage}</Text>
+/tmp/qurani/src/features/index/IndexScreen.tsx:23:    const hotspots = services.hotspots.forSourcePage(sourcePage);
+/tmp/qurani/src/features/index/IndexScreen.tsx:24:    return hotspots.map(hotspot => {
+/tmp/qurani/src/features/index/IndexScreen.tsx:25:      const surah = services.surahs.get(hotspot.surahId);
+/tmp/qurani/src/features/index/IndexScreen.tsx:29:          key={hotspot.id}
+/tmp/qurani/src/features/index/IndexScreen.tsx:33:          style={{position: 'absolute', left: hotspot.x * pageWidth, top: hotspot.y * pageHeight, width: hotspot.width * pageWidth, height: hotspot.height * pageHeight}}
+/tmp/qurani/src/features/reader/ReaderScreen.tsx:53:    else services.bookmarks.create({sectionId: section.id, logicalPage: activePage, sourcePdfPage: section.sourceStartPage + activePage - 1, label: section.id === 'quran' ? `صفحة ${activePage}` : `${section.title} – ${activePage}`});
+/tmp/qurani/src/features/reader/readerModel.ts:5:  sourcePdfPage: number;
+/tmp/qurani/src/features/reader/readerModel.ts:15:    sourcePdfPage: section.sourceStartPage + logicalPage - 1,
+/tmp/qurani/src/app/bootstrap.ts:23:      hotspots: new IndexHotspotRepository(realm),
+/tmp/qurani/src/app/AppServicesContext.tsx:18:  hotspots: IndexHotspotRepository;
