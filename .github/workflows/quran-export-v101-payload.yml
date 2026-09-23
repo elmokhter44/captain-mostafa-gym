@@ -1,0 +1,25 @@
+name: Export Quran v1.0.1 Payload
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-export-v101-payload.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct payload
+        run: |
+          set -euo pipefail
+          cat .series-generated-v101/parts/payload.part-* > quran-series-v101-payload.tar.gz
+          sha256sum quran-series-v101-payload.tar.gz
+          tar -tzf quran-series-v101-payload.tar.gz >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quran-series-v101-payload
+          path: quran-series-v101-payload.tar.gz
+          compression-level: 0
+          retention-days: 1
