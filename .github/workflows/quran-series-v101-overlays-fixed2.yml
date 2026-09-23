@@ -1,0 +1,224 @@
+name: Quran Series v1.0.1 Fixed Overlays
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-series-v101-overlays-fixed2.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: quran-v101-fixed-overlays
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      REALM_DISABLE_ANALYTICS: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+          cache-read-only: false
+
+      - name: Reconstruct verified master source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app series-output-v101
+          mkdir -p qurani-app
+          cat qurani-ci/text/part-* > /tmp/qurani-src.b64
+          base64 -d /tmp/qurani-src.b64 > /tmp/qurani-src.tar.gz
+          echo '8419ab562a4783684b34e1bc62a96be4dc3da00f8a85e5e0d298182ab1e79192  /tmp/qurani-src.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/qurani-src.tar.gz -C qurani-app
+          cat qurani-v101/overlay/part-* > /tmp/qurani-v101-overlay.b64
+          base64 -d /tmp/qurani-v101-overlay.b64 > /tmp/qurani-v101-overlay.tar.gz
+          echo 'cbb6b45021274412968d6f6747fa54048d1d46be31e92a6cea31b5d80a2b9d7e  /tmp/qurani-v101-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/qurani-v101-overlay.tar.gz -C qurani-app
+          cp qurani-v101/generate-verse-index.py qurani-app/scripts/generate-verse-index.py
+          chmod +x qurani-app/scripts/generate-verse-index.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          b64=''.join(p.read_text() for p in sorted(Path('qurani-ci/logo').glob('part-*')))
+          Path('/tmp/qurani-logo.jpg').write_bytes(base64.b64decode(b64,validate=True))
+          PY
+          echo '4c8d65a11c77539831be3a791e54b9eb984375cea878262fd1972ed3acf58cae  /tmp/qurani-logo.jpg' | sha256sum -c -
+          python3 -m pip install --quiet pillow 'PyMuPDF==1.26.4'
+          mkdir -p qurani-app/assets/branding
+          python3 - <<'PY'
+          from PIL import Image
+          Image.open('/tmp/qurani-logo.jpg').convert('RGBA').save('qurani-app/assets/branding/qurani-icon.png', optimize=True)
+          PY
+          cd qurani-app && python3 scripts/generate-icons.py && cd ..
+
+      - name: Decode series scripts and install build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d qurani-series/apply_series_common.py.gz.b64 | gzip -dc > /tmp/apply_series_common.py
+          base64 -d qurani-series/build_all_overlays.py.gz.b64 | gzip -dc > /tmp/build_all_overlays.py
+          python3 -m py_compile /tmp/apply_series_common.py /tmp/build_all_overlays.py
+          cd qurani-app && npm install --no-audit --no-fund && cd ..
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
+          keytool -genkeypair -v -keystore qurani-app/android/app/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Series Build,O=QuranKarem,C=EG' >/dev/null 2>&1 || true
+          cd qurani-app/android
+          gradle wrapper --gradle-version 9.3.1
+          chmod +x gradlew
+          cd ../..
+
+      - name: Build reproducible v1.0.1 base APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app/android/app/src/main/assets/pdf
+          mkdir -p qurani-app/android/app/src/main/assets/pdf
+          python3 - <<'PY'
+          import fitz
+          from pathlib import Path
+          out=Path('qurani-app/android/app/src/main/assets/pdf')
+          counts={'quran.pdf':604,'quran_index.pdf':2,'intro.pdf':4,'qalun_usul.pdf':11,'warsh_usul.pdf':17,'warsh_summary.pdf':4,'warsh_lines_guide.pdf':5,'handwritten_warsh_qalun.pdf':32}
+          for name,count in counts.items():
+              d=fitz.open()
+              for _ in range(count): d.new_page(width=512.402,height=652.68)
+              d.save(out/name); d.close()
+          PY
+          cd qurani-app/android
+          ./gradlew assembleRelease --stacktrace --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk /tmp/qurani-base-v101.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging /tmp/qurani-base-v101.apk | grep -q "package: name='com.qurani.app' versionCode='2' versionName='1.0.1'"
+          cd ../..
+
+      - name: Apply series behavior and requested fixed viewer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          python3 /tmp/apply_series_common.py .
+          cd ..
+          cp qurani-v101-fixed/ReaderScreen.tsx qurani-app/src/features/reader/ReaderScreen.tsx
+          cp qurani-v101-fixed/ZoomablePdfPage.tsx qurani-app/src/features/reader/ZoomablePdfPage.tsx
+          cp qurani-v101-fixed/PdfPage.tsx qurani-app/src/features/reader/PdfPage.tsx
+          cp qurani-v101-fixed/IndexScreen.tsx qurani-app/src/features/index/IndexScreen.tsx
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('qurani-app/src/features/search/SearchScreen.tsx')
+          s=p.read_text(encoding='utf-8').replace("navigation.navigate('Reader',", "navigation.push('Reader',")
+          p.write_text(s,encoding='utf-8')
+          p=Path('/tmp/build_all_overlays.py'); s=p.read_text(encoding='utf-8')
+          s=s.replace("'versionCode 1'", "'versionCode 2'")
+          s=s.replace("'versionName \"1.0.0\"'", "'versionName \"1.0.1\"'")
+          s=s.replace("VERSION_NAME = '1.0.0'", "VERSION_NAME = '1.0.1'")
+          s=s.replace("VERSION_CODE = 1", "VERSION_CODE = 2")
+          s=s.replace("versionCode='1' versionName='1.0.0'", "versionCode='2' versionName='1.0.1'")
+          s=s.replace("'versionCode':1,'versionName':'1.0.0'", "'versionCode':2,'versionName':'1.0.1'")
+          p.write_text(s,encoding='utf-8')
+          assert "versionCode='2' versionName='1.0.1'" in s
+          assert s.count("'versionCode':2,'versionName':'1.0.1'") >= 2
+          PY
+
+      - name: Verify source contract and TypeScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          python3 - <<'PY'
+          from pathlib import Path
+          reader=Path('src/features/reader/ReaderScreen.tsx').read_text()
+          index=Path('src/features/index/IndexScreen.tsx').read_text()
+          zoom=Path('src/features/reader/ZoomablePdfPage.tsx').read_text()
+          page=Path('src/features/reader/PdfPage.tsx').read_text()
+          search=Path('src/features/search/SearchScreen.tsx').read_text()
+          assert "navigation.push('Reader',{sectionId:id,logicalPage:1})" in reader
+          assert 'pageWidth=screenWidth' in reader and 'height={pageHeight}' in reader
+          assert "justifyContent:'flex-start'" in reader
+          assert 'sourcePages=useMemo(()=>[609,610]' in index
+          assert 'hotspotPages=useMemo(()=>[621,622]' in index
+          assert 'ZoomablePdfPage' in index and "navigation.push('Reader',toSurahTarget(surah))" in index
+          assert 'height?:number' in zoom and 'PanResponder.create' in zoom
+          assert 'resizeMode="stretch"' in page
+          assert 'searchVerses' in search and 'VERSE_INDEX' in search
+          assert "navigation.push('Reader'" in search
+          print('SOURCE_CONTRACT_OK=1')
+          PY
+          cat > tsconfig.series.json <<'EOF'
+          {"extends":"./tsconfig.json","exclude":["node_modules","android","__tests__","**/*.node.test.ts"]}
+          EOF
+          npx tsc --noEmit -p tsconfig.series.json
+          echo 'TYPESCRIPT_OK=1'
+          cd ..
+
+      - name: Prepare series placeholder PDFs and build 12 v1.0.1 overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app/android/app/src/main/assets/pdf
+          mkdir -p qurani-app/android/app/src/main/assets/pdf
+          python3 - <<'PY'
+          import fitz
+          from pathlib import Path
+          out=Path('qurani-app/android/app/src/main/assets/pdf')
+          for name,count in {'reading.pdf':4,'quran.pdf':604,'quran_index.pdf':2,'dua.pdf':1,'waq_symbols.pdf':5,'furati_intro.pdf':4,'usul.pdf':18}.items():
+              # keep legacy alias typo out of APK below; builder expects waqf_symbols.pdf
+              if name=='waq_symbols.pdf': name='waqf_symbols.pdf'
+              d=fitz.open()
+              for _ in range(count): d.new_page(width=512.402,height=652.68)
+              d.save(out/name); d.close()
+          PY
+          cd qurani-app
+          python3 /tmp/build_all_overlays.py . /tmp/qurani-base-v101.apk ../qurani-series/apps.json ../series-output-v101
+          cd ..
+
+      - name: Package tools, validate, and persist payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          mkdir -p series-output-v101/tools/android-apk-tools/lib
+          cp "$BT/apksigner" "$BT/zipalign" "$BT/aapt" "$BT/aapt2" series-output-v101/tools/android-apk-tools/
+          cp "$BT/lib/apksigner.jar" series-output-v101/tools/android-apk-tools/lib/
+          cp /tmp/qurani-base-v101.apk series-output-v101/base.apk
+          test "$(find series-output-v101/overlays -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 12
+          python3 - <<'PY'
+          import json
+          r=json.load(open('series-output-v101/build-report.json'))
+          assert len(r)==12
+          for x in r:
+              assert x['badgingOk'] is True
+              assert x['nativeLibsIdenticalToBase'] is True
+              assert x['overlayReconstructsSkeleton'] is True
+              assert x['versionCode']==2 and x['versionName']=='1.0.1',x
+              assert x['changedEntries']
+          print('V101_OVERLAY_VALIDATION_OK=12')
+          PY
+          rm -rf .series-generated-v101
+          mkdir -p .series-generated-v101/parts
+          tar -C series-output-v101 -czf /tmp/quran-series-v101-payload.tar.gz base.apk overlays build-report.json tools
+          sha256sum /tmp/quran-series-v101-payload.tar.gz | tee .series-generated-v101/SHA256SUMS.txt
+          stat -c 'payload_bytes=%s' /tmp/quran-series-v101-payload.tar.gz | tee .series-generated-v101/INFO.txt
+          split -b 45M -d -a 2 /tmp/quran-series-v101-payload.tar.gz .series-generated-v101/parts/payload.part-
+          sha256sum .series-generated-v101/parts/* >> .series-generated-v101/SHA256SUMS.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f .series-generated-v101
+          git commit -m 'ci: persist Quran series v1.0.1 fixed build payload'
+          git pull --rebase origin qurani-series-v100
+          git push origin HEAD:qurani-series-v100
+          echo 'V101_PAYLOAD_PERSISTED=1'
