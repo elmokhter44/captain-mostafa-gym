@@ -15,13 +15,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Download user AbuAmr PDF and extract index words
+      - name: Download user AbuAmr PDF and inspect index pages
         shell: bash
         run: |
           set -euo pipefail
-          echo 'INDEX_GEOMETRY_RUN=1'
           python3 -m pip install --quiet 'gdown==5.2.0' 'PyMuPDF==1.26.4'
           python3 -m gdown '1BVoetPB5RCq5cSV1zxaxb0nj98B0faup' -O /tmp/source.pdf --quiet
+          mkdir -p /tmp/index-pages
           python3 - <<'PY'
           import fitz,json
           from pathlib import Path
@@ -31,24 +31,21 @@ jobs:
           for pno in (609,610):
               p=doc[pno-1]
               rect=p.rect
-              words=[]
-              for w in p.get_text('words'):
-                  x0,y0,x1,y1,text,*_=w
-                  text=str(text).strip()
-                  if text:
-                      words.append({'text':text,'x0':round(x0/rect.width,6),'y0':round(y0/rect.height,6),'x1':round(x1/rect.width,6),'y1':round(y1/rect.height,6)})
-              out[str(pno)]={'width':rect.width,'height':rect.height,'words':words,'text':p.get_text('text')}
+              pix=p.get_pixmap(matrix=fitz.Matrix(3,3),alpha=False)
+              pix.save(f'/tmp/index-pages/page-{pno}.png')
+              out[str(pno)]={'width':rect.width,'height':rect.height,'words':[],'text':p.get_text('text')}
           Path('qurani-v103-working/index-words.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
-          print('page609 words',len(out['609']['words']))
-          print('page610 words',len(out['610']['words']))
-          print(out['609']['text'][:2500])
-          print(out['610']['text'][:2500])
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -f qurani-v103-working/index-words.json
           if ! git diff --cached --quiet; then
-            git commit -m 'ci: persist Quran index word geometry from user PDF'
+            git commit -m 'ci: persist Quran index inspection metadata'
             git pull --rebase origin qurani-series-v100
             git push origin HEAD:qurani-series-v100
           fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quran-index-pages
+          path: /tmp/index-pages/*.png
+          retention-days: 2
