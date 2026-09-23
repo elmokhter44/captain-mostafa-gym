@@ -1,0 +1,16 @@
+name: Trigger Quran v1.0.2 Final
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/trigger-v102-final.yml']
+permissions:
+  actions: write
+  contents: read
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch final build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run quran-series-v102-final.yml --repo elmokhter44/captain-mostafa-gym --ref qurani-series-v100
