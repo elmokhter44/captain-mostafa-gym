@@ -1,0 +1,53 @@
+name: Quran v1.0.2 Inspect Current Source
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-v102-inspect.yml']
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct v1.0.1 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/qurani
+          cat qurani-ci/text/part-* > /tmp/qurani-src.b64
+          base64 -d /tmp/qurani-src.b64 > /tmp/qurani-src.tar.gz
+          echo '8419ab562a4783684b34e1bc62a96be4dc3da00f8a85e5e0d298182ab1e79192  /tmp/qurani-src.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/qurani-src.tar.gz -C /tmp/qurani
+          cat qurani-v101/overlay/part-* > /tmp/qurani-v101-overlay.b64
+          base64 -d /tmp/qurani-v101-overlay.b64 > /tmp/qurani-v101-overlay.tar.gz
+          echo 'cbb6b45021274412968d6f6747fa54048d1d46be31e92a6cea31b5d80a2b9d7e  /tmp/qurani-v101-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/qurani-v101-overlay.tar.gz -C /tmp/qurani
+      - name: Print relevant source files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/qurani
+          echo '=== FILES ==='
+          find src -maxdepth 4 -type f | sort | grep -E 'reader|index|search|home|sections|Verse|icon' || true
+          for f in \
+            src/features/reader/ReaderScreen.tsx \
+            src/features/reader/PdfPage.tsx \
+            src/features/reader/ZoomablePdfPage.tsx \
+            src/features/reader/zoomModel.ts \
+            src/features/index/IndexScreen.tsx \
+            src/features/search/SearchScreen.tsx \
+            src/services/VerseSearchService.ts \
+            src/features/home/SectionCard.tsx \
+            src/features/home/homeModel.ts \
+            src/data/sections.ts; do
+              if [ -f "$f" ]; then
+                echo "=== $f ==="
+                sed -n '1,260p' "$f"
+              fi
+          done
+          echo '=== ICON / LABEL GREP ==='
+          grep -RInE "الدعاء|بين يدي|من بين يدي|راوية|رواية|icon|glyph|emoji|pagingEnabled|horizontal|inverted|VERSE_INDEX|searchVerses" src | head -n 500 || true
+          echo '=== TEST FILES ==='
+          find __tests__ -maxdepth 2 -type f -print -exec sh -c 'echo === $1 ===; sed -n "1,260p" "$1"' _ {} \; 2>/dev/null || true
