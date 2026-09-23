@@ -35,14 +35,13 @@ jobs:
         run: |
           set -euo pipefail
           TAG=quran-series-v1.0.2-final12-all
-          rm -rf release-apks && mkdir -p release-apks
-          : > release-apks/ARABIC-FILENAMES.txt
+          : > final-apks/ARABIC-FILENAMES.txt
           while IFS=$'\t' read -r num slug package pages drive_id filename; do
             asset="${num}-${slug}-v1.0.2.apk"
-            cp "final-apks/$filename" "release-apks/$asset"
-            printf '%s\t%s\n' "$asset" "$filename" >> release-apks/ARABIC-FILENAMES.txt
+            printf '%s\t%s\n' "$asset" "$filename" >> final-apks/ARABIC-FILENAMES.txt
+            mv "final-apks/$filename" "final-apks/$asset"
           done < /tmp/apps.tsv
-          cp final-apks/SHA256SUMS.txt release-apks/SHA256SUMS.txt
-          test "$(find release-apks -maxdepth 1 -name '*.apk' | wc -l)" -eq 12
+          test "$(find final-apks -maxdepth 1 -name '*.apk' | wc -l)" -eq 12
+          rm -rf /tmp/sources /tmp/sections /tmp/apkwork /tmp/payload
           gh release create "$TAG" --target main --title 'Quran Series v1.0.2 – Final 12 APKs' --notes 'Final 12 verified APKs from the user-provided PDFs only. Zoom works in the Quran and all sections/explanations. Paging is right-to-left with Al-Fatiha first. Verse-text search is enabled. Arabic titles and wording were corrected.'
-          gh release upload "$TAG" release-apks/*.apk release-apks/SHA256SUMS.txt release-apks/ARABIC-FILENAMES.txt
+          gh release upload "$TAG" final-apks/*.apk final-apks/SHA256SUMS.txt final-apks/ARABIC-FILENAMES.txt
