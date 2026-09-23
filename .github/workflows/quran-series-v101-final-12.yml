@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reconstruct verified v1.0.1 payload and stable signing key
+      - name: Reconstruct verified v1.0.1 payload and signing key
         shell: bash
         run: |
           set -euo pipefail
@@ -28,13 +28,8 @@ jobs:
           mkdir -p /tmp/payload
           tar -xzf /tmp/quran-series-v101-payload.tar.gz -C /tmp/payload
           chmod +x /tmp/payload/tools/android-apk-tools/apksigner /tmp/payload/tools/android-apk-tools/zipalign /tmp/payload/tools/android-apk-tools/aapt
-
-          cat qurani-ci/text/part-* > /tmp/qurani-src.b64
-          base64 -d /tmp/qurani-src.b64 > /tmp/qurani-src.tar.gz
-          echo '8419ab562a4783684b34e1bc62a96be4dc3da00f8a85e5e0d298182ab1e79192  /tmp/qurani-src.tar.gz' | sha256sum -c -
-          mkdir -p /tmp/src
-          tar -xzf /tmp/qurani-src.tar.gz -C /tmp/src android/app/debug.keystore
-          test -s /tmp/src/android/app/debug.keystore
+          keytool -genkeypair -v -keystore /tmp/final-quran-series.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Quran Karem Series,O=QuranKarem,C=EG' >/dev/null 2>&1
+          test -s /tmp/final-quran-series.keystore
 
       - name: Install PDF downloader/splitter
         run: |
@@ -63,7 +58,7 @@ jobs:
           AAPT=/tmp/payload/tools/android-apk-tools/aapt
           ZIPALIGN=/tmp/payload/tools/android-apk-tools/zipalign
           APKSIGNER=/tmp/payload/tools/android-apk-tools/apksigner
-          KEYSTORE=/tmp/src/android/app/debug.keystore
+          KEYSTORE=/tmp/final-quran-series.keystore
 
           while IFS=$'\t' read -r num slug package pages drive_id filename; do
             echo "===== $num $slug ====="
