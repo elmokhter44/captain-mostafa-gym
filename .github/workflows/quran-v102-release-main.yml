@@ -23,7 +23,28 @@ jobs:
           python3 -m pip install --quiet 'gdown==5.2.0' 'PyMuPDF==1.26.4'
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;36.0.0'
-      - name: Build verify and publish 12 APKs
+      - name: Build and verify all 12 APKs
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash qurani-v102-release-v2.sh
+        run: |
+          sed '/^TAG=quran-series-v1.0.2-final12/,$d' qurani-v102-release-v2.sh > /tmp/build-only.sh
+          bash /tmp/build-only.sh
+      - name: Publish all 12 APKs with unique release names
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=quran-series-v1.0.2-final12
+          rm -rf release-apks && mkdir -p release-apks
+          : > release-apks/ARABIC-FILENAMES.txt
+          while IFS=$'\t' read -r num slug package pages drive_id filename; do
+            asset="${num}-${slug}-v1.0.2.apk"
+            cp "final-apks/$filename" "release-apks/$asset"
+            printf '%s\t%s\n' "$asset" "$filename" >> release-apks/ARABIC-FILENAMES.txt
+          done < /tmp/apps.tsv
+          cp final-apks/SHA256SUMS.txt release-apks/SHA256SUMS.txt
+          test "$(find release-apks -maxdepth 1 -name '*.apk' | wc -l)" -eq 12
+          gh release delete "$TAG" --cleanup-tag --yes >/dev/null 2>&1 || true
+          sleep 2
+          gh release create "$TAG" --title 'Quran Series v1.0.2 – Zoom + RTL + Verse Search' --notes 'Final 12 verified APKs from the user-provided PDFs only. Pinch zoom works in the Quran and all sections/explanations. Paging is right-to-left with Al-Fatiha first. Verse-text search is enabled. Arabic titles and wording were corrected.'
+          gh release upload "$TAG" release-apks/*.apk release-apks/SHA256SUMS.txt release-apks/ARABIC-FILENAMES.txt --clobber
