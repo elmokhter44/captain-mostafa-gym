@@ -1,0 +1,672 @@
+===== FILE: src/features/reader/ReaderScreen.tsx =====
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Alert, FlatList, Modal, NativeScrollEvent, NativeSyntheticEvent, Pressable, StyleSheet, Text, View, useWindowDimensions} from 'react-native';
+import type {NativeStackScreenProps} from '@react-navigation/native-stack';
+import type {RootStackParamList} from '../../app/navigation';
+import {A4_ASPECT, COLORS} from '../../app/theme';
+import {useAppServices} from '../../app/AppServicesContext';
+import {ZoomablePdfPage} from './ZoomablePdfPage';
+import {pageFromHorizontalOffset} from './readerModel';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'Reader'>;
+type MenuMode = 'primary' | 'more' | null;
+
+const GLYPHS: Record<string, string> = {
+  reading: '◈', dua: '♡', 'waqf-symbols': '۞', 'furati-intro': '❖', usul: '▤', index: '☷',
+};
+
+export function ReaderScreen({route, navigation}: Props): React.JSX.Element {
+  const services = useAppServices();
+  const {width: screenWidth, height: screenHeight} = useWindowDimensions();
+  const section = useMemo(() => services.sections.get(route.params.sectionId), [route.params.sectionId, services]);
+  if (!section) throw new Error('SECTION_NOT_FOUND');
+
+  const total = section.sourceEndPage - section.sourceStartPage + 1;
+  const saved = services.progress.get(section.id);
+  const initialPage = Math.min(total, Math.max(1, route.params.logicalPage ?? saved?.logicalPage ?? 1));
+  const [activePage, setActivePage] = useState(initialPage);
+  const [bookmarked, setBookmarked] = useState(false);
+  const [pageZoomed, setPageZoomed] = useState(false);
+  const [menuMode, setMenuMode] = useState<MenuMode>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>(services.settings.get().theme === 'dark' ? 'dark' : 'light');
+  const listRef = useRef<FlatList<number>>(null);
+  const pageWidth = Math.min(screenWidth, Math.max(1, screenHeight / A4_ASPECT));
+  const pages = useMemo(() => Array.from({length: total}, (_, i) => i + 1), [total]);
+  const extraSections = useMemo(() => services.sections.list().filter(item => item.id !== 'quran' && item.id !== 'index'), [services]);
+
+  useEffect(() => setBookmarked(Boolean(services.bookmarks.findByPage(section.id, activePage))), [activePage, section.id, services]);
+
+  const persist = useCallback((logicalPage: number) => {
+    const source = section.sourceStartPage + logicalPage - 1;
+    services.progress.save(section.id, logicalPage, source, 0);
+    services.settings.setLastSection(section.id);
+  }, [section, services]);
+
+  useEffect(() => { persist(initialPage); }, [initialPage, persist]);
+
+  const pageFromOffset = (event: NativeSyntheticEvent<NativeScrollEvent>) => pageFromHorizontalOffset(event.nativeEvent.contentOffset.x, screenWidth, total);
+  const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => setActivePage(pageFromOffset(event));
+  const onScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => persist(pageFromOffset(event));
+
+  const saveBookmark = () => {
+    const existing = services.bookmarks.findByPage(section.id, activePage);
+    if (!existing) services.bookmarks.create({sectionId: section.id, logicalPage: activePage, sourcePdfPage: section.sourceStartPage + activePage - 1, label: section.id === 'quran' ? `صفحة ${activePage}` : `${section.title} – ${activePage}`});
+    setBookmarked(true); setMenuMode(null);
+  };
+
+  const jumpToBookmark = () => {
+    const target = services.bookmarks.list(section.id)[0];
+    if (!target) {
+      setMenuMode(null);
+      Alert.alert('العلامة المرجعية', 'لا توجد علامة محفوظة في هذا القسم.');
+      return;
+    }
+    setMenuMode(null);
+    setActivePage(target.logicalPage);
+    listRef.current?.scrollToOffset({offset: (target.logicalPage - 1) * screenWidth, animated: true});
+    persist(target.logicalPage);
+  };
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next); services.settings.setTheme(next); setMenuMode(null);
+  };
+
+  const goSearch = () => { setMenuMode(null); navigation.navigate('Search'); };
+  const goIndex = () => { setMenuMode(null); navigation.navigate('Index'); };
+  const openExtra = (id: string) => { setMenuMode(null); navigation.navigate('Reader', {sectionId: id}); };
+  const dark = theme === 'dark';
+
+  const primaryItems = [
+    {key: 'search', label: 'البحث', glyph: '⌕', action: goSearch},
+    {key: 'save', label: bookmarked ? 'العلامة محفوظة' : 'حفظ علامة', glyph: bookmarked ? '✓' : '▮', action: saveBookmark},
+    {key: 'jump', label: 'الانتقال إلى العلامة', glyph: '↪', action: jumpToBookmark},
+    {key: 'theme', label: dark ? 'الوضع الفاتح' : 'الوضع الداكن', glyph: dark ? '☀' : '☾', action: toggleTheme},
+    {key: 'index', label: 'الفهرس', glyph: '☷', action: goIndex},
+    {key: 'more', label: 'المزيد', glyph: '•••', action: () => setMenuMode('more')},
+  ] as const;
+
+  return (
+    <View style={[styles.root, dark && styles.rootDark]}>
+      <FlatList
+        ref={listRef}
+        data={pages}
+        horizontal
+        pagingEnabled
+        snapToInterval={screenWidth}
+        decelerationRate="fast"
+        keyExtractor={item => String(item)}
+        renderItem={({item}) => (
+          <View style={[styles.pageSlot, {width: screenWidth}]}>
+            <Pressable accessibilityLabel={`صفحة ${item} من ${total}`} onPress={() => setMenuMode('primary')} style={{width: pageWidth, height: pageWidth * A4_ASPECT}}>
+              <ZoomablePdfPage assetName={section.assetName} pageIndex={item - 1} width={pageWidth} onZoomStateChange={setPageZoomed} />
+            </Pressable>
+          </View>
+        )}
+        initialScrollIndex={initialPage - 1}
+        getItemLayout={(_, index) => ({length: screenWidth, offset: screenWidth * index, index})}
+        onScroll={onScroll}
+        onMomentumScrollEnd={onScrollEnd}
+        onScrollEndDrag={onScrollEnd}
+        scrollEnabled={!pageZoomed}
+        scrollEventThrottle={80}
+        initialNumToRender={1}
+        maxToRenderPerBatch={2}
+        windowSize={3}
+        removeClippedSubviews
+        showsHorizontalScrollIndicator={false}
+        onScrollToIndexFailed={({index}) => setTimeout(() => listRef.current?.scrollToOffset({offset: index * screenWidth, animated: false}), 50)}
+      />
+
+      <Modal transparent visible={menuMode !== null} animationType="fade" onRequestClose={() => setMenuMode(null)} statusBarTranslucent>
+        <Pressable style={styles.backdrop} onPress={() => setMenuMode(null)}>
+          <Pressable style={[styles.sheet, dark && styles.sheetDark]} onPress={event => event.stopPropagation()}>
+            {menuMode === 'primary' ? (
+              <View style={styles.menuGrid}>
+                {primaryItems.map(item => (
+                  <Pressable key={item.key} accessibilityRole="button" accessibilityLabel={item.label} onPress={item.action} style={({pressed}) => [styles.menuItem, dark && styles.menuItemDark, pressed && styles.pressed]}>
+                    <Text style={[styles.menuGlyph, dark && styles.menuGlyphDark]}>{item.glyph}</Text>
+                    <Text style={[styles.menuLabel, dark && styles.menuLabelDark]}>{item.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : (
+              <View>
+                <Text style={[styles.moreTitle, dark && styles.menuLabelDark]}>الأقسام والشروح</Text>
+                <View style={styles.menuGrid}>
+                  {extraSections.map(item => (
+                    <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`فتح ${item.title}`} onPress={() => openExtra(item.id)} style={({pressed}) => [styles.moreItem, dark && styles.menuItemDark, pressed && styles.pressed]}>
+                      <Text style={[styles.moreGlyph, dark && styles.menuGlyphDark]}>{GLYPHS[item.id] ?? '◆'}</Text>
+                      <Text numberOfLines={3} style={[styles.moreLabel, dark && styles.menuLabelDark]}>{item.title}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {flex: 1, backgroundColor: '#F2EAD9'},
+  rootDark: {backgroundColor: '#050505'},
+  pageSlot: {flex: 1, alignItems: 'center', justifyContent: 'center'},
+  backdrop: {flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.28)'},
+  sheet: {backgroundColor: 'rgba(250,247,239,0.98)', borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden', paddingBottom: 12, borderTopWidth: 1, borderColor: '#D6A933'},
+  sheetDark: {backgroundColor: 'rgba(12,12,12,0.98)', borderColor: '#3A3A3A'},
+  menuGrid: {flexDirection: 'row-reverse', flexWrap: 'wrap'},
+  menuItem: {width: '33.333%', minHeight: 92, alignItems: 'center', justifyContent: 'center', borderLeftWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: '#CFC6B5', paddingHorizontal: 6},
+  menuItemDark: {borderColor: '#3C3C3C'},
+  menuGlyph: {fontSize: 30, lineHeight: 36, color: COLORS.emerald950, fontWeight: '500'},
+  menuGlyphDark: {color: '#FFFFFF'},
+  menuLabel: {marginTop: 4, fontSize: 13, lineHeight: 19, textAlign: 'center', writingDirection: 'rtl', color: '#1A201D', fontWeight: '700'},
+  menuLabelDark: {color: '#FFFFFF'},
+  moreTitle: {fontSize: 16, fontWeight: '900', color: COLORS.emerald950, textAlign: 'right', writingDirection: 'rtl', paddingHorizontal: 18, paddingVertical: 14},
+  moreItem: {width: '33.333%', minHeight: 118, alignItems: 'center', justifyContent: 'center', borderLeftWidth: StyleSheet.hairlineWidth, borderTopWidth: StyleSheet.hairlineWidth, borderColor: '#CFC6B5', paddingHorizontal: 8, paddingVertical: 10},
+  moreGlyph: {fontSize: 27, color: COLORS.gold700},
+  moreLabel: {marginTop: 7, fontSize: 12, lineHeight: 18, textAlign: 'center', writingDirection: 'rtl', color: '#1A201D', fontWeight: '700'},
+  pressed: {opacity: 0.55},
+});
+
+
+===== FILE: src/features/reader/ZoomablePdfPage.tsx =====
+import React, {useMemo, useRef} from 'react';
+import {Animated, PanResponder, StyleSheet, View} from 'react-native';
+import {A4_ASPECT} from '../../app/theme';
+import {PdfPage} from './PdfPage';
+import {clampTranslation, clampZoom, MIN_ZOOM} from './zoomModel';
+
+function touchDistance(touches: readonly {pageX: number; pageY: number}[]): number {
+  if (touches.length < 2) return 0;
+  const first = touches[0]!;
+  const second = touches[1]!;
+  return Math.hypot(second.pageX - first.pageX, second.pageY - first.pageY);
+}
+
+export function ZoomablePdfPage({
+  assetName,
+  pageIndex,
+  width,
+  overlay,
+  onZoomStateChange,
+}: {
+  assetName: string;
+  pageIndex: number;
+  width: number;
+  overlay?: React.ReactNode;
+  onZoomStateChange?: (zoomed: boolean) => void;
+}): React.JSX.Element {
+  const height = width * A4_ASPECT;
+  const scale = useRef(new Animated.Value(MIN_ZOOM)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const scaleRef = useRef<number>(MIN_ZOOM);
+  const offsetRef = useRef({x: 0, y: 0});
+  const pinchStart = useRef<{distance: number; scale: number}>({distance: 0, scale: MIN_ZOOM});
+  const panStart = useRef({x: 0, y: 0});
+
+  const setTransform = (nextScale: number, x: number, y: number) => {
+    const safeScale = clampZoom(nextScale);
+    const safeOffset = clampTranslation(x, y, safeScale, width, height);
+    scaleRef.current = safeScale;
+    offsetRef.current = safeOffset;
+    scale.setValue(safeScale);
+    translateX.setValue(safeOffset.x);
+    translateY.setValue(safeOffset.y);
+  };
+
+  const reset = () => {
+    scaleRef.current = MIN_ZOOM;
+    offsetRef.current = {x: 0, y: 0};
+    Animated.parallel([
+      Animated.spring(scale, {toValue: MIN_ZOOM, useNativeDriver: true, bounciness: 0, speed: 20}),
+      Animated.spring(translateX, {toValue: 0, useNativeDriver: true, bounciness: 0, speed: 20}),
+      Animated.spring(translateY, {toValue: 0, useNativeDriver: true, bounciness: 0, speed: 20}),
+    ]).start();
+    onZoomStateChange?.(false);
+  };
+
+  const responder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: event => event.nativeEvent.touches.length >= 2 || scaleRef.current > MIN_ZOOM,
+    onMoveShouldSetPanResponder: (event, gesture) => event.nativeEvent.touches.length >= 2 || (scaleRef.current > MIN_ZOOM && (Math.abs(gesture.dx) > 2 || Math.abs(gesture.dy) > 2)),
+    onPanResponderGrant: event => {
+      const touches = event.nativeEvent.touches;
+      if (touches.length >= 2) {
+        pinchStart.current = {distance: touchDistance(touches), scale: scaleRef.current};
+        onZoomStateChange?.(true);
+      } else {
+        panStart.current = offsetRef.current;
+      }
+    },
+    onPanResponderMove: (event, gesture) => {
+      const touches = event.nativeEvent.touches;
+      if (touches.length >= 2) {
+        const distance = touchDistance(touches);
+        if (pinchStart.current.distance > 0) {
+          const nextScale = pinchStart.current.scale * (distance / pinchStart.current.distance);
+          setTransform(nextScale, offsetRef.current.x, offsetRef.current.y);
+        }
+      } else if (scaleRef.current > MIN_ZOOM) {
+        setTransform(scaleRef.current, panStart.current.x + gesture.dx, panStart.current.y + gesture.dy);
+      }
+    },
+    onPanResponderRelease: () => {
+      if (scaleRef.current <= 1.04) reset();
+      else {
+        setTransform(scaleRef.current, offsetRef.current.x, offsetRef.current.y);
+        onZoomStateChange?.(true);
+      }
+    },
+    onPanResponderTerminate: () => {
+      if (scaleRef.current <= 1.04) reset();
+      else onZoomStateChange?.(true);
+    },
+    onPanResponderTerminationRequest: () => scaleRef.current <= MIN_ZOOM,
+  }), [height, onZoomStateChange, scale, translateX, translateY, width]);
+
+  return (
+    <View accessible accessibilityLabel="صفحة قابلة للتكبير" style={[styles.viewport, {width, height}]} {...responder.panHandlers}>
+      <Animated.View style={{width, height, transform: [{translateX}, {translateY}, {scale}]}}>
+        <PdfPage assetName={assetName} pageIndex={pageIndex} width={width} overlay={overlay} />
+      </Animated.View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  viewport: {alignSelf: 'center', overflow: 'hidden'},
+});
+
+
+===== FILE: src/features/reader/PdfPage.tsx =====
+import React, {useEffect, useState} from 'react';
+import {ActivityIndicator, Image, Pressable, StyleSheet, Text, View, PixelRatio} from 'react-native';
+import {useAppServices} from '../../app/AppServicesContext';
+import {A4_ASPECT, COLORS, RADIUS, SHADOW, SPACING} from '../../app/theme';
+
+export function PdfPage({assetName, pageIndex, width, overlay}: {assetName: string; pageIndex: number; width: number; overlay?: React.ReactNode}): React.JSX.Element {
+  const {pdf} = useAppServices();
+  const [uri, setUri] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const height = width * A4_ASPECT;
+
+  useEffect(() => {
+    let active = true;
+    setUri(null); setError(false);
+    const renderWidth = Math.min(2000, Math.max(640, Math.round(width * PixelRatio.get() * 1.35)));
+    pdf.renderPage(assetName, pageIndex, renderWidth)
+      .then(value => { if (active) setUri(value); })
+      .catch(() => { if (active) setError(true); });
+    return () => { active = false; };
+  }, [assetName, pageIndex, pdf, retry, width]);
+
+  return (
+    <View style={[styles.page, {width, height}]}>
+      {uri ? <Image source={{uri}} style={StyleSheet.absoluteFill} resizeMode="contain" /> : error ? (
+        <View style={styles.center}>
+          <Text style={styles.errorTitle}>تعذر عرض هذه الصفحة</Text>
+          <Pressable onPress={() => setRetry(v => v + 1)} style={styles.retry}><Text style={styles.retryText}>إعادة المحاولة</Text></Pressable>
+        </View>
+      ) : <View style={styles.center}><ActivityIndicator color={COLORS.gold700} size="large" /><Text style={styles.loading}>جارٍ تجهيز الصفحة...</Text></View>}
+      {uri ? overlay : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  page: {...SHADOW, backgroundColor: COLORS.paper, borderRadius: 0, overflow: 'hidden', alignSelf: 'center'},
+  center: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.lg, backgroundColor: '#FFFEFA'},
+  loading: {marginTop: SPACING.md, color: COLORS.muted, fontSize: 12},
+  errorTitle: {color: COLORS.danger, fontSize: 14, fontWeight: '800', textAlign: 'center'},
+  retry: {marginTop: SPACING.md, paddingVertical: 10, paddingHorizontal: 18, borderRadius: RADIUS.pill, backgroundColor: COLORS.emerald900},
+  retryText: {color: COLORS.white, fontSize: 12, fontWeight: '800'},
+});
+
+
+===== FILE: src/features/index/IndexScreen.tsx =====
+import React, {useMemo} from 'react';
+import {FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions} from 'react-native';
+import {useNavigation} from '@react-navigation/native';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import type {RootStackParamList} from '../../app/navigation';
+import {A4_ASPECT, COLORS, SPACING} from '../../app/theme';
+import {useAppServices} from '../../app/AppServicesContext';
+import {toSurahTarget} from '../../services/ReaderNavigationService';
+import {ScreenHeader} from '../common/ScreenHeader';
+import {PdfPage} from '../reader/PdfPage';
+
+export function IndexScreen(): React.JSX.Element {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const services = useAppServices();
+  const {width: screenWidth} = useWindowDimensions();
+  const pageWidth = Math.max(280, screenWidth - SPACING.md * 2);
+  const pageHeight = pageWidth * A4_ASPECT;
+  const rowLength = pageHeight + SPACING.md;
+  const pages = useMemo(() => [617, 618, 619, 620, 621, 622], []);
+
+  const overlaysFor = (sourcePage: number) => {
+    if (sourcePage !== 621 && sourcePage !== 622) return undefined;
+    const hotspots = services.hotspots.forSourcePage(sourcePage);
+    return hotspots.map(hotspot => {
+      const surah = services.surahs.get(hotspot.surahId);
+      if (!surah) return null;
+      return (
+        <Pressable
+          key={hotspot.id}
+          accessibilityRole="button"
+          accessibilityLabel={`الانتقال إلى سورة ${surah.nameArabic}`}
+          onPress={() => navigation.navigate('Reader', toSurahTarget(surah))}
+          style={{position: 'absolute', left: hotspot.x * pageWidth, top: hotspot.y * pageHeight, width: hotspot.width * pageWidth, height: hotspot.height * pageHeight}}
+        />
+      );
+    });
+  };
+
+  return (
+    <View style={styles.root}>
+      <ScreenHeader title="تعريف وفهرس المصحف" />
+      <View style={styles.notice}><Text style={styles.noticeText}>صفحات الفهرس الأصلية تفاعلية — اضغط على اسم أي سورة للانتقال إليها.</Text></View>
+      <FlatList
+        data={pages}
+        keyExtractor={item => String(item)}
+        renderItem={({item, index}) => (
+          <View style={{height: rowLength}}>
+            <PdfPage assetName="quran_index.pdf" pageIndex={index} width={pageWidth} overlay={overlaysFor(item)} />
+          </View>
+        )}
+        getItemLayout={(_, index) => ({length: rowLength, offset: rowLength * index, index})}
+        initialNumToRender={2}
+        maxToRenderPerBatch={2}
+        windowSize={4}
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {flex: 1, backgroundColor: COLORS.ivoryDeep},
+  notice: {backgroundColor: COLORS.emerald100, borderBottomWidth: 1, borderBottomColor: '#C5DCD3', paddingVertical: 8, paddingHorizontal: SPACING.lg},
+  noticeText: {fontSize: 11, lineHeight: 18, color: COLORS.emerald900, fontWeight: '700', textAlign: 'center', writingDirection: 'rtl'},
+  list: {paddingTop: SPACING.md, paddingBottom: 30},
+});
+
+
+===== FILE: src/features/home/HomeScreen.tsx =====
+import React, {useCallback, useState} from 'react';
+import {Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions} from 'react-native';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import type {RootStackParamList} from '../../app/navigation';
+import {COLORS, RADIUS, SHADOW, SPACING} from '../../app/theme';
+import {SECTIONS} from '../../data/sections';
+import {useAppServices} from '../../app/AppServicesContext';
+import {buildHomeCards} from './homeModel';
+import {ContinueReadingCard} from './ContinueReadingCard';
+import {SectionCard} from './SectionCard';
+
+export function HomeScreen(): React.JSX.Element {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const services = useAppServices();
+  const {width} = useWindowDimensions();
+  const [lastPage, setLastPage] = useState<number | null>(null);
+
+  useFocusEffect(useCallback(() => {
+    setLastPage(services.progress.get('quran')?.logicalPage ?? null);
+  }, [services]));
+
+  const horizontal = SPACING.lg;
+  const gap = SPACING.md;
+  const contentWidth = Math.max(0, width - horizontal * 2);
+  const twoColumns = width >= 380;
+  const cardWidth = twoColumns ? (contentWidth - gap) / 2 : contentWidth;
+  const cards = buildHomeCards(SECTIONS);
+  const featured = cards[0]!;
+  const rest = cards.slice(1);
+
+  const openSection = (id: string) => {
+    if (id === 'index') navigation.navigate('Index');
+    else navigation.navigate('Reader', {sectionId: id});
+  };
+
+  return (
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={styles.hero}>
+        <View style={styles.heroGlow} />
+        <Image source={require('../../../assets/branding/qurani-icon.png')} style={styles.logo} resizeMode="cover" />
+        <View style={styles.heroText}>
+          <Text style={styles.appName}>قرآني</Text>
+          <Text style={styles.tagline}>المصحف المعلّم بقراءة الإمام نافع</Text>
+          <Text style={styles.subtag}>ورش وقالون • يعمل بالكامل دون إنترنت</Text>
+        </View>
+      </View>
+
+      <Pressable accessibilityLabel="ابحث عن سورة أو آية" onPress={() => navigation.navigate('Search')} style={({pressed}) => [styles.search, pressed && {opacity: 0.85}]}>
+        <View style={styles.searchIcon}><Text style={styles.searchGlyph}>⌕</Text></View>
+        <Text style={styles.searchText}>ابحث عن سورة أو آية</Text>
+        <Text style={styles.searchHint}>بحث مباشر</Text>
+      </Pressable>
+
+      {lastPage ? <ContinueReadingCard page={lastPage} onPress={() => navigation.navigate('Reader', {sectionId: 'quran', logicalPage: lastPage})} /> : null}
+
+      <Text style={styles.sectionHeading}>ابدأ القراءة</Text>
+      <Pressable accessibilityLabel="فتح المصحف كامل" onPress={() => openSection(featured.id)} style={({pressed}) => [styles.featured, pressed && {opacity: 0.9}]}>
+        <View style={styles.featuredDecor}><Text style={styles.featuredDecorText}>۞</Text></View>
+        <View style={{flex: 1}}>
+          <Text style={styles.featuredEyebrow}>المصحف الشريف</Text>
+          <Text style={styles.featuredTitle}>{featured.title}</Text>
+          <Text style={styles.featuredSubtitle}>{featured.subtitle}</Text>
+          <View style={styles.featuredPill}><Text style={styles.featuredPillText}>604 صفحة</Text></View>
+        </View>
+        <View style={styles.featuredArrow}><Text style={styles.featuredArrowText}>‹</Text></View>
+      </Pressable>
+
+      <Text style={styles.sectionHeading}>الأقسام والشروح</Text>
+      <View style={[styles.grid, {gap}]}>
+        {rest.map(section => <SectionCard key={section.id} section={section} width={cardWidth} onPress={() => openSection(section.id)} />)}
+      </View>
+      <Text style={styles.footer}>جميع الصفحات من النسخة الأصلية المحفوظة داخل التطبيق</Text>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: {flex: 1, backgroundColor: COLORS.ivory},
+  content: {paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: 48},
+  hero: {...SHADOW, overflow: 'hidden', minHeight: 168, backgroundColor: COLORS.emerald900, borderRadius: RADIUS.hero, padding: SPACING.lg, flexDirection: 'row-reverse', alignItems: 'center', borderWidth: 1, borderColor: COLORS.gold700},
+  heroGlow: {position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: '#0B684B', opacity: 0.65, left: -50, top: -70},
+  logo: {width: 104, height: 104, borderRadius: 24, borderWidth: 1, borderColor: COLORS.gold300},
+  heroText: {flex: 1, paddingRight: SPACING.lg},
+  appName: {color: COLORS.gold300, fontSize: 32, lineHeight: 42, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl'},
+  tagline: {color: COLORS.white, fontSize: 14, lineHeight: 22, fontWeight: '700', textAlign: 'right', writingDirection: 'rtl', marginTop: 2},
+  subtag: {color: '#D7E8E1', fontSize: 11, lineHeight: 18, textAlign: 'right', writingDirection: 'rtl', marginTop: 4},
+  search: {...SHADOW, minHeight: 58, marginTop: SPACING.lg, borderRadius: RADIUS.card, backgroundColor: COLORS.paper, borderWidth: 1, borderColor: COLORS.line, flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: SPACING.md},
+  searchIcon: {width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.emerald100, alignItems: 'center', justifyContent: 'center'},
+  searchGlyph: {color: COLORS.emerald900, fontSize: 24, transform: [{rotate: '-20deg'}]},
+  searchText: {flex: 1, color: COLORS.ink, fontSize: 16, fontWeight: '700', textAlign: 'right', marginHorizontal: SPACING.md},
+  searchHint: {color: COLORS.muted, fontSize: 11},
+  sectionHeading: {fontSize: 18, color: COLORS.emerald950, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl', marginTop: SPACING.xl, marginBottom: SPACING.md},
+  featured: {...SHADOW, minHeight: 184, backgroundColor: COLORS.emerald950, borderRadius: RADIUS.hero, padding: SPACING.xl, borderWidth: 1, borderColor: COLORS.gold500, flexDirection: 'row-reverse', alignItems: 'center', overflow: 'hidden'},
+  featuredDecor: {position: 'absolute', left: -18, top: -24, width: 132, height: 132, borderRadius: 66, borderWidth: 1, borderColor: '#356E5D', alignItems: 'center', justifyContent: 'center'},
+  featuredDecorText: {fontSize: 58, color: '#1E5A46', opacity: 0.9},
+  featuredEyebrow: {color: COLORS.gold300, fontSize: 12, fontWeight: '800', textAlign: 'right'},
+  featuredTitle: {color: COLORS.white, fontSize: 25, lineHeight: 34, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl', marginTop: 4},
+  featuredSubtitle: {maxWidth: '84%', color: '#D5E4DF', fontSize: 12, lineHeight: 20, textAlign: 'right', writingDirection: 'rtl', marginTop: 5},
+  featuredPill: {alignSelf: 'flex-end', marginTop: SPACING.md, backgroundColor: '#114E3B', borderWidth: 1, borderColor: '#3E7765', borderRadius: RADIUS.pill, paddingVertical: 5, paddingHorizontal: 10},
+  featuredPillText: {color: COLORS.gold300, fontSize: 11, fontWeight: '700'},
+  featuredArrow: {width: 46, height: 46, borderRadius: 23, backgroundColor: COLORS.gold500, alignItems: 'center', justifyContent: 'center', marginRight: SPACING.md},
+  featuredArrowText: {color: COLORS.emerald950, fontSize: 32, lineHeight: 34, fontWeight: '500'},
+  grid: {flexDirection: 'row-reverse', flexWrap: 'wrap'},
+  footer: {color: COLORS.muted, fontSize: 11, lineHeight: 18, textAlign: 'center', marginTop: SPACING.xl, writingDirection: 'rtl'},
+});
+
+
+===== FILE: src/features/home/SectionCard.tsx =====
+import React from 'react';
+import {Pressable, StyleSheet, Text, View} from 'react-native';
+import type {SectionSeed} from '../../data/sections';
+import {COLORS, RADIUS, SHADOW, SPACING, TOUCH_TARGET} from '../../app/theme';
+
+export function SectionCard({section, width, onPress}: {section: SectionSeed; width: number; onPress: () => void}): React.JSX.Element {
+  return (
+    <Pressable onPress={onPress} accessibilityLabel={`فتح ${section.title}`} style={({pressed}) => [styles.card, {width}, pressed && styles.pressed]} accessibilityRole="button">
+      <View style={styles.marker}><Text style={styles.markerText}>◆</Text></View>
+      <View style={styles.textWrap}><Text style={styles.title}>{section.title}</Text></View>
+      <Text style={styles.arrow}>‹</Text>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {...SHADOW, minHeight: 124, backgroundColor: COLORS.paper, borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLORS.line, padding: SPACING.lg, justifyContent: 'space-between'},
+  pressed: {opacity: 0.82, transform: [{scale: 0.985}]},
+  marker: {width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.emerald100, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-end'},
+  markerText: {color: COLORS.gold700, fontSize: 12},
+  textWrap: {marginTop: SPACING.md, paddingLeft: 28},
+  title: {fontSize: 16, lineHeight: 24, color: COLORS.emerald950, fontWeight: '800', textAlign: 'right', writingDirection: 'rtl'},
+  arrow: {position: 'absolute', left: SPACING.md, bottom: SPACING.sm, color: COLORS.gold700, fontSize: 26, minWidth: TOUCH_TARGET, textAlign: 'center'},
+});
+
+
+===== FILE: src/data/sections.ts =====
+export type SectionId =
+  | 'intro'
+  | 'warsh-summary'
+  | 'warsh-lines'
+  | 'quran'
+  | 'index'
+  | 'warsh-usul'
+  | 'qalun-usul'
+  | 'handwritten';
+
+export type SectionSeed = Readonly<{
+  id: SectionId;
+  title: string;
+  subtitle: string;
+  sourceStartPage: number;
+  sourceEndPage: number;
+  assetName: string;
+  featured?: boolean;
+}>;
+
+export const SECTIONS: readonly SectionSeed[] = [
+  {id: 'intro', title: 'مقدمة', subtitle: 'التعريف بالمصحف وطريقة الاستفادة منه', sourceStartPage: 1, sourceEndPage: 5, assetName: 'intro.pdf'},
+  {id: 'warsh-summary', title: 'شرح مختصر أصول الإمام ورش', subtitle: 'ملخص مبسط لأصول القراءة', sourceStartPage: 6, sourceEndPage: 9, assetName: 'warsh_summary.pdf'},
+  {id: 'warsh-lines', title: 'شرح استخدامات الخطوط لاختلافات ورش', subtitle: 'دليل العلامات والخطوط داخل المصحف', sourceStartPage: 10, sourceEndPage: 12, assetName: 'warsh_lines_guide.pdf'},
+  {id: 'quran', title: 'المصحف كامل', subtitle: 'المصحف المعلم بقراءة الإمام نافع – ورش وقالون', sourceStartPage: 13, sourceEndPage: 616, assetName: 'quran.pdf', featured: true},
+  {id: 'index', title: 'تعريف وفهرس المصحف', subtitle: 'الفهرس الأصلي مع انتقال مباشر للسور', sourceStartPage: 617, sourceEndPage: 622, assetName: 'quran_index.pdf'},
+  {id: 'warsh-usul', title: 'أصول قراءة الإمام نافع برواية ورش', subtitle: 'الأصول كما وردت في المصدر', sourceStartPage: 623, sourceEndPage: 638, assetName: 'warsh_usul.pdf'},
+  {id: 'qalun-usul', title: 'أصول قراءة الإمام نافع برواية قالون', subtitle: 'يشمل الصفحات 639 إلى 649', sourceStartPage: 639, sourceEndPage: 649, assetName: 'qalun_usul.pdf'},
+  {id: 'handwritten', title: 'أصول وفروش ورش وقالون بخط اليد', subtitle: 'أصول وفروش قراءة الإمام نافع المدني', sourceStartPage: 650, sourceEndPage: 681, assetName: 'handwritten_warsh_qalun.pdf'},
+] as const;
+
+export function sectionPageCount(section: SectionSeed): number {
+  return section.sourceEndPage - section.sourceStartPage + 1;
+}
+
+
+===== FILE: src/services/ReaderNavigationService.ts =====
+export type ReaderTarget = Readonly<{sectionId: string; logicalPage?: number}>;
+
+export function toSurahTarget(surah: {mushafStartPage: number}): ReaderTarget {
+  if (!Number.isInteger(surah.mushafStartPage) || surah.mushafStartPage < 1 || surah.mushafStartPage > 604) {
+    throw new RangeError('Invalid surah start page');
+  }
+  return {sectionId: 'quran', logicalPage: surah.mushafStartPage};
+}
+
+
+===== FILE: src/repositories/SettingsRepository.ts =====
+import Realm from 'realm';
+
+export class SettingsRepository {
+  constructor(private readonly realm: Realm) {}
+  get(): {lastSectionId?: string; theme: string} {
+    const v = this.realm.objectForPrimaryKey<any>('AppSettings', 'main');
+    return {lastSectionId: v?.lastSectionId ?? undefined, theme: v?.theme ?? 'light'};
+  }
+  setLastSection(sectionId: string): void {
+    this.realm.write(() => this.realm.create('AppSettings', {id: 'main', lastSectionId: sectionId, theme: this.get().theme}, Realm.UpdateMode.Modified));
+  }
+  setTheme(theme: 'light' | 'dark'): void {
+    const current = this.get();
+    this.realm.write(() => this.realm.create('AppSettings', {id: 'main', lastSectionId: current.lastSectionId ?? null, theme}, Realm.UpdateMode.Modified));
+  }
+}
+
+
+===== FILE: android/app/build.gradle =====
+apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "com.facebook.react"
+
+react { autolinkLibrariesWithApp() }
+
+def enableProguardInReleaseBuilds = true
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    ndkVersion rootProject.ext.ndkVersion
+    buildToolsVersion rootProject.ext.buildToolsVersion
+    compileSdk rootProject.ext.compileSdkVersion
+    namespace "com.qurani.app"
+
+    defaultConfig {
+        applicationId "com.qurani.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 2
+        versionName "1.0.1"
+    }
+
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+        release {
+            if (keystorePropertiesFile.exists()) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                enableV1Signing true
+                enableV2Signing true
+                enableV3Signing true
+                enableV4Signing true
+            }
+        }
+    }
+
+    buildTypes {
+        debug { signingConfig signingConfigs.debug }
+        release {
+            signingConfig keystorePropertiesFile.exists() ? signingConfigs.release : signingConfigs.debug
+            minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources enableProguardInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+}
+
+dependencies {
+    implementation("com.facebook.react:react-android")
+    implementation("androidx.core:core-splashscreen:1.0.1")
+    if (hermesEnabled.toBoolean()) {
+        implementation("com.facebook.react:hermes-android")
+    }
+}
+
+
