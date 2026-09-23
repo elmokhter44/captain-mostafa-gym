@@ -128,13 +128,17 @@ jobs:
           cp qurani-v103-fixed/VerseSearchService.ts qurani-app/src/services/VerseSearchService.ts
           cp qurani-v103-fixed/SectionCard.tsx qurani-app/src/features/home/SectionCard.tsx
 
-          # The original Nafi implementation already included this verified generator.
-          # Generate the complete 6236-ayah dataset at build time, then bundle it for fully offline runtime search.
           curl --fail --location --retry 4 --retry-delay 2 --connect-timeout 20 --max-time 120 \
             'https://api.alquran.cloud/v1/quran/quran-uthmani' -o /tmp/quran-uthmani.json
           python3 qurani-app/scripts/generate-verse-index.py /tmp/quran-uthmani.json qurani-app/src/data/verses.generated.ts
-          grep -q '"surahNumber":114' qurani-app/src/data/verses.generated.ts
-          test "$(grep -o '"'"'"surahNumber"'"'"' qurani-app/src/data/verses.generated.ts | wc -l)" -eq 6236
+          python3 - <<'PY'
+          from pathlib import Path
+          v=Path('qurani-app/src/data/verses.generated.ts').read_text(encoding='utf-8')
+          assert v.count('"surahNumber":') == 6236
+          assert '"surahNumber":114' in v
+          assert '"mushafPage":1' in v and '"mushafPage":604' in v
+          print('VERSE_INDEX_OK=6236')
+          PY
 
           python3 - <<'PY'
           from pathlib import Path
