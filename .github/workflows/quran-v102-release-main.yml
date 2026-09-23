@@ -1,0 +1,29 @@
+name: Quran v1.0.2 Final Release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/quran-v102-release-main.yml']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qurani-series-v100
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install tools
+        run: |
+          python3 -m pip install --quiet 'gdown==5.2.0' 'PyMuPDF==1.26.4'
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;36.0.0'
+      - name: Build verify and publish 12 APKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash qurani-v102-release.sh
