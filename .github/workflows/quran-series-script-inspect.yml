@@ -1,0 +1,26 @@
+name: Quran Series Script Inspect
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-series-script-inspect.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qurani-series/v101-debug
+          base64 -d qurani-series/apply_series_common.py.gz.b64 | gzip -dc > qurani-series/v101-debug/apply_series_common.py
+          base64 -d qurani-series/build_all_overlays.py.gz.b64 | gzip -dc > qurani-series/v101-debug/build_all_overlays.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f qurani-series/v101-debug/apply_series_common.py qurani-series/v101-debug/build_all_overlays.py
+          git commit -m 'ci: persist decoded series scripts' || true
+          git push origin HEAD:qurani-series-v100
