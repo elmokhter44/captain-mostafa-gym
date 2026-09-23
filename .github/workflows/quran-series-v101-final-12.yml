@@ -27,13 +27,16 @@ jobs:
           echo 'ee3030765c148ffefb921972bce03b0655475765e9dda7bb8b3a5555b10749e8  /tmp/quran-series-v101-payload.tar.gz' | sha256sum -c -
           mkdir -p /tmp/payload
           tar -xzf /tmp/quran-series-v101-payload.tar.gz -C /tmp/payload
-          chmod +x /tmp/payload/tools/android-apk-tools/apksigner /tmp/payload/tools/android-apk-tools/zipalign /tmp/payload/tools/android-apk-tools/aapt
           keytool -genkeypair -v -keystore /tmp/final-quran-series.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Quran Karem Series,O=QuranKarem,C=EG' >/dev/null 2>&1
           test -s /tmp/final-quran-series.keystore
 
-      - name: Install PDF downloader/splitter
+      - name: Install PDF tools and Android build-tools
+        shell: bash
         run: |
+          set -euo pipefail
           python3 -m pip install --quiet 'gdown==5.2.0' 'PyMuPDF==1.26.4'
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;36.0.0'
 
       - name: Build, sign, and verify all 12 APKs from the user-provided PDFs
         shell: bash
@@ -55,9 +58,10 @@ jobs:
           12	qalunqasr	com.qurani.series.qalunqasr	632	1qTjYqpjs9S6v0UM2nZMXvUSsmBXxum3b	12-Qalun-Qasr-v1.0.1.apk
           EOF
 
-          AAPT=/tmp/payload/tools/android-apk-tools/aapt
-          ZIPALIGN=/tmp/payload/tools/android-apk-tools/zipalign
-          APKSIGNER=/tmp/payload/tools/android-apk-tools/apksigner
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          AAPT="$BT/aapt"
+          ZIPALIGN="$BT/zipalign"
+          APKSIGNER="$BT/apksigner"
           KEYSTORE=/tmp/final-quran-series.keystore
 
           while IFS=$'\t' read -r num slug package pages drive_id filename; do
