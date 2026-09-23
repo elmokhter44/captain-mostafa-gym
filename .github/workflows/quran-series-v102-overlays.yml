@@ -48,7 +48,7 @@ jobs:
           Path('/tmp/qurani-logo.jpg').write_bytes(base64.b64decode(b64,validate=True))
           PY
           echo '4c8d65a11c77539831be3a791e54b9eb984375cea878262fd1972ed3acf58cae  /tmp/qurani-logo.jpg' | sha256sum -c -
-      - name: Install build dependencies
+      - name: Install build dependencies and restore launcher resources
         shell: bash
         run: |
           set -euo pipefail
@@ -59,9 +59,21 @@ jobs:
           mkdir -p qurani-app/assets/branding
           python3 - <<'PY'
           from PIL import Image
-          Image.open('/tmp/qurani-logo.jpg').convert('RGBA').save('qurani-app/assets/branding/qurani-icon.png',optimize=True)
+          from pathlib import Path
+          src=Image.open('/tmp/qurani-logo.jpg').convert('RGBA')
+          src.save('qurani-app/assets/branding/qurani-icon.png',optimize=True)
+          base=Path('qurani-app/android/app/src/main/res')
+          sizes={'mipmap-mdpi':48,'mipmap-hdpi':72,'mipmap-xhdpi':96,'mipmap-xxhdpi':144,'mipmap-xxxhdpi':192}
+          for folder,size in sizes.items():
+              d=base/folder
+              d.mkdir(parents=True,exist_ok=True)
+              icon=src.resize((size,size),Image.Resampling.LANCZOS)
+              icon.save(d/'ic_launcher.png',optimize=True)
+              icon.save(d/'ic_launcher_round.png',optimize=True)
           PY
           test -s qurani-app/assets/branding/qurani-icon.png
+          test -s qurani-app/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          test -s qurani-app/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
           keytool -genkeypair -v -keystore qurani-app/android/app/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Series Build,O=QuranKarem,C=EG' >/dev/null 2>&1 || true
