@@ -8,7 +8,7 @@ import {ZoomablePdfPage} from './ZoomablePdfPage';
 
 type Props=NativeStackScreenProps<RootStackParamList,'Reader'>;
 type MenuMode='primary'|'more'|null;
-const GLYPHS:Record<string,string>={reading:'◈',dua:'♡','waqf-symbols':'۞','furati-intro':'❖',usul:'▤',index:'☷'};
+const GLYPHS:Record<string,string>={reading:'◈',dua:'🤲','waqf-symbols':'۞','furati-intro':'📖',usul:'▤',index:'☷'};
 
 export function ReaderScreen({route,navigation}:Props):React.JSX.Element {
   const services=useAppServices();
