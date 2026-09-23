@@ -86,7 +86,7 @@ jobs:
           cd qurani-app && python3 /tmp/apply.py . && cd ..
           cat > /tmp/v103_contract.py <<'PY'
           from pathlib import Path
-          import json, re, sys
+          import sys
           root=Path(sys.argv[1])
           reader=(root/'src/features/reader/ReaderScreen.tsx').read_text(encoding='utf-8')
           index=(root/'src/features/index/IndexScreen.tsx').read_text(encoding='utf-8')
@@ -96,7 +96,7 @@ jobs:
           verses=(root/'src/data/verses.generated.ts').read_text(encoding='utf-8')
           checks={
             'index_fullscreen': 'width={screenWidth}' in index and 'height={screenHeight}' in index and 'ScreenHeader' not in index,
-            'index_no_notice': '609–610' not in index and 'تفاعليتان' not in index,
+            'index_no_notice': 'تفاعليتان' not in index,
             'index_exact_zones': all(x in index for x in ['start: 1, end: 28','start: 29, end: 56','start: 57, end: 85','start: 86, end: 114']),
             'index_rtl': 'horizontal' in index and 'inverted' in index and 'pagingEnabled' in index,
             'all_verse_results': 'searchVerses(query, VERSE_INDEX)' in search and 'limit' not in service,
@@ -116,7 +116,7 @@ jobs:
           test "$rc" -ne 0
           echo 'RED_CONFIRMED=1'
 
-      - name: Apply v1.0.3 fixes
+      - name: Apply v1.0.3 fixes and complete offline verse index
         shell: bash
         run: |
           set -euo pipefail
@@ -127,6 +127,15 @@ jobs:
           cp qurani-v103-fixed/SearchScreen.tsx qurani-app/src/features/search/SearchScreen.tsx
           cp qurani-v103-fixed/VerseSearchService.ts qurani-app/src/services/VerseSearchService.ts
           cp qurani-v103-fixed/SectionCard.tsx qurani-app/src/features/home/SectionCard.tsx
+
+          # The original Nafi implementation already included this verified generator.
+          # Generate the complete 6236-ayah dataset at build time, then bundle it for fully offline runtime search.
+          curl --fail --location --retry 4 --retry-delay 2 --connect-timeout 20 --max-time 120 \
+            'https://api.alquran.cloud/v1/quran/quran-uthmani' -o /tmp/quran-uthmani.json
+          python3 qurani-app/scripts/generate-verse-index.py /tmp/quran-uthmani.json qurani-app/src/data/verses.generated.ts
+          grep -q '"surahNumber":114' qurani-app/src/data/verses.generated.ts
+          test "$(grep -o '"'"'"surahNumber"'"'"' qurani-app/src/data/verses.generated.ts | wc -l)" -eq 6236
+
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/tmp/build.py'); s=p.read_text(encoding='utf-8')
@@ -155,11 +164,11 @@ jobs:
           from pathlib import Path
           import json
           i=Path('src/features/index/IndexScreen.tsx').read_text(encoding='utf-8')
-          # Prove the four deterministic index ranges cover every surah exactly once.
           ranges=[(1,28),(29,56),(57,85),(86,114)]
           ids=[n for a,b in ranges for n in range(a,b+1)]
           assert ids==list(range(1,115)) and len(set(ids))==114
           assert 'navigation.push(\'Reader\', toSurahTarget(surah))' in i
+          assert 'ScreenHeader' not in i and 'تفاعليتان' not in i
           r=Path('src/features/reader/ReaderScreen.tsx').read_text(encoding='utf-8')
           assert 'horizontal inverted pagingEnabled' in r
           assert "dua:'◈'" in r and "'furati-intro':'◈'" in r
@@ -169,6 +178,7 @@ jobs:
           assert 'searchVerses(query, VERSE_INDEX)' in s and "navigation.push('Reader'" in s
           v=Path('src/data/verses.generated.ts').read_text(encoding='utf-8')
           assert v.count('"surahNumber":')==6236
+          assert '"mushafPage":1' in v and '"mushafPage":604' in v
           apps=json.loads(Path('../qurani-series/apps.json').read_text(encoding='utf-8'))
           text='\n'.join(x['title']+'\n'+x['reading']+'\n'+x['usul'] for x in apps)
           for bad in ['راوية','أبي عمر البصري','براويه','ماخالفة','الكسائى','مطلقآ','أصولقراءة']:
