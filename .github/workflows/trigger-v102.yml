@@ -1,0 +1,16 @@
+name: Trigger Quran v1.0.2 overlays
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/trigger-v102.yml']
+permissions:
+  actions: write
+  contents: read
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch v1.0.2 overlay workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run quran-series-v102-overlays.yml --repo "$GITHUB_REPOSITORY" --ref qurani-series-v100
