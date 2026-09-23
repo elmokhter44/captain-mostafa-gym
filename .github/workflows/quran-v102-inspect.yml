@@ -18,6 +18,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf /tmp/qurani
           mkdir -p /tmp/qurani
           cat qurani-ci/text/part-* > /tmp/qurani-src.b64
           base64 -d /tmp/qurani-src.b64 > /tmp/qurani-src.tar.gz
@@ -45,6 +46,8 @@ jobs:
             src/services/HotspotService.ts
             src/services/SurahService.ts
             src/data/hotspots.ts
+            src/data/indexHotspots.ts
+            src/data/surahHotspots.ts
             src/data/surahs.ts
             src/data/sections.ts
             src/utils/arabic.ts
@@ -54,12 +57,13 @@ jobs:
               cp "/tmp/qurani/$f" "qurani-v103-working/$(basename "$f")"
             fi
           done
-          find qurani-v103-working -maxdepth 1 -type f -print | sort
+          find /tmp/qurani/src -type f | sort > qurani-v103-working/source-files.txt
+          grep -RInE 'hotspot|forSourcePage|sourcePdfPage|mushafStartPage' /tmp/qurani/src > qurani-v103-working/index-navigation-grep.txt || true
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -f qurani-v103-working
           if ! git diff --cached --quiet; then
-            git commit -m 'ci: export Quran v1.0.3 navigation source fragments'
+            git commit -m 'ci: inspect Quran v1.0.3 index hotspot implementation'
             git pull --rebase origin qurani-series-v100
             git push origin HEAD:qurani-series-v100
           fi
