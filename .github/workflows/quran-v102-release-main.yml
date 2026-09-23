@@ -26,4 +26,4 @@ jobs:
       - name: Build verify and publish 12 APKs
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash qurani-v102-release.sh
+        run: bash qurani-v102-release-v2.sh
