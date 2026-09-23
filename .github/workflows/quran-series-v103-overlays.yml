@@ -1,0 +1,224 @@
+name: Quran Series v1.0.3 Overlays
+on:
+  workflow_dispatch:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-series-v103-overlays.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Reconstruct source and base
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app series-output-v103 /tmp/payload
+          mkdir -p qurani-app /tmp/payload
+          cat qurani-ci/text/part-* > /tmp/src.b64
+          base64 -d /tmp/src.b64 > /tmp/src.tar.gz
+          echo '8419ab562a4783684b34e1bc62a96be4dc3da00f8a85e5e0d298182ab1e79192  /tmp/src.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/src.tar.gz -C qurani-app
+          cat qurani-v101/overlay/part-* > /tmp/overlay.b64
+          base64 -d /tmp/overlay.b64 > /tmp/overlay.tar.gz
+          echo 'cbb6b45021274412968d6f6747fa54048d1d46be31e92a6cea31b5d80a2b9d7e  /tmp/overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/overlay.tar.gz -C qurani-app
+          cat .series-generated-v102/parts/payload.part-* > /tmp/v102.tar.gz
+          echo 'bbd714921a1a4fb4f38416247fbaae91651a965acdb702ea643e22e717788732  /tmp/v102.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/v102.tar.gz -C /tmp/payload
+          test -s /tmp/payload/base.apk
+          test -s qurani-app/src/data/verses.generated.ts
+          cp qurani-v101/generate-verse-index.py qurani-app/scripts/generate-verse-index.py
+          chmod +x qurani-app/scripts/generate-verse-index.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          b64=''.join(p.read_text() for p in sorted(Path('qurani-ci/logo').glob('part-*')))
+          Path('/tmp/qurani-logo.jpg').write_bytes(base64.b64decode(b64,validate=True))
+          PY
+          echo '4c8d65a11c77539831be3a791e54b9eb984375cea878262fd1972ed3acf58cae  /tmp/qurani-logo.jpg' | sha256sum -c -
+
+      - name: Install build dependencies and launcher resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d qurani-series/apply_series_common.py.gz.b64 | gzip -dc > /tmp/apply.py
+          base64 -d qurani-series/build_all_overlays.py.gz.b64 | gzip -dc > /tmp/build.py
+          cd qurani-app && npm install --no-audit --no-fund && cd ..
+          python3 -m pip install --quiet 'PyMuPDF==1.26.4' pillow
+          mkdir -p qurani-app/assets/branding
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          src=Image.open('/tmp/qurani-logo.jpg').convert('RGBA')
+          src.save('qurani-app/assets/branding/qurani-icon.png',optimize=True)
+          base=Path('qurani-app/android/app/src/main/res')
+          sizes={'mipmap-mdpi':48,'mipmap-hdpi':72,'mipmap-xhdpi':96,'mipmap-xxhdpi':144,'mipmap-xxxhdpi':192}
+          for folder,size in sizes.items():
+              d=base/folder; d.mkdir(parents=True,exist_ok=True)
+              icon=src.resize((size,size),Image.Resampling.LANCZOS)
+              icon.save(d/'ic_launcher.png',optimize=True)
+              icon.save(d/'ic_launcher_round.png',optimize=True)
+          PY
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
+          keytool -genkeypair -v -keystore qurani-app/android/app/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Series Build,O=QuranKarem,C=EG' >/dev/null 2>&1 || true
+          cd qurani-app/android && gradle wrapper --gradle-version 9.3.1 && chmod +x gradlew && cd ../..
+
+      - name: RED - current source must fail v1.0.3 contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app && python3 /tmp/apply.py . && cd ..
+          cat > /tmp/v103_contract.py <<'PY'
+          from pathlib import Path
+          import json, re, sys
+          root=Path(sys.argv[1])
+          reader=(root/'src/features/reader/ReaderScreen.tsx').read_text(encoding='utf-8')
+          index=(root/'src/features/index/IndexScreen.tsx').read_text(encoding='utf-8')
+          search=(root/'src/features/search/SearchScreen.tsx').read_text(encoding='utf-8')
+          service=(root/'src/services/VerseSearchService.ts').read_text(encoding='utf-8')
+          zoom=(root/'src/features/reader/ZoomablePdfPage.tsx').read_text(encoding='utf-8')
+          verses=(root/'src/data/verses.generated.ts').read_text(encoding='utf-8')
+          checks={
+            'index_fullscreen': 'width={screenWidth}' in index and 'height={screenHeight}' in index and 'ScreenHeader' not in index,
+            'index_no_notice': '609–610' not in index and 'تفاعليتان' not in index,
+            'index_exact_zones': all(x in index for x in ['start: 1, end: 28','start: 29, end: 56','start: 57, end: 85','start: 86, end: 114']),
+            'index_rtl': 'horizontal' in index and 'inverted' in index and 'pagingEnabled' in index,
+            'all_verse_results': 'searchVerses(query, VERSE_INDEX)' in search and 'limit' not in service,
+            'verse_index_6236': verses.count('"surahNumber":')==6236,
+            'reader_zoom': 'ZoomablePdfPage' in reader and 'MAX_ZOOM = 4.5' in zoom,
+            'uniform_icons': "dua:'◈'" in reader and "'furati-intro':'◈'" in reader and '🤲' not in reader and '📖' not in reader,
+          }
+          failed=[k for k,v in checks.items() if not v]
+          if failed:
+              print('CONTRACT_FAIL='+','.join(failed)); raise SystemExit(1)
+          print('CONTRACT_OK=1')
+          PY
+          set +e
+          python3 /tmp/v103_contract.py qurani-app
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          echo 'RED_CONFIRMED=1'
+
+      - name: Apply v1.0.3 fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp qurani-v103-fixed/ReaderScreen.tsx qurani-app/src/features/reader/ReaderScreen.tsx
+          cp qurani-v103-fixed/ZoomablePdfPage.tsx qurani-app/src/features/reader/ZoomablePdfPage.tsx
+          cp qurani-v101-fixed/PdfPage.tsx qurani-app/src/features/reader/PdfPage.tsx
+          cp qurani-v103-fixed/IndexScreen.tsx qurani-app/src/features/index/IndexScreen.tsx
+          cp qurani-v103-fixed/SearchScreen.tsx qurani-app/src/features/search/SearchScreen.tsx
+          cp qurani-v103-fixed/VerseSearchService.ts qurani-app/src/services/VerseSearchService.ts
+          cp qurani-v103-fixed/SectionCard.tsx qurani-app/src/features/home/SectionCard.tsx
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/build.py'); s=p.read_text(encoding='utf-8')
+          replacements=[
+            ("'versionCode 1'","'versionCode 4'"),
+            ("'versionName \"1.0.0\"'","'versionName \"1.0.3\"'"),
+            ("VERSION_NAME = '1.0.0'","VERSION_NAME = '1.0.3'"),
+            ("VERSION_CODE = 1","VERSION_CODE = 4"),
+            ("versionCode='1' versionName='1.0.0'","versionCode='4' versionName='1.0.3'"),
+            ("'versionCode':1,'versionName':'1.0.0'","'versionCode':4,'versionName':'1.0.3'"),
+            ("title: 'من بين يدي السلسلة الفراتية'","title: 'بين يدي السلسلة الفراتية'"),
+          ]
+          for a,b in replacements: s=s.replace(a,b)
+          p.write_text(s,encoding='utf-8')
+          assert "versionCode='4' versionName='1.0.3'" in s
+          assert "title: 'بين يدي السلسلة الفراتية'" in s
+          PY
+
+      - name: GREEN - verify v1.0.3 behavior and TypeScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/v103_contract.py qurani-app
+          cd qurani-app
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          i=Path('src/features/index/IndexScreen.tsx').read_text(encoding='utf-8')
+          # Prove the four deterministic index ranges cover every surah exactly once.
+          ranges=[(1,28),(29,56),(57,85),(86,114)]
+          ids=[n for a,b in ranges for n in range(a,b+1)]
+          assert ids==list(range(1,115)) and len(set(ids))==114
+          assert 'navigation.push(\'Reader\', toSurahTarget(surah))' in i
+          r=Path('src/features/reader/ReaderScreen.tsx').read_text(encoding='utf-8')
+          assert 'horizontal inverted pagingEnabled' in r
+          assert "dua:'◈'" in r and "'furati-intro':'◈'" in r
+          z=Path('src/features/reader/ZoomablePdfPage.tsx').read_text(encoding='utf-8')
+          assert 'MAX_ZOOM = 4.5' in z and 'onStartShouldSetPanResponderCapture' in z and 'onShouldBlockNativeResponder' in z
+          s=Path('src/features/search/SearchScreen.tsx').read_text(encoding='utf-8')
+          assert 'searchVerses(query, VERSE_INDEX)' in s and "navigation.push('Reader'" in s
+          v=Path('src/data/verses.generated.ts').read_text(encoding='utf-8')
+          assert v.count('"surahNumber":')==6236
+          apps=json.loads(Path('../qurani-series/apps.json').read_text(encoding='utf-8'))
+          text='\n'.join(x['title']+'\n'+x['reading']+'\n'+x['usul'] for x in apps)
+          for bad in ['راوية','أبي عمر البصري','براويه','ماخالفة','الكسائى','مطلقآ','أصولقراءة']:
+              assert bad not in text,bad
+          print('V103_CONTRACT_OK=1')
+          PY
+          cat > tsconfig.series.json <<'EOF'
+          {"extends":"./tsconfig.json","exclude":["node_modules","android","__tests__","**/*.node.test.ts"]}
+          EOF
+          npx tsc --noEmit -p tsconfig.series.json
+          echo 'TYPESCRIPT_OK=1'
+          cd ..
+
+      - name: Build and persist 12 v1.0.3 overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app/android/app/src/main/assets/pdf .series-generated-v103 series-output-v103
+          mkdir -p qurani-app/android/app/src/main/assets/pdf
+          python3 - <<'PY'
+          import fitz
+          from pathlib import Path
+          out=Path('qurani-app/android/app/src/main/assets/pdf')
+          for name,count in {'reading.pdf':4,'quran.pdf':604,'quran_index.pdf':2,'dua.pdf':1,'waqf_symbols.pdf':5,'furati_intro.pdf':4,'usul.pdf':18}.items():
+              d=fitz.open()
+              for _ in range(count): d.new_page(width=512.402,height=652.68)
+              d.save(out/name); d.close()
+          PY
+          cd qurani-app && python3 /tmp/build.py . /tmp/payload/base.apk ../qurani-series/apps.json ../series-output-v103 && cd ..
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.load(open('series-output-v103/build-report.json'))
+          assert len(r)==12
+          for x in r:
+              assert x['badgingOk'] and x['nativeLibsIdenticalToBase'] and x['overlayReconstructsSkeleton']
+              assert x['versionCode']==4 and x['versionName']=='1.0.3'
+          sections=Path('qurani-app/src/data/sections.ts').read_text(encoding='utf-8')
+          assert "title: 'بين يدي السلسلة الفراتية'" in sections
+          assert "title: 'من بين يدي السلسلة الفراتية'" not in sections
+          assert 'sourceStartPage: 609, sourceEndPage: 610' in sections
+          PY
+          mkdir -p .series-generated-v103/parts
+          cp /tmp/payload/base.apk series-output-v103/base.apk
+          tar -C series-output-v103 -czf /tmp/v103.tar.gz base.apk overlays build-report.json
+          sha256sum /tmp/v103.tar.gz | tee .series-generated-v103/SHA256SUMS.txt
+          split -b 45M -d -a 2 /tmp/v103.tar.gz .series-generated-v103/parts/payload.part-
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f .series-generated-v103
+          git commit -m 'ci: persist Quran series v1.0.3 overlay payload'
+          git pull --rebase origin qurani-series-v100
+          git push origin HEAD:qurani-series-v100
