@@ -66,6 +66,42 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
           keytool -genkeypair -v -keystore qurani-app/android/app/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Series Build,O=QuranKarem,C=EG' >/dev/null 2>&1 || true
           cd qurani-app/android && gradle wrapper --gradle-version 9.3.1 && chmod +x gradlew && cd ../..
+      - name: RED - prove current v1.0.1 behavior misses requested contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/v102_contract.py <<'PY'
+          from pathlib import Path
+          import json,sys
+          root=Path(sys.argv[1])
+          reader=(root/'src/features/reader/ReaderScreen.tsx').read_text(encoding='utf-8')
+          index=(root/'src/features/index/IndexScreen.tsx').read_text(encoding='utf-8')
+          search=(root/'src/features/search/SearchScreen.tsx').read_text(encoding='utf-8')
+          card=(root/'src/features/home/SectionCard.tsx').read_text(encoding='utf-8')
+          apps=json.loads(Path('qurani-series/apps.json').read_text(encoding='utf-8'))
+          text='\n'.join(x['title']+'\n'+x['reading']+'\n'+x['usul'] for x in apps)
+          checks={
+            'reader_rtl': 'horizontal inverted pagingEnabled' in reader,
+            'reader_zoom': 'ZoomablePdfPage' in reader,
+            'index_rtl': 'horizontal inverted pagingEnabled' in index,
+            'index_zoom': 'ZoomablePdfPage' in index,
+            'verse_search': 'searchVerses' in search and 'VERSE_INDEX' in search,
+            'dua_icon': "dua: '🤲'" in card or "dua:'🤲'" in reader,
+            'intro_icon': "'furati-intro': '📖'" in card or "'furati-intro':'📖'" in reader,
+            'spelling': all(bad not in text for bad in ['راوية','أبي عمر البصري','براويه','ماخالفة','الكسائى','مطلقآ','أصولقراءة']),
+          }
+          failed=[k for k,v in checks.items() if not v]
+          if failed:
+              print('CONTRACT_FAIL='+','.join(failed))
+              raise SystemExit(1)
+          print('CONTRACT_OK=1')
+          PY
+          set +e
+          python3 /tmp/v102_contract.py qurani-app
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          echo 'RED_CONFIRMED=1'
       - name: Apply v1.0.2 fixes
         shell: bash
         run: |
@@ -74,47 +110,70 @@ jobs:
           cp qurani-v102-fixed/ReaderScreen.tsx qurani-app/src/features/reader/ReaderScreen.tsx
           cp qurani-v102-fixed/ZoomablePdfPage.tsx qurani-app/src/features/reader/ZoomablePdfPage.tsx
           cp qurani-v101-fixed/PdfPage.tsx qurani-app/src/features/reader/PdfPage.tsx
-          cp qurani-v101-fixed/IndexScreen.tsx qurani-app/src/features/index/IndexScreen.tsx
+          cp qurani-v102-fixed/IndexScreen.tsx qurani-app/src/features/index/IndexScreen.tsx
+          cp qurani-v102-fixed/SectionCard.tsx qurani-app/src/features/home/SectionCard.tsx
           python3 - <<'PY'
           from pathlib import Path
           p=Path('qurani-app/src/features/search/SearchScreen.tsx')
           s=p.read_text(encoding='utf-8').replace("navigation.navigate('Reader',", "navigation.push('Reader',")
           p.write_text(s,encoding='utf-8')
           p=Path('/tmp/build.py'); s=p.read_text(encoding='utf-8')
-          for a,b in [("'versionCode 1'","'versionCode 3'"),("'versionName \"1.0.0\"'","'versionName \"1.0.2\"'"),("VERSION_NAME = '1.0.0'","VERSION_NAME = '1.0.2'"),("VERSION_CODE = 1","VERSION_CODE = 3"),("versionCode='1' versionName='1.0.0'","versionCode='3' versionName='1.0.2'"),("'versionCode':1,'versionName':'1.0.0'","'versionCode':3,'versionName':'1.0.2'")]: s=s.replace(a,b)
+          replacements=[
+            ("'versionCode 1'","'versionCode 3'"),
+            ("'versionName \"1.0.0\"'","'versionName \"1.0.2\"'"),
+            ("VERSION_NAME = '1.0.0'","VERSION_NAME = '1.0.2'"),
+            ("VERSION_CODE = 1","VERSION_CODE = 3"),
+            ("versionCode='1' versionName='1.0.0'","versionCode='3' versionName='1.0.2'"),
+            ("'versionCode':1,'versionName':'1.0.0'","'versionCode':3,'versionName':'1.0.2'"),
+            ("title: 'من بين يدي السلسلة الفراتية'","title: 'بين يدي السلسلة الفراتية'"),
+          ]
+          for a,b in replacements: s=s.replace(a,b)
           p.write_text(s,encoding='utf-8')
+          assert "versionCode='3' versionName='1.0.2'" in s
+          assert "title: 'بين يدي السلسلة الفراتية'" in s
+          assert "title: 'من بين يدي السلسلة الفراتية'" not in s
           PY
-      - name: Verify source contract
+      - name: GREEN - verify requested behavior, wording, search, icons, and TypeScript
         shell: bash
         run: |
           set -euo pipefail
+          python3 /tmp/v102_contract.py qurani-app
           cd qurani-app
           python3 - <<'PY'
           from pathlib import Path
           import json
-          r=Path('src/features/reader/ReaderScreen.tsx').read_text()
-          z=Path('src/features/reader/ZoomablePdfPage.tsx').read_text()
-          i=Path('src/features/index/IndexScreen.tsx').read_text()
-          s=Path('src/features/search/SearchScreen.tsx').read_text()
+          r=Path('src/features/reader/ReaderScreen.tsx').read_text(encoding='utf-8')
+          z=Path('src/features/reader/ZoomablePdfPage.tsx').read_text(encoding='utf-8')
+          i=Path('src/features/index/IndexScreen.tsx').read_text(encoding='utf-8')
+          s=Path('src/features/search/SearchScreen.tsx').read_text(encoding='utf-8')
+          c=Path('src/features/home/SectionCard.tsx').read_text(encoding='utf-8')
           assert 'horizontal inverted pagingEnabled' in r
-          assert 'ZoomablePdfPage' in r and 'ZoomablePdfPage' in i
+          assert 'ZoomablePdfPage' in r and 'scrollEnabled={!pageZoomed}' in r
           assert 'onStartShouldSetPanResponderCapture' in z and 'onMoveShouldSetPanResponderCapture' in z
-          assert 'searchVerses' in s and 'VERSE_INDEX' in s
-          apps=json.loads(Path('../qurani-series/apps.json').read_text())
+          assert 'sourcePages=useMemo(()=>[609,610]' in i
+          assert 'hotspotPages=useMemo(()=>[621,622]' in i
+          assert 'horizontal inverted pagingEnabled' in i and 'ZoomablePdfPage' in i
+          assert "navigation.push('Reader',toSurahTarget(surah))" in i
+          assert 'searchVerses' in s and 'VERSE_INDEX' in s and "navigation.push('Reader'" in s
+          assert "dua: '🤲'" in c and "'furati-intro': '📖'" in c
+          apps=json.loads(Path('../qurani-series/apps.json').read_text(encoding='utf-8'))
           text='\n'.join(x['title']+'\n'+x['reading']+'\n'+x['usul'] for x in apps)
-          for bad in ['أبي عمر البصري','براويه','ماخالفة','الكسائى','مطلقآ','أصولقراءة']: assert bad not in text,bad
-          assert 'أبي عمرو البصري' in text and 'برواية السوسي' in text
+          for bad in ['راوية','أبي عمر البصري','براويه','ماخالفة','الكسائى','مطلقآ','أصولقراءة']:
+              assert bad not in text,bad
+          assert apps[0]['title']=='المصحف المعلم بقراءة الإمام أبي عمرو البصري براوييه السوسي والدوري'
+          print('V102_SOURCE_CONTRACT_OK=1')
           PY
           cat > tsconfig.series.json <<'EOF'
           {"extends":"./tsconfig.json","exclude":["node_modules","android","__tests__","**/*.node.test.ts"]}
           EOF
           npx tsc --noEmit -p tsconfig.series.json
+          echo 'TYPESCRIPT_OK=1'
           cd ..
       - name: Build and persist 12 v1.0.2 overlays
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf qurani-app/android/app/src/main/assets/pdf .series-generated-v102
+          rm -rf qurani-app/android/app/src/main/assets/pdf .series-generated-v102 series-output-v102
           mkdir -p qurani-app/android/app/src/main/assets/pdf
           python3 - <<'PY'
           import fitz
@@ -128,11 +187,16 @@ jobs:
           cd qurani-app && python3 /tmp/build.py . /tmp/payload/base.apk ../qurani-series/apps.json ../series-output-v102 && cd ..
           python3 - <<'PY'
           import json
+          from pathlib import Path
           r=json.load(open('series-output-v102/build-report.json'))
           assert len(r)==12
           for x in r:
               assert x['badgingOk'] and x['nativeLibsIdenticalToBase'] and x['overlayReconstructsSkeleton']
               assert x['versionCode']==3 and x['versionName']=='1.0.2'
+          sections=Path('qurani-app/src/data/sections.ts').read_text(encoding='utf-8')
+          assert "title: 'بين يدي السلسلة الفراتية'" in sections
+          assert "title: 'من بين يدي السلسلة الفراتية'" not in sections
+          assert 'sourceStartPage: 609, sourceEndPage: 610' in sections
           PY
           mkdir -p .series-generated-v102/parts
           cp /tmp/payload/base.apk series-output-v102/base.apk
