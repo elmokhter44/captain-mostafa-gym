@@ -1,4 +1,4 @@
-name: Quran v1.0.2 Inspect Current Source
+name: Quran v1.0.3 Inspect Current Source
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct v1.0.1 source
+      - name: Reconstruct current Quran source
         shell: bash
         run: |
           set -euo pipefail
@@ -27,20 +27,39 @@ jobs:
           base64 -d /tmp/qurani-v101-overlay.b64 > /tmp/qurani-v101-overlay.tar.gz
           echo 'cbb6b45021274412968d6f6747fa54048d1d46be31e92a6cea31b5d80a2b9d7e  /tmp/qurani-v101-overlay.tar.gz' | sha256sum -c -
           tar -xzf /tmp/qurani-v101-overlay.tar.gz -C /tmp/qurani
-      - name: Export small source files needed for v1.0.2 patching
+      - name: Export source fragments for index/search/navigation debugging
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p qurani-v102-working
-          cp /tmp/qurani/src/features/home/SectionCard.tsx qurani-v102-working/SectionCard.tsx
-          cp /tmp/qurani/src/features/home/homeModel.ts qurani-v102-working/homeModel.ts
-          cp /tmp/qurani/src/features/search/SearchScreen.tsx qurani-v102-working/SearchScreen.tsx
-          cp /tmp/qurani/src/services/VerseSearchService.ts qurani-v102-working/VerseSearchService.ts
+          rm -rf qurani-v103-working
+          mkdir -p qurani-v103-working
+          files=(
+            src/features/home/SectionCard.tsx
+            src/features/home/homeModel.ts
+            src/features/search/SearchScreen.tsx
+            src/features/index/IndexScreen.tsx
+            src/features/reader/ReaderScreen.tsx
+            src/features/reader/ZoomablePdfPage.tsx
+            src/services/VerseSearchService.ts
+            src/services/ReaderNavigationService.ts
+            src/services/HotspotService.ts
+            src/services/SurahService.ts
+            src/data/hotspots.ts
+            src/data/surahs.ts
+            src/data/sections.ts
+            src/utils/arabic.ts
+          )
+          for f in "${files[@]}"; do
+            if [ -f "/tmp/qurani/$f" ]; then
+              cp "/tmp/qurani/$f" "qurani-v103-working/$(basename "$f")"
+            fi
+          done
+          find qurani-v103-working -maxdepth 1 -type f -print | sort
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -f qurani-v102-working
+          git add -f qurani-v103-working
           if ! git diff --cached --quiet; then
-            git commit -m 'ci: export Quran v1.0.2 source fragments for patching'
+            git commit -m 'ci: export Quran v1.0.3 navigation source fragments'
             git pull --rebase origin qurani-series-v100
             git push origin HEAD:qurani-series-v100
           fi
