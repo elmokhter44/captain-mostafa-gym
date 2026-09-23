@@ -1,0 +1,492 @@
+name: Quran Series v1.0.1 Viewer Fix + 12 Overlays
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-series-v101-overlays.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      REALM_DISABLE_ANALYTICS: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+          cache-read-only: false
+
+      - name: Reconstruct verified master source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app series-output-v101
+          mkdir -p qurani-app
+          cat qurani-ci/text/part-* > /tmp/qurani-src.b64
+          base64 -d /tmp/qurani-src.b64 > /tmp/qurani-src.tar.gz
+          echo '8419ab562a4783684b34e1bc62a96be4dc3da00f8a85e5e0d298182ab1e79192  /tmp/qurani-src.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/qurani-src.tar.gz -C qurani-app
+          cat qurani-v101/overlay/part-* > /tmp/qurani-v101-overlay.b64
+          base64 -d /tmp/qurani-v101-overlay.b64 > /tmp/qurani-v101-overlay.tar.gz
+          echo 'cbb6b45021274412968d6f6747fa54048d1d46be31e92a6cea31b5d80a2b9d7e  /tmp/qurani-v101-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/qurani-v101-overlay.tar.gz -C qurani-app
+          cp qurani-v101/generate-verse-index.py qurani-app/scripts/generate-verse-index.py
+          cp qurani-v101/ZoomablePdfPage.tsx qurani-app/src/features/reader/ZoomablePdfPage.tsx
+          chmod +x qurani-app/scripts/generate-verse-index.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          b64=''.join(p.read_text() for p in sorted(Path('qurani-ci/logo').glob('part-*')))
+          Path('/tmp/qurani-logo.jpg').write_bytes(base64.b64decode(b64,validate=True))
+          PY
+          echo '4c8d65a11c77539831be3a791e54b9eb984375cea878262fd1972ed3acf58cae  /tmp/qurani-logo.jpg' | sha256sum -c -
+          python3 -m pip install --quiet pillow 'PyMuPDF==1.26.4'
+          mkdir -p qurani-app/assets/branding
+          python3 - <<'PY'
+          from PIL import Image
+          Image.open('/tmp/qurani-logo.jpg').convert('RGBA').save('qurani-app/assets/branding/qurani-icon.png', optimize=True)
+          PY
+          cd qurani-app && python3 scripts/generate-icons.py && cd ..
+
+      - name: Decode current series scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d qurani-series/apply_series_common.py.gz.b64 | gzip -dc > /tmp/apply_series_common.py
+          base64 -d qurani-series/build_all_overlays.py.gz.b64 | gzip -dc > /tmp/build_all_overlays.py
+          python3 -m py_compile /tmp/apply_series_common.py /tmp/build_all_overlays.py
+
+      - name: Install dependencies and Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app && npm install --no-audit --no-fund && cd ..
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
+          keytool -genkeypair -v -keystore qurani-app/android/app/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Series Build,O=QuranKarem,C=EG' >/dev/null 2>&1 || true
+          cd qurani-app/android
+          gradle wrapper --gradle-version 9.3.1
+          chmod +x gradlew
+          cd ../..
+
+      - name: Build reproducible base APK with placeholders
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app/android/app/src/main/assets/pdf
+          mkdir -p qurani-app/android/app/src/main/assets/pdf
+          python3 - <<'PY'
+          import fitz
+          from pathlib import Path
+          out=Path('qurani-app/android/app/src/main/assets/pdf')
+          counts={'quran.pdf':604,'quran_index.pdf':2,'intro.pdf':4,'qalun_usul.pdf':11,'warsh_usul.pdf':17,'warsh_summary.pdf':4,'warsh_lines_guide.pdf':5,'handwritten_warsh_qalun.pdf':32}
+          for name,count in counts.items():
+              d=fitz.open()
+              for _ in range(count): d.new_page(width=512.402,height=652.68)
+              d.save(out/name); d.close()
+          PY
+          cd qurani-app/android
+          ./gradlew assembleRelease --stacktrace --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk /tmp/qurani-base-v101.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging /tmp/qurani-base-v101.apk | grep -q "package: name='com.qurani.app' versionCode='2' versionName='1.0.1'"
+          cd ../..
+
+      - name: Apply current v1.0.0 series behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          python3 /tmp/apply_series_common.py .
+
+      - name: RED - prove current build fails requested v1.0.1 contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > qurani-app/__tests__/series-v101-contract.node.test.ts <<'EOF'
+          import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import {readFileSync} from 'node:fs';
+          test('v1.0.1 reader/index contract', () => {
+            const reader=readFileSync('src/features/reader/ReaderScreen.tsx','utf8');
+            const index=readFileSync('src/features/index/IndexScreen.tsx','utf8');
+            const zoom=readFileSync('src/features/reader/ZoomablePdfPage.tsx','utf8');
+            const page=readFileSync('src/features/reader/PdfPage.tsx','utf8');
+            assert.match(reader, /navigation\.push\('Reader'/);
+            assert.match(reader, /pageWidth = screenWidth/);
+            assert.match(reader, /height=\{pageHeight\}/);
+            assert.match(index, /\[609, 610\]/);
+            assert.match(index, /ZoomablePdfPage/);
+            assert.match(index, /\[621, 622\]/);
+            assert.match(zoom, /height\?: number/);
+            assert.match(page, /resizeMode="stretch"/);
+          });
+          EOF
+          cd qurani-app
+          if node --experimental-strip-types --test __tests__/series-v101-contract.node.test.ts >/tmp/v101-red.txt 2>&1; then
+            cat /tmp/v101-red.txt
+            echo 'ERROR: RED test unexpectedly passed'
+            exit 1
+          fi
+          cat /tmp/v101-red.txt
+          echo 'RED_V101_CONFIRMED=1'
+
+      - name: Apply approved v1.0.1 viewer/navigation fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > qurani-app/src/features/reader/ZoomablePdfPage.tsx <<'EOF'
+          import React, {useMemo, useRef} from 'react';
+          import {Animated, PanResponder, StyleSheet, View} from 'react-native';
+          import {A4_ASPECT} from '../../app/theme';
+          import {PdfPage} from './PdfPage';
+          import {clampTranslation, clampZoom, MIN_ZOOM} from './zoomModel';
+
+          function touchDistance(touches: readonly {pageX: number; pageY: number}[]): number {
+            if (touches.length < 2) return 0;
+            const first = touches[0]!; const second = touches[1]!;
+            return Math.hypot(second.pageX - first.pageX, second.pageY - first.pageY);
+          }
+
+          export function ZoomablePdfPage({assetName,pageIndex,width,height,overlay,onZoomStateChange}: {
+            assetName: string; pageIndex: number; width: number; height?: number; overlay?: React.ReactNode; onZoomStateChange?: (zoomed: boolean) => void;
+          }): React.JSX.Element {
+            const resolvedHeight = height ?? width * A4_ASPECT;
+            const scale = useRef(new Animated.Value(MIN_ZOOM)).current;
+            const translateX = useRef(new Animated.Value(0)).current;
+            const translateY = useRef(new Animated.Value(0)).current;
+            const scaleRef = useRef<number>(MIN_ZOOM);
+            const offsetRef = useRef({x: 0, y: 0});
+            const pinchStart = useRef<{distance: number; scale: number}>({distance: 0, scale: MIN_ZOOM});
+            const panStart = useRef({x: 0, y: 0});
+
+            const setTransform = (nextScale: number, x: number, y: number) => {
+              const safeScale = clampZoom(nextScale);
+              const safeOffset = clampTranslation(x, y, safeScale, width, resolvedHeight);
+              scaleRef.current = safeScale; offsetRef.current = safeOffset;
+              scale.setValue(safeScale); translateX.setValue(safeOffset.x); translateY.setValue(safeOffset.y);
+            };
+            const reset = () => {
+              scaleRef.current = MIN_ZOOM; offsetRef.current = {x: 0, y: 0};
+              Animated.parallel([
+                Animated.spring(scale,{toValue:MIN_ZOOM,useNativeDriver:true,bounciness:0,speed:20}),
+                Animated.spring(translateX,{toValue:0,useNativeDriver:true,bounciness:0,speed:20}),
+                Animated.spring(translateY,{toValue:0,useNativeDriver:true,bounciness:0,speed:20}),
+              ]).start();
+              onZoomStateChange?.(false);
+            };
+            const responder = useMemo(() => PanResponder.create({
+              onStartShouldSetPanResponder: e => e.nativeEvent.touches.length >= 2 || scaleRef.current > MIN_ZOOM,
+              onMoveShouldSetPanResponder: (e,g) => e.nativeEvent.touches.length >= 2 || (scaleRef.current > MIN_ZOOM && (Math.abs(g.dx)>2 || Math.abs(g.dy)>2)),
+              onPanResponderGrant: e => {
+                const t=e.nativeEvent.touches;
+                if (t.length>=2) { pinchStart.current={distance:touchDistance(t),scale:scaleRef.current}; onZoomStateChange?.(true); }
+                else panStart.current=offsetRef.current;
+              },
+              onPanResponderMove: (e,g) => {
+                const t=e.nativeEvent.touches;
+                if (t.length>=2) {
+                  const d=touchDistance(t);
+                  if (pinchStart.current.distance>0) setTransform(pinchStart.current.scale*(d/pinchStart.current.distance),offsetRef.current.x,offsetRef.current.y);
+                } else if (scaleRef.current>MIN_ZOOM) setTransform(scaleRef.current,panStart.current.x+g.dx,panStart.current.y+g.dy);
+              },
+              onPanResponderRelease: () => { if (scaleRef.current<=1.04) reset(); else { setTransform(scaleRef.current,offsetRef.current.x,offsetRef.current.y); onZoomStateChange?.(true); } },
+              onPanResponderTerminate: () => { if (scaleRef.current<=1.04) reset(); else onZoomStateChange?.(true); },
+              onPanResponderTerminationRequest: () => scaleRef.current<=MIN_ZOOM,
+            }), [onZoomStateChange, resolvedHeight, scale, translateX, translateY, width]);
+
+            return (
+              <View accessible accessibilityLabel="صفحة قابلة للتكبير" style={[styles.viewport,{width,height:resolvedHeight}]} {...responder.panHandlers}>
+                <Animated.View style={{width,height:resolvedHeight,transform:[{translateX},{translateY},{scale}]}}>
+                  <PdfPage assetName={assetName} pageIndex={pageIndex} width={width} height={resolvedHeight} overlay={overlay} />
+                </Animated.View>
+              </View>
+            );
+          }
+          const styles=StyleSheet.create({viewport:{alignSelf:'center',overflow:'hidden'}});
+          EOF
+
+          cat > qurani-app/src/features/reader/PdfPage.tsx <<'EOF'
+          import React, {useEffect, useState} from 'react';
+          import {ActivityIndicator, Image, PixelRatio, Pressable, StyleSheet, Text, View} from 'react-native';
+          import {useAppServices} from '../../app/AppServicesContext';
+          import {A4_ASPECT, COLORS, RADIUS, SPACING} from '../../app/theme';
+
+          export function PdfPage({assetName,pageIndex,width,height,overlay}: {assetName:string;pageIndex:number;width:number;height?:number;overlay?:React.ReactNode}): React.JSX.Element {
+            const {pdf}=useAppServices();
+            const [uri,setUri]=useState<string|null>(null); const [error,setError]=useState(false); const [retry,setRetry]=useState(0);
+            const resolvedHeight=height ?? width*A4_ASPECT;
+            useEffect(() => {
+              let active=true; setUri(null); setError(false);
+              const renderWidth=Math.min(2000,Math.max(640,Math.round(width*PixelRatio.get()*1.35)));
+              pdf.renderPage(assetName,pageIndex,renderWidth).then(v=>{if(active)setUri(v);}).catch(()=>{if(active)setError(true);});
+              return()=>{active=false;};
+            },[assetName,pageIndex,pdf,retry,width]);
+            return (
+              <View style={[styles.page,{width,height:resolvedHeight}]}>
+                {uri ? <Image source={{uri}} style={StyleSheet.absoluteFill} resizeMode="stretch" /> : error ? (
+                  <View style={styles.center}><Text style={styles.errorTitle}>تعذر عرض هذه الصفحة</Text><Pressable onPress={()=>setRetry(v=>v+1)} style={styles.retry}><Text style={styles.retryText}>إعادة المحاولة</Text></Pressable></View>
+                ) : <View style={styles.center}><ActivityIndicator color={COLORS.gold700} size="large" /><Text style={styles.loading}>جارٍ تجهيز الصفحة...</Text></View>}
+                {uri ? overlay : null}
+              </View>
+            );
+          }
+          const styles=StyleSheet.create({
+            page:{backgroundColor:'#FFFEFA',borderRadius:0,overflow:'hidden',alignSelf:'center'},
+            center:{flex:1,alignItems:'center',justifyContent:'center',padding:SPACING.lg,backgroundColor:'#FFFEFA'},
+            loading:{marginTop:SPACING.md,color:COLORS.muted,fontSize:12},
+            errorTitle:{color:COLORS.danger,fontSize:14,fontWeight:'800',textAlign:'center'},
+            retry:{marginTop:SPACING.md,paddingVertical:10,paddingHorizontal:18,borderRadius:RADIUS.pill,backgroundColor:COLORS.emerald900},
+            retryText:{color:COLORS.white,fontSize:12,fontWeight:'800'},
+          });
+          EOF
+
+          cat > qurani-app/src/features/reader/ReaderScreen.tsx <<'EOF'
+          import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+          import {Alert, FlatList, Modal, NativeScrollEvent, NativeSyntheticEvent, PixelRatio, Pressable, StyleSheet, Text, View, useWindowDimensions} from 'react-native';
+          import type {NativeStackScreenProps} from '@react-navigation/native-stack';
+          import type {RootStackParamList} from '../../app/navigation';
+          import {COLORS} from '../../app/theme';
+          import {useAppServices} from '../../app/AppServicesContext';
+          import {ZoomablePdfPage} from './ZoomablePdfPage';
+          import {pageFromHorizontalOffset} from './readerModel';
+
+          type Props=NativeStackScreenProps<RootStackParamList,'Reader'>;
+          type MenuMode='primary'|'more'|null;
+          const GLYPHS:Record<string,string>={reading:'◈',dua:'♡','waqf-symbols':'۞','furati-intro':'❖',usul:'▤',index:'☷'};
+
+          export function ReaderScreen({route,navigation}:Props):React.JSX.Element {
+            const services=useAppServices();
+            const {width:screenWidth,height:screenHeight}=useWindowDimensions();
+            const section=useMemo(()=>services.sections.get(route.params.sectionId),[route.params.sectionId,services]);
+            if(!section) throw new Error('SECTION_NOT_FOUND');
+            const total=section.sourceEndPage-section.sourceStartPage+1;
+            const saved=services.progress.get(section.id);
+            const initialPage=Math.min(total,Math.max(1,route.params.logicalPage??saved?.logicalPage??1));
+            const [activePage,setActivePage]=useState(initialPage);
+            const [bookmarked,setBookmarked]=useState(false);
+            const [pageZoomed,setPageZoomed]=useState(false);
+            const [menuMode,setMenuMode]=useState<MenuMode>(null);
+            const [theme,setTheme]=useState<'light'|'dark'>(services.settings.get().theme==='dark'?'dark':'light');
+            const [viewportHeight,setViewportHeight]=useState(screenHeight);
+            const listRef=useRef<FlatList<number>>(null);
+            const pageWidth = screenWidth;
+            const pageHeight=Math.max(1,viewportHeight);
+            const pages=useMemo(()=>Array.from({length:total},(_,i)=>i+1),[total]);
+            const extraSections=useMemo(()=>services.sections.list().filter(item=>item.id!=='quran'&&item.id!=='index'&&item.id!==section.id),[section.id,services]);
+
+            useEffect(()=>setBookmarked(Boolean(services.bookmarks.findByPage(section.id,activePage))),[activePage,section.id,services]);
+            useEffect(()=>setViewportHeight(screenHeight),[screenHeight]);
+            const persist=useCallback((logicalPage:number)=>{const source=section.sourceStartPage+logicalPage-1;services.progress.save(section.id,logicalPage,source,0);services.settings.setLastSection(section.id);},[section,services]);
+            useEffect(()=>{persist(initialPage);},[initialPage,persist]);
+
+            useEffect(()=>{
+              const renderWidth=Math.min(1600,Math.max(640,Math.round(screenWidth*PixelRatio.get()*1.15)));
+              extraSections.forEach(item=>{void services.pdf.renderPage(item.assetName,0,renderWidth).catch(()=>undefined);});
+            },[extraSections,screenWidth,services]);
+
+            const pageFromOffset=(event:NativeSyntheticEvent<NativeScrollEvent>)=>pageFromHorizontalOffset(event.nativeEvent.contentOffset.x,screenWidth,total);
+            const onScroll=(event:NativeSyntheticEvent<NativeScrollEvent>)=>setActivePage(pageFromOffset(event));
+            const onScrollEnd=(event:NativeSyntheticEvent<NativeScrollEvent>)=>persist(pageFromOffset(event));
+            const saveBookmark=()=>{const existing=services.bookmarks.findByPage(section.id,activePage);if(!existing)services.bookmarks.create({sectionId:section.id,logicalPage:activePage,sourcePdfPage:section.sourceStartPage+activePage-1,label:section.id==='quran'?`صفحة ${activePage}`:`${section.title} – ${activePage}`});setBookmarked(true);setMenuMode(null);};
+            const jumpToBookmark=()=>{const target=services.bookmarks.list(section.id)[0];if(!target){setMenuMode(null);Alert.alert('العلامة المرجعية','لا توجد علامة محفوظة في هذا القسم.');return;}setMenuMode(null);setActivePage(target.logicalPage);listRef.current?.scrollToOffset({offset:(target.logicalPage-1)*screenWidth,animated:true});persist(target.logicalPage);};
+            const toggleTheme=()=>{const next=theme==='dark'?'light':'dark';setTheme(next);services.settings.setTheme(next);setMenuMode(null);};
+            const goSearch=()=>{setMenuMode(null);navigation.navigate('Search');};
+            const goIndex=()=>{setMenuMode(null);navigation.push('Index');};
+            const openExtra=(id:string)=>{setMenuMode(null);navigation.push('Reader',{sectionId:id,logicalPage:1});};
+            const dark=theme==='dark';
+            const primaryItems=[
+              {key:'search',label:'البحث',glyph:'⌕',action:goSearch},
+              {key:'save',label:bookmarked?'العلامة محفوظة':'حفظ علامة',glyph:bookmarked?'✓':'▮',action:saveBookmark},
+              {key:'jump',label:'الانتقال إلى العلامة',glyph:'↪',action:jumpToBookmark},
+              {key:'theme',label:dark?'الوضع الفاتح':'الوضع الداكن',glyph:dark?'☀':'☾',action:toggleTheme},
+              {key:'index',label:'الفهرس',glyph:'☷',action:goIndex},
+              {key:'more',label:'المزيد',glyph:'•••',action:()=>setMenuMode('more')},
+            ] as const;
+
+            return (
+              <View style={[styles.root,dark&&styles.rootDark]} onLayout={e=>setViewportHeight(e.nativeEvent.layout.height)}>
+                <FlatList ref={listRef} data={pages} horizontal pagingEnabled snapToInterval={screenWidth} decelerationRate="fast"
+                  keyExtractor={item=>String(item)}
+                  renderItem={({item})=>(
+                    <View style={[styles.pageSlot,{width:screenWidth,height:pageHeight}]}>
+                      <Pressable accessibilityLabel={`صفحة ${item} من ${total}`} onPress={()=>{if(!pageZoomed)setMenuMode('primary');}} style={{width:pageWidth,height:pageHeight}}>
+                        <ZoomablePdfPage assetName={section.assetName} pageIndex={item-1} width={pageWidth} height={pageHeight} onZoomStateChange={setPageZoomed} />
+                      </Pressable>
+                    </View>
+                  )}
+                  initialScrollIndex={initialPage-1} getItemLayout={(_,index)=>({length:screenWidth,offset:screenWidth*index,index})}
+                  onScroll={onScroll} onMomentumScrollEnd={onScrollEnd} onScrollEndDrag={onScrollEnd} scrollEnabled={!pageZoomed} scrollEventThrottle={80}
+                  initialNumToRender={1} maxToRenderPerBatch={2} windowSize={3} removeClippedSubviews showsHorizontalScrollIndicator={false}
+                  onScrollToIndexFailed={({index})=>setTimeout(()=>listRef.current?.scrollToOffset({offset:index*screenWidth,animated:false}),50)} />
+                <Modal transparent visible={menuMode!==null} animationType="fade" onRequestClose={()=>setMenuMode(null)} statusBarTranslucent>
+                  <Pressable style={styles.backdrop} onPress={()=>setMenuMode(null)}>
+                    <Pressable style={[styles.sheet,dark&&styles.sheetDark]} onPress={event=>event.stopPropagation()}>
+                      {menuMode==='primary' ? <View style={styles.menuGrid}>{primaryItems.map(item=><Pressable key={item.key} accessibilityRole="button" accessibilityLabel={item.label} onPress={item.action} style={({pressed})=>[styles.menuItem,dark&&styles.menuItemDark,pressed&&styles.pressed]}><Text style={[styles.menuGlyph,dark&&styles.menuGlyphDark]}>{item.glyph}</Text><Text style={[styles.menuLabel,dark&&styles.menuLabelDark]}>{item.label}</Text></Pressable>)}</View> :
+                        <View><Text style={[styles.moreTitle,dark&&styles.menuLabelDark]}>الأقسام والشروح</Text><View style={styles.menuGrid}>{extraSections.map(item=><Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`فتح ${item.title}`} onPress={()=>openExtra(item.id)} style={({pressed})=>[styles.moreItem,dark&&styles.menuItemDark,pressed&&styles.pressed]}><Text style={[styles.moreGlyph,dark&&styles.menuGlyphDark]}>{GLYPHS[item.id]??'◆'}</Text><Text numberOfLines={3} style={[styles.moreLabel,dark&&styles.menuLabelDark]}>{item.title}</Text></Pressable>)}</View></View>}
+                    </Pressable>
+                  </Pressable>
+                </Modal>
+              </View>
+            );
+          }
+          const styles=StyleSheet.create({
+            root:{flex:1,backgroundColor:'#F2EAD9'},rootDark:{backgroundColor:'#050505'},pageSlot:{alignItems:'stretch',justifyContent:'stretch',overflow:'hidden'},
+            backdrop:{flex:1,justifyContent:'flex-end',backgroundColor:'rgba(0,0,0,0.28)'},sheet:{backgroundColor:'rgba(250,247,239,0.98)',borderTopLeftRadius:20,borderTopRightRadius:20,overflow:'hidden',paddingBottom:12,borderTopWidth:1,borderColor:'#D6A933'},sheetDark:{backgroundColor:'rgba(12,12,12,0.98)',borderColor:'#3A3A3A'},menuGrid:{flexDirection:'row-reverse',flexWrap:'wrap'},
+            menuItem:{width:'33.333%',minHeight:92,alignItems:'center',justifyContent:'center',borderLeftWidth:StyleSheet.hairlineWidth,borderBottomWidth:StyleSheet.hairlineWidth,borderColor:'#CFC6B5',paddingHorizontal:6},menuItemDark:{borderColor:'#3C3C3C'},menuGlyph:{fontSize:30,lineHeight:36,color:COLORS.emerald950,fontWeight:'500'},menuGlyphDark:{color:'#FFFFFF'},menuLabel:{marginTop:4,fontSize:13,lineHeight:19,textAlign:'center',writingDirection:'rtl',color:'#1A201D',fontWeight:'700'},menuLabelDark:{color:'#FFFFFF'},moreTitle:{fontSize:16,fontWeight:'900',color:COLORS.emerald950,textAlign:'right',writingDirection:'rtl',paddingHorizontal:18,paddingVertical:14},moreItem:{width:'33.333%',minHeight:118,alignItems:'center',justifyContent:'center',borderLeftWidth:StyleSheet.hairlineWidth,borderTopWidth:StyleSheet.hairlineWidth,borderColor:'#CFC6B5',paddingHorizontal:8,paddingVertical:10},moreGlyph:{fontSize:27,color:COLORS.gold700},moreLabel:{marginTop:7,fontSize:12,lineHeight:18,textAlign:'center',writingDirection:'rtl',color:'#1A201D',fontWeight:'700'},pressed:{opacity:0.55},
+          });
+          EOF
+
+          cat > qurani-app/src/features/index/IndexScreen.tsx <<'EOF'
+          import React, {useMemo, useState} from 'react';
+          import {FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions} from 'react-native';
+          import {useNavigation} from '@react-navigation/native';
+          import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+          import type {RootStackParamList} from '../../app/navigation';
+          import {A4_ASPECT, COLORS, SPACING} from '../../app/theme';
+          import {useAppServices} from '../../app/AppServicesContext';
+          import {toSurahTarget} from '../../services/ReaderNavigationService';
+          import {ScreenHeader} from '../common/ScreenHeader';
+          import {ZoomablePdfPage} from '../reader/ZoomablePdfPage';
+
+          export function IndexScreen():React.JSX.Element {
+            const navigation=useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+            const services=useAppServices();
+            const {width:screenWidth}=useWindowDimensions();
+            const [pageZoomed,setPageZoomed]=useState(false);
+            const pageWidth=screenWidth; const pageHeight=pageWidth*A4_ASPECT;
+            const sourcePages=useMemo(()=>[609, 610],[]);
+            const hotspotPages=useMemo(()=>[621, 622],[]);
+            const overlaysFor=(index:number)=>{
+              const hotspots=services.hotspots.forSourcePage(hotspotPages[index]!);
+              return hotspots.map(hotspot=>{const surah=services.surahs.get(hotspot.surahId);if(!surah)return null;return <Pressable key={hotspot.id} accessibilityRole="button" accessibilityLabel={`الانتقال إلى سورة ${surah.nameArabic}`} onPress={()=>navigation.push('Reader',toSurahTarget(surah))} style={{position:'absolute',left:hotspot.x*pageWidth,top:hotspot.y*pageHeight,width:hotspot.width*pageWidth,height:hotspot.height*pageHeight}}/>;});
+            };
+            return <View style={styles.root}>
+              <ScreenHeader title="تعريف وفهرس المصحف" />
+              <View style={styles.notice}><Text style={styles.noticeText}>صفحتا الفهرس 609–610 تفاعليتان — اضغط على اسم أي سورة للانتقال إليها.</Text></View>
+              <FlatList data={sourcePages} horizontal pagingEnabled snapToInterval={screenWidth} decelerationRate="fast" keyExtractor={item=>String(item)}
+                renderItem={({index})=><View style={{width:screenWidth,alignItems:'center'}}><ZoomablePdfPage assetName="quran_index.pdf" pageIndex={index} width={pageWidth} height={pageHeight} overlay={overlaysFor(index)} onZoomStateChange={setPageZoomed}/></View>}
+                getItemLayout={(_,index)=>({length:screenWidth,offset:screenWidth*index,index})} scrollEnabled={!pageZoomed} initialNumToRender={2} maxToRenderPerBatch={2} windowSize={3} showsHorizontalScrollIndicator={false}/>
+            </View>;
+          }
+          const styles=StyleSheet.create({root:{flex:1,backgroundColor:COLORS.ivoryDeep},notice:{backgroundColor:COLORS.emerald100,borderBottomWidth:1,borderBottomColor:'#C5DCD3',paddingVertical:8,paddingHorizontal:SPACING.lg},noticeText:{fontSize:11,lineHeight:18,color:COLORS.emerald900,fontWeight:'700',textAlign:'center',writingDirection:'rtl'}});
+          EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('qurani-app/src/features/search/SearchScreen.tsx')
+          s=p.read_text(encoding='utf-8').replace("navigation.navigate('Reader',", "navigation.push('Reader',")
+          p.write_text(s,encoding='utf-8')
+          p=Path('/tmp/build_all_overlays.py'); s=p.read_text(encoding='utf-8')
+          s=s.replace("'versionCode 1'", "'versionCode 2'")
+          s=s.replace("'versionName \"1.0.0\"'", "'versionName \"1.0.1\"'")
+          s=s.replace("VERSION_NAME = '1.0.0'", "VERSION_NAME = '1.0.1'")
+          s=s.replace("VERSION_CODE = 1", "VERSION_CODE = 2")
+          s=s.replace("versionCode='1' versionName='1.0.0'", "versionCode='2' versionName='1.0.1'")
+          s=s.replace("'versionCode':1,'versionName':'1.0.0'", "'versionCode':2,'versionName':'1.0.1'")
+          p.write_text(s,encoding='utf-8')
+          assert "versionCode='2' versionName='1.0.1'" in s
+          assert s.count("'versionCode':2,'versionName':'1.0.1'") >= 2
+          PY
+
+      - name: GREEN - v1.0.1 contract + typecheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          node --experimental-strip-types --test __tests__/series-v101-contract.node.test.ts | tee /tmp/v101-green.txt
+          grep -q '# fail 0' /tmp/v101-green.txt
+          cat > tsconfig.series.json <<'EOF'
+          {"extends":"./tsconfig.json","exclude":["node_modules","android","__tests__","**/*.node.test.ts"]}
+          EOF
+          npx tsc --noEmit -p tsconfig.series.json
+          grep -q "navigation.push('Reader'" src/features/reader/ReaderScreen.tsx
+          grep -q '\[609, 610\]' src/features/index/IndexScreen.tsx
+          grep -q 'resizeMode="stretch"' src/features/reader/PdfPage.tsx
+          echo 'GREEN_V101_CONTRACT=1'
+          cd ..
+
+      - name: Prepare build-only series placeholders
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app/android/app/src/main/assets/pdf
+          mkdir -p qurani-app/android/app/src/main/assets/pdf
+          python3 - <<'PY'
+          import fitz
+          from pathlib import Path
+          out=Path('qurani-app/android/app/src/main/assets/pdf')
+          for name,count in {'reading.pdf':4,'quran.pdf':604,'quran_index.pdf':2,'dua.pdf':1,'waqf_symbols.pdf':5,'furati_intro.pdf':4,'usul.pdf':18}.items():
+              d=fitz.open()
+              for _ in range(count): d.new_page(width=512.402,height=652.68)
+              d.save(out/name); d.close()
+          PY
+
+      - name: Build 12 v1.0.1 skeleton variants and compact overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          python3 /tmp/build_all_overlays.py . /tmp/qurani-base-v101.apk ../qurani-series/apps.json ../series-output-v101
+          cd ..
+
+      - name: Package Android finalization tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          mkdir -p series-output-v101/tools/android-apk-tools/lib
+          cp "$BT/apksigner" "$BT/zipalign" "$BT/aapt" "$BT/aapt2" series-output-v101/tools/android-apk-tools/
+          cp "$BT/lib/apksigner.jar" series-output-v101/tools/android-apk-tools/lib/
+          cp /tmp/qurani-base-v101.apk series-output-v101/base.apk
+
+      - name: Validate all 12 v1.0.1 overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find series-output-v101/overlays -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 12
+          python3 - <<'PY'
+          import json
+          r=json.load(open('series-output-v101/build-report.json'))
+          assert len(r)==12
+          for x in r:
+              assert x['badgingOk'] is True
+              assert x['nativeLibsIdenticalToBase'] is True
+              assert x['overlayReconstructsSkeleton'] is True
+              assert x['versionCode']==2 and x['versionName']=='1.0.1', x
+              assert x['changedEntries']
+          print('V101_OVERLAY_VALIDATION_OK=12')
+          PY
+
+      - name: Persist v1.0.1 build payload without Actions artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .series-generated-v101
+          mkdir -p .series-generated-v101/parts
+          tar -C series-output-v101 -czf /tmp/quran-series-v101-payload.tar.gz base.apk overlays build-report.json tools
+          sha256sum /tmp/quran-series-v101-payload.tar.gz | tee .series-generated-v101/SHA256SUMS.txt
+          stat -c 'payload_bytes=%s' /tmp/quran-series-v101-payload.tar.gz | tee .series-generated-v101/INFO.txt
+          split -b 45M -d -a 2 /tmp/quran-series-v101-payload.tar.gz .series-generated-v101/parts/payload.part-
+          sha256sum .series-generated-v101/parts/* >> .series-generated-v101/SHA256SUMS.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f .series-generated-v101
+          git commit -m 'ci: persist Quran series v1.0.1 build payload'
+          git push origin HEAD:qurani-series-v100
