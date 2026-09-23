@@ -41,6 +41,13 @@ jobs:
           tar -xzf /tmp/v101.tar.gz -C /tmp/payload
           cp qurani-v101/generate-verse-index.py qurani-app/scripts/generate-verse-index.py
           chmod +x qurani-app/scripts/generate-verse-index.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          b64=''.join(p.read_text() for p in sorted(Path('qurani-ci/logo').glob('part-*')))
+          Path('/tmp/qurani-logo.jpg').write_bytes(base64.b64decode(b64,validate=True))
+          PY
+          echo '4c8d65a11c77539831be3a791e54b9eb984375cea878262fd1972ed3acf58cae  /tmp/qurani-logo.jpg' | sha256sum -c -
       - name: Install build dependencies
         shell: bash
         run: |
@@ -48,7 +55,13 @@ jobs:
           base64 -d qurani-series/apply_series_common.py.gz.b64 | gzip -dc > /tmp/apply.py
           base64 -d qurani-series/build_all_overlays.py.gz.b64 | gzip -dc > /tmp/build.py
           cd qurani-app && npm install --no-audit --no-fund && cd ..
-          python3 -m pip install --quiet 'PyMuPDF==1.26.4'
+          python3 -m pip install --quiet 'PyMuPDF==1.26.4' pillow
+          mkdir -p qurani-app/assets/branding
+          python3 - <<'PY'
+          from PIL import Image
+          Image.open('/tmp/qurani-logo.jpg').convert('RGBA').save('qurani-app/assets/branding/qurani-icon.png',optimize=True)
+          PY
+          test -s qurani-app/assets/branding/qurani-icon.png
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
           keytool -genkeypair -v -keystore qurani-app/android/app/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Series Build,O=QuranKarem,C=EG' >/dev/null 2>&1 || true
