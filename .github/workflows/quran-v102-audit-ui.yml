@@ -32,13 +32,19 @@ jobs:
           cp qurani-v101-fixed/PdfPage.tsx qurani-app/src/features/reader/PdfPage.tsx
           cp qurani-v102-fixed/IndexScreen.tsx qurani-app/src/features/index/IndexScreen.tsx
           cp qurani-v102-fixed/SectionCard.tsx qurani-app/src/features/home/SectionCard.tsx
-      - name: Audit splash and theme sources
+      - name: RED - requested splash and dark-only contract
         shell: bash
         run: |
-          set -euo pipefail
-          echo '=== CANDIDATE FILES ==='
-          find qurani-app -type f \( -name '*.tsx' -o -name '*.ts' -o -name '*.xml' \) | sort | grep -Ei 'splash|theme|home|settings|app|navigation|style' || true
-          echo '=== MATCHES ==='
-          grep -RniE 'Splash|splash|resizeMode|logo|branding|theme|Theme|dark|Dark|light|Light|Appearance|colorScheme|toggle' \
-            qurani-app/src qurani-app/App.tsx qurani-app/android/app/src/main 2>/dev/null | head -n 600 || true
-          echo 'UI_AUDIT_COMPLETE=1'
+          python3 - <<'PY'
+          from pathlib import Path
+          app=Path('qurani-app/src/app/App.tsx').read_text(encoding='utf-8')
+          reader=Path('qurani-app/src/features/reader/ReaderScreen.tsx').read_text(encoding='utf-8')
+          failed=[]
+          if 'resizeMode="contain"' not in app: failed.append('splash_logo_contain')
+          if 'const dark=true;' not in reader: failed.append('dark_default')
+          if "key:'theme'" in reader or 'toggleTheme' in reader: failed.append('theme_toggle_removed')
+          if failed:
+              print('V102_UI_CONTRACT_FAIL='+','.join(failed))
+              raise SystemExit(1)
+          print('V102_UI_CONTRACT_OK=1')
+          PY
