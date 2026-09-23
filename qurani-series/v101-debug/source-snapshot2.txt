@@ -1,0 +1,366 @@
+===== FILE: src/features/index/IndexScreen.tsx =====
+import React, {useMemo} from 'react';
+import {FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions} from 'react-native';
+import {useNavigation} from '@react-navigation/native';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import type {RootStackParamList} from '../../app/navigation';
+import {A4_ASPECT, COLORS, SPACING} from '../../app/theme';
+import {useAppServices} from '../../app/AppServicesContext';
+import {toSurahTarget} from '../../services/ReaderNavigationService';
+import {ScreenHeader} from '../common/ScreenHeader';
+import {PdfPage} from '../reader/PdfPage';
+
+export function IndexScreen(): React.JSX.Element {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const services = useAppServices();
+  const {width: screenWidth} = useWindowDimensions();
+  const pageWidth = Math.max(280, screenWidth - SPACING.md * 2);
+  const pageHeight = pageWidth * A4_ASPECT;
+  const rowLength = pageHeight + SPACING.md;
+  const pages = useMemo(() => [617, 618, 619, 620, 621, 622], []);
+
+  const overlaysFor = (sourcePage: number) => {
+    if (sourcePage !== 621 && sourcePage !== 622) return undefined;
+    const hotspots = services.hotspots.forSourcePage(sourcePage);
+    return hotspots.map(hotspot => {
+      const surah = services.surahs.get(hotspot.surahId);
+      if (!surah) return null;
+      return (
+        <Pressable
+          key={hotspot.id}
+          accessibilityRole="button"
+          accessibilityLabel={`الانتقال إلى سورة ${surah.nameArabic}`}
+          onPress={() => navigation.navigate('Reader', toSurahTarget(surah))}
+          style={{position: 'absolute', left: hotspot.x * pageWidth, top: hotspot.y * pageHeight, width: hotspot.width * pageWidth, height: hotspot.height * pageHeight}}
+        />
+      );
+    });
+  };
+
+  return (
+    <View style={styles.root}>
+      <ScreenHeader title="تعريف وفهرس المصحف" />
+      <View style={styles.notice}><Text style={styles.noticeText}>صفحات الفهرس الأصلية تفاعلية — اضغط على اسم أي سورة للانتقال إليها.</Text></View>
+      <FlatList
+        data={pages}
+        keyExtractor={item => String(item)}
+        renderItem={({item, index}) => (
+          <View style={{height: rowLength}}>
+            <PdfPage assetName="quran_index.pdf" pageIndex={index} width={pageWidth} overlay={overlaysFor(item)} />
+          </View>
+        )}
+        getItemLayout={(_, index) => ({length: rowLength, offset: rowLength * index, index})}
+        initialNumToRender={2}
+        maxToRenderPerBatch={2}
+        windowSize={4}
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {flex: 1, backgroundColor: COLORS.ivoryDeep},
+  notice: {backgroundColor: COLORS.emerald100, borderBottomWidth: 1, borderBottomColor: '#C5DCD3', paddingVertical: 8, paddingHorizontal: SPACING.lg},
+  noticeText: {fontSize: 11, lineHeight: 18, color: COLORS.emerald900, fontWeight: '700', textAlign: 'center', writingDirection: 'rtl'},
+  list: {paddingTop: SPACING.md, paddingBottom: 30},
+});
+
+
+===== FILE: src/features/reader/PdfPage.tsx =====
+import React, {useEffect, useState} from 'react';
+import {ActivityIndicator, Image, Pressable, StyleSheet, Text, View, PixelRatio} from 'react-native';
+import {useAppServices} from '../../app/AppServicesContext';
+import {A4_ASPECT, COLORS, RADIUS, SHADOW, SPACING} from '../../app/theme';
+
+export function PdfPage({assetName, pageIndex, width, overlay}: {assetName: string; pageIndex: number; width: number; overlay?: React.ReactNode}): React.JSX.Element {
+  const {pdf} = useAppServices();
+  const [uri, setUri] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const height = width * A4_ASPECT;
+
+  useEffect(() => {
+    let active = true;
+    setUri(null);
+    setError(false);
+    const renderWidth = Math.min(1800, Math.max(480, Math.round(width * PixelRatio.get())));
+    pdf.renderPage(assetName, pageIndex, renderWidth)
+      .then(value => { if (active) setUri(value); })
+      .catch(() => { if (active) setError(true); });
+    return () => { active = false; };
+  }, [assetName, pageIndex, pdf, retry, width]);
+
+  return (
+    <View style={[styles.page, {width, height}]}>
+      {uri ? <Image source={{uri}} style={StyleSheet.absoluteFill} resizeMode="stretch" /> : error ? (
+        <View style={styles.center}>
+          <Text style={styles.errorTitle}>تعذر عرض هذه الصفحة</Text>
+          <Pressable onPress={() => setRetry(v => v + 1)} style={styles.retry}><Text style={styles.retryText}>إعادة المحاولة</Text></Pressable>
+        </View>
+      ) : (
+        <View style={styles.center}><ActivityIndicator color={COLORS.gold700} size="large" /><Text style={styles.loading}>جارٍ تجهيز الصفحة...</Text></View>
+      )}
+      {uri ? overlay : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  page: {...SHADOW, backgroundColor: COLORS.paper, borderRadius: RADIUS.sm, overflow: 'hidden', alignSelf: 'center'},
+  center: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.lg, backgroundColor: '#FFFEFA'},
+  loading: {marginTop: SPACING.md, color: COLORS.muted, fontSize: 12},
+  errorTitle: {color: COLORS.danger, fontSize: 14, fontWeight: '800', textAlign: 'center'},
+  retry: {marginTop: SPACING.md, paddingVertical: 10, paddingHorizontal: 18, borderRadius: RADIUS.pill, backgroundColor: COLORS.emerald900},
+  retryText: {color: COLORS.white, fontSize: 12, fontWeight: '800'},
+});
+
+
+===== FILE: src/features/reader/zoomModel.ts =====
+export const MIN_ZOOM = 1 as const;
+export const MAX_ZOOM = 4 as const;
+
+export function clampZoom(value: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+}
+
+export function clampTranslation(x: number, y: number, scale: number, width: number, height: number): {x: number; y: number} {
+  if (scale <= MIN_ZOOM) return {x: 0, y: 0};
+  const maxX = (width * scale - width) / 2;
+  const maxY = (height * scale - height) / 2;
+  return {
+    x: Math.min(maxX, Math.max(-maxX, x)),
+    y: Math.min(maxY, Math.max(-maxY, y)),
+  };
+}
+
+export function pageWidthForScreen(screenWidth: number): number {
+  return Math.max(1, screenWidth);
+}
+
+
+===== FILE: src/data/sections.ts =====
+export type SectionId =
+  | 'intro'
+  | 'warsh-summary'
+  | 'warsh-lines'
+  | 'quran'
+  | 'index'
+  | 'warsh-usul'
+  | 'qalun-usul'
+  | 'handwritten';
+
+export type SectionSeed = Readonly<{
+  id: SectionId;
+  title: string;
+  subtitle: string;
+  sourceStartPage: number;
+  sourceEndPage: number;
+  assetName: string;
+  featured?: boolean;
+}>;
+
+export const SECTIONS: readonly SectionSeed[] = [
+  {id: 'intro', title: 'مقدمة', subtitle: 'التعريف بالمصحف وطريقة الاستفادة منه', sourceStartPage: 1, sourceEndPage: 5, assetName: 'intro.pdf'},
+  {id: 'warsh-summary', title: 'شرح مختصر أصول الإمام ورش', subtitle: 'ملخص مبسط لأصول القراءة', sourceStartPage: 6, sourceEndPage: 9, assetName: 'warsh_summary.pdf'},
+  {id: 'warsh-lines', title: 'شرح استخدامات الخطوط لاختلافات ورش', subtitle: 'دليل العلامات والخطوط داخل المصحف', sourceStartPage: 10, sourceEndPage: 12, assetName: 'warsh_lines_guide.pdf'},
+  {id: 'quran', title: 'المصحف كامل', subtitle: 'المصحف المعلم بقراءة الإمام نافع – ورش وقالون', sourceStartPage: 13, sourceEndPage: 616, assetName: 'quran.pdf', featured: true},
+  {id: 'index', title: 'تعريف وفهرس المصحف', subtitle: 'الفهرس الأصلي مع انتقال مباشر للسور', sourceStartPage: 617, sourceEndPage: 622, assetName: 'quran_index.pdf'},
+  {id: 'warsh-usul', title: 'أصول قراءة الإمام نافع برواية ورش', subtitle: 'الأصول كما وردت في المصدر', sourceStartPage: 623, sourceEndPage: 638, assetName: 'warsh_usul.pdf'},
+  {id: 'qalun-usul', title: 'أصول قراءة الإمام نافع برواية قالون', subtitle: 'يشمل الصفحات 639 إلى 649', sourceStartPage: 639, sourceEndPage: 649, assetName: 'qalun_usul.pdf'},
+  {id: 'handwritten', title: 'أصول وفروش ورش وقالون بخط اليد', subtitle: 'أصول وفروش قراءة الإمام نافع المدني', sourceStartPage: 650, sourceEndPage: 681, assetName: 'handwritten_warsh_qalun.pdf'},
+] as const;
+
+export function sectionPageCount(section: SectionSeed): number {
+  return section.sourceEndPage - section.sourceStartPage + 1;
+}
+
+
+===== FILE: src/app/navigation.tsx =====
+import React from 'react';
+import {createNativeStackNavigator} from '@react-navigation/native-stack';
+import {HomeScreen} from '../features/home/HomeScreen';
+import {IndexScreen} from '../features/index/IndexScreen';
+import {ReaderScreen} from '../features/reader/ReaderScreen';
+import {SearchScreen} from '../features/search/SearchScreen';
+import {COLORS} from './theme';
+
+export type RootStackParamList = {
+  Home: undefined;
+  Reader: {sectionId: string; logicalPage?: number};
+  Search: undefined;
+  Index: undefined;
+};
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
+
+export function AppNavigation(): React.JSX.Element {
+  return (
+    <Stack.Navigator screenOptions={{headerShown: false, contentStyle: {backgroundColor: COLORS.ivory}, animation: 'fade_from_bottom'}}>
+      <Stack.Screen name="Home" component={HomeScreen} />
+      <Stack.Screen name="Search" component={SearchScreen} />
+      <Stack.Screen name="Reader" component={ReaderScreen} />
+      <Stack.Screen name="Index" component={IndexScreen} />
+    </Stack.Navigator>
+  );
+}
+
+
+===== FILE: src/features/search/SearchScreen.tsx =====
+import React, {useMemo, useState} from 'react';
+import {FlatList, Pressable, StyleSheet, Text, TextInput, View} from 'react-native';
+import {useNavigation} from '@react-navigation/native';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import type {RootStackParamList} from '../../app/navigation';
+import {COLORS, RADIUS, SHADOW, SPACING, TOUCH_TARGET} from '../../app/theme';
+import {VERSE_INDEX} from '../../data/verses.generated';
+import {useAppServices} from '../../app/AppServicesContext';
+import {searchSurahs} from '../../services/SurahSearchService';
+import {searchVerses} from '../../services/VerseSearchService';
+import {toSurahTarget} from '../../services/ReaderNavigationService';
+import {ScreenHeader} from '../common/ScreenHeader';
+
+type SearchResult =
+  | Readonly<{kind: 'surah'; key: string; id: number; nameArabic: string; mushafStartPage: number; sourcePdfPage: number}>
+  | Readonly<{kind: 'ayah'; key: string; surahNumber: number; surahNameArabic: string; ayahNumber: number; mushafPage: number; text: string}>;
+
+export function SearchScreen(): React.JSX.Element {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const services = useAppServices();
+  const [query, setQuery] = useState('');
+  const all = useMemo(() => services.surahs.list().map(({id, nameArabic, mushafStartPage, sourcePdfPage}) => ({id, nameArabic, mushafStartPage, sourcePdfPage})), [services]);
+  const surahNames = useMemo(() => new Map(all.map(item => [item.id, item.nameArabic] as const)), [all]);
+  const surahResults = useMemo(() => searchSurahs(query, all), [query, all]);
+  const verseResults = useMemo(() => searchVerses(query, VERSE_INDEX, 50), [query]);
+  const results = useMemo<readonly SearchResult[]>(() => [
+    ...surahResults.map(item => ({kind: 'surah' as const, key: `s-${item.id}`, ...item})),
+    ...verseResults.map(item => ({kind: 'ayah' as const, key: `a-${item.surahNumber}-${item.ayahNumber}`, ...item, surahNameArabic: surahNames.get(item.surahNumber) ?? String(item.surahNumber)})),
+  ], [surahNames, surahResults, verseResults]);
+
+  return (
+    <View style={styles.root}>
+      <ScreenHeader title="البحث في المصحف" />
+      <View style={styles.searchWrap}>
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          autoFocus
+          accessibilityLabel="حقل البحث عن سورة أو آية"
+          placeholder="اكتب اسم سورة أو كلمات من آية..."
+          placeholderTextColor={COLORS.muted}
+          style={styles.input}
+          textAlign="right"
+          selectionColor={COLORS.gold500}
+          returnKeyType="search"
+        />
+        <View style={styles.icon}><Text style={styles.iconText}>⌕</Text></View>
+      </View>
+      <View style={styles.counterRow}>
+        <Text style={styles.counter}>{results.length} نتيجة</Text>
+        <Text style={styles.hint}>اضغط على النتيجة للانتقال مباشرة إلى الصفحة الأصلية</Text>
+      </View>
+      <FlatList
+        data={results}
+        keyExtractor={item => item.key}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.list}
+        renderItem={({item}) => item.kind === 'surah' ? (
+          <Pressable accessibilityLabel={`فتح سورة ${item.nameArabic}`} style={({pressed}) => [styles.row, pressed && {opacity: 0.82}]} onPress={() => navigation.navigate('Reader', toSurahTarget(item))}>
+            <View style={styles.number}><Text style={styles.numberText}>{item.id}</Text></View>
+            <View style={styles.rowText}>
+              <Text style={styles.name}>سورة {item.nameArabic}</Text>
+              <Text style={styles.page}>تبدأ من صفحة {item.mushafStartPage}</Text>
+            </View>
+            <Text style={styles.arrow}>‹</Text>
+          </Pressable>
+        ) : (
+          <Pressable accessibilityLabel={`فتح سورة ${item.surahNameArabic} الآية ${item.ayahNumber}`} style={({pressed}) => [styles.row, styles.ayahRow, pressed && {opacity: 0.82}]} onPress={() => navigation.navigate('Reader', {sectionId: 'quran', logicalPage: item.mushafPage})}>
+            <View style={styles.ayahNumber}><Text style={styles.ayahNumberText}>آية {item.ayahNumber}</Text></View>
+            <View style={styles.rowText}>
+              <Text style={styles.ayahText} numberOfLines={2}>{item.text}</Text>
+              <Text style={styles.page}>سورة {item.surahNameArabic} • صفحة {item.mushafPage}</Text>
+            </View>
+            <Text style={styles.arrow}>‹</Text>
+          </Pressable>
+        )}
+        ListEmptyComponent={<View style={styles.empty}><Text style={styles.emptyTitle}>لا توجد نتيجة مطابقة</Text><Text style={styles.emptyBody}>جرّب كتابة اسم سورة أو جزء أوضح من الآية بدون تشكيل.</Text></View>}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {flex: 1, backgroundColor: COLORS.ivory},
+  searchWrap: {...SHADOW, margin: SPACING.lg, minHeight: 58, flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.paper, borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLORS.gold300, paddingHorizontal: SPACING.md},
+  input: {flex: 1, minHeight: TOUCH_TARGET, color: COLORS.ink, fontSize: 17, fontWeight: '600', writingDirection: 'rtl'},
+  icon: {width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.emerald100, alignItems: 'center', justifyContent: 'center'},
+  iconText: {fontSize: 23, color: COLORS.emerald900},
+  counterRow: {paddingHorizontal: SPACING.lg, paddingBottom: SPACING.sm, flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', gap: SPACING.sm},
+  counter: {fontSize: 12, color: COLORS.gold700, fontWeight: '800'},
+  hint: {flex: 1, fontSize: 11, color: COLORS.muted, textAlign: 'right', writingDirection: 'rtl'},
+  list: {paddingHorizontal: SPACING.lg, paddingBottom: 32, gap: SPACING.sm},
+  row: {minHeight: 76, flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.paper, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.line, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm},
+  ayahRow: {minHeight: 94},
+  number: {width: 42, height: 42, borderRadius: 21, backgroundColor: COLORS.emerald900, alignItems: 'center', justifyContent: 'center'},
+  numberText: {color: COLORS.gold300, fontSize: 13, fontWeight: '800'},
+  ayahNumber: {minWidth: 54, height: 42, borderRadius: 21, paddingHorizontal: 8, backgroundColor: COLORS.emerald900, alignItems: 'center', justifyContent: 'center'},
+  ayahNumberText: {color: COLORS.gold300, fontSize: 10, fontWeight: '900', writingDirection: 'rtl'},
+  rowText: {flex: 1, paddingHorizontal: SPACING.md},
+  name: {fontSize: 16, color: COLORS.emerald950, fontWeight: '800', textAlign: 'right', writingDirection: 'rtl'},
+  ayahText: {fontSize: 15, lineHeight: 25, color: COLORS.emerald950, fontWeight: '700', textAlign: 'right', writingDirection: 'rtl'},
+  page: {fontSize: 11, color: COLORS.muted, marginTop: 3, textAlign: 'right', writingDirection: 'rtl'},
+  arrow: {width: TOUCH_TARGET, color: COLORS.gold700, textAlign: 'center', fontSize: 28},
+  empty: {padding: 40, alignItems: 'center'},
+  emptyTitle: {fontSize: 17, fontWeight: '800', color: COLORS.emerald950, textAlign: 'center'},
+  emptyBody: {fontSize: 13, color: COLORS.muted, textAlign: 'center', marginTop: 6},
+});
+
+
+===== FILE: src/repositories/SectionRepository.ts =====
+import type Realm from 'realm';
+import type {SectionRecord} from './types';
+
+export class SectionRepository {
+  constructor(private readonly realm: Realm) {}
+  list(): SectionRecord[] {
+    return Array.from(this.realm.objects<any>('Section').sorted('order')).map(v => ({
+      id: v.id, title: v.title, order: v.order, sourceStartPage: v.sourceStartPage,
+      sourceEndPage: v.sourceEndPage, assetName: v.assetName, type: v.type,
+    }));
+  }
+  get(id: string): SectionRecord | null {
+    const v = this.realm.objectForPrimaryKey<any>('Section', id);
+    return v ? {id: v.id, title: v.title, order: v.order, sourceStartPage: v.sourceStartPage, sourceEndPage: v.sourceEndPage, assetName: v.assetName, type: v.type} : null;
+  }
+}
+
+
+===== FILE: src/repositories/SurahRepository.ts =====
+import type Realm from 'realm';
+import type {SurahRecord} from './types';
+
+export class SurahRepository {
+  constructor(private readonly realm: Realm) {}
+  list(): SurahRecord[] {
+    return Array.from(this.realm.objects<any>('SurahIndex').sorted('id')).map(v => ({id: v.id, nameArabic: v.nameArabic, normalizedName: v.normalizedName, mushafStartPage: v.mushafStartPage, sourcePdfPage: v.sourcePdfPage}));
+  }
+  get(id: number): SurahRecord | null {
+    const v = this.realm.objectForPrimaryKey<any>('SurahIndex', id);
+    return v ? {id: v.id, nameArabic: v.nameArabic, normalizedName: v.normalizedName, mushafStartPage: v.mushafStartPage, sourcePdfPage: v.sourcePdfPage} : null;
+  }
+}
+
+
+===== NAV/DATA TREE =====
+src/app/App.tsx
+src/app/AppServicesContext.tsx
+src/app/bootstrap.ts
+src/app/constants.ts
+src/app/navigation.tsx
+src/app/theme.ts
+src/data/indexHotspots.ts
+src/data/sections.ts
+src/data/surahs.ts
+src/data/verses.generated.ts
+src/features/index/IndexScreen.tsx
