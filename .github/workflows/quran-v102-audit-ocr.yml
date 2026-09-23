@@ -1,0 +1,36 @@
+name: Audit Quran Arabic OCR From Approved PDF
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-v102-audit-ocr.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: OCR selected Quran pages from approved source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-ara >/dev/null
+          python3 -m pip install --quiet 'gdown==5.2.0' 'PyMuPDF==1.26.4' pillow
+          python3 -m gdown '1BVoetPB5RCq5cSV1zxaxb0nj98B0faup' -O /tmp/source.pdf --quiet
+          python3 - <<'PY'
+          import fitz,subprocess,tempfile
+          from pathlib import Path
+          d=fitz.open('/tmp/source.pdf')
+          for source_page in [5,6,7,100,300,607,608]:
+              p=d[source_page-1]
+              pix=p.get_pixmap(matrix=fitz.Matrix(2.4,2.4),alpha=False,colorspace=fitz.csGRAY)
+              img=Path(f'/tmp/p{source_page}.png')
+              pix.save(img)
+              r=subprocess.run(['tesseract',str(img),'stdout','-l','ara','--psm','6'],text=True,capture_output=True,check=True)
+              clean=' '.join(r.stdout.split())
+              print(f'OCR_SOURCE_PAGE_{source_page}_CHARS={len(clean)}')
+              print(f'OCR_SOURCE_PAGE_{source_page}_TEXT={clean[:2200]}')
+          d.close()
+          PY
