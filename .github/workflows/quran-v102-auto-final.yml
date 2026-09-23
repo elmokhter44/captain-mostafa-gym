@@ -1,0 +1,16 @@
+name: Auto Final Quran v1.0.2
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.series-generated-v102/**']
+permissions:
+  actions: write
+  contents: read
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start final v1.0.2 build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run quran-series-v102-final.yml --repo "$GITHUB_REPOSITORY" --ref qurani-series-v100
