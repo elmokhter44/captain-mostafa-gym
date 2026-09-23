@@ -9,6 +9,126 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
-      - run: echo v1.0.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+      - name: Reconstruct source and previous base
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app series-output-v102 /tmp/payload
+          mkdir -p qurani-app /tmp/payload
+          cat qurani-ci/text/part-* > /tmp/src.b64
+          base64 -d /tmp/src.b64 > /tmp/src.tar.gz
+          echo '8419ab562a4783684b34e1bc62a96be4dc3da00f8a85e5e0d298182ab1e79192  /tmp/src.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/src.tar.gz -C qurani-app
+          cat qurani-v101/overlay/part-* > /tmp/overlay.b64
+          base64 -d /tmp/overlay.b64 > /tmp/overlay.tar.gz
+          echo 'cbb6b45021274412968d6f6747fa54048d1d46be31e92a6cea31b5d80a2b9d7e  /tmp/overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/overlay.tar.gz -C qurani-app
+          cat .series-generated-v101/parts/payload.part-* > /tmp/v101.tar.gz
+          echo 'ee3030765c148ffefb921972bce03b0655475765e9dda7bb8b3a5555b10749e8  /tmp/v101.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/v101.tar.gz -C /tmp/payload
+          cp qurani-v101/generate-verse-index.py qurani-app/scripts/generate-verse-index.py
+          chmod +x qurani-app/scripts/generate-verse-index.py
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d qurani-series/apply_series_common.py.gz.b64 | gzip -dc > /tmp/apply.py
+          base64 -d qurani-series/build_all_overlays.py.gz.b64 | gzip -dc > /tmp/build.py
+          cd qurani-app && npm install --no-audit --no-fund && cd ..
+          python3 -m pip install --quiet 'PyMuPDF==1.26.4'
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
+          keytool -genkeypair -v -keystore qurani-app/android/app/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Series Build,O=QuranKarem,C=EG' >/dev/null 2>&1 || true
+          cd qurani-app/android && gradle wrapper --gradle-version 9.3.1 && chmod +x gradlew && cd ../..
+      - name: Apply v1.0.2 fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app && python3 /tmp/apply.py . && cd ..
+          cp qurani-v102-fixed/ReaderScreen.tsx qurani-app/src/features/reader/ReaderScreen.tsx
+          cp qurani-v102-fixed/ZoomablePdfPage.tsx qurani-app/src/features/reader/ZoomablePdfPage.tsx
+          cp qurani-v101-fixed/PdfPage.tsx qurani-app/src/features/reader/PdfPage.tsx
+          cp qurani-v101-fixed/IndexScreen.tsx qurani-app/src/features/index/IndexScreen.tsx
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('qurani-app/src/features/search/SearchScreen.tsx')
+          s=p.read_text(encoding='utf-8').replace("navigation.navigate('Reader',", "navigation.push('Reader',")
+          p.write_text(s,encoding='utf-8')
+          p=Path('/tmp/build.py'); s=p.read_text(encoding='utf-8')
+          for a,b in [("'versionCode 1'","'versionCode 3'"),("'versionName \"1.0.0\"'","'versionName \"1.0.2\"'"),("VERSION_NAME = '1.0.0'","VERSION_NAME = '1.0.2'"),("VERSION_CODE = 1","VERSION_CODE = 3"),("versionCode='1' versionName='1.0.0'","versionCode='3' versionName='1.0.2'"),("'versionCode':1,'versionName':'1.0.0'","'versionCode':3,'versionName':'1.0.2'")]: s=s.replace(a,b)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Verify source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          r=Path('src/features/reader/ReaderScreen.tsx').read_text()
+          z=Path('src/features/reader/ZoomablePdfPage.tsx').read_text()
+          i=Path('src/features/index/IndexScreen.tsx').read_text()
+          s=Path('src/features/search/SearchScreen.tsx').read_text()
+          assert 'horizontal inverted pagingEnabled' in r
+          assert 'ZoomablePdfPage' in r and 'ZoomablePdfPage' in i
+          assert 'onStartShouldSetPanResponderCapture' in z and 'onMoveShouldSetPanResponderCapture' in z
+          assert 'searchVerses' in s and 'VERSE_INDEX' in s
+          apps=json.loads(Path('../qurani-series/apps.json').read_text())
+          text='\n'.join(x['title']+'\n'+x['reading']+'\n'+x['usul'] for x in apps)
+          for bad in ['أبي عمر البصري','براويه','ماخالفة','الكسائى','مطلقآ','أصولقراءة']: assert bad not in text,bad
+          assert 'أبي عمرو البصري' in text and 'برواية السوسي' in text
+          PY
+          cat > tsconfig.series.json <<'EOF'
+          {"extends":"./tsconfig.json","exclude":["node_modules","android","__tests__","**/*.node.test.ts"]}
+          EOF
+          npx tsc --noEmit -p tsconfig.series.json
+          cd ..
+      - name: Build and persist 12 v1.0.2 overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app/android/app/src/main/assets/pdf .series-generated-v102
+          mkdir -p qurani-app/android/app/src/main/assets/pdf
+          python3 - <<'PY'
+          import fitz
+          from pathlib import Path
+          out=Path('qurani-app/android/app/src/main/assets/pdf')
+          for name,count in {'reading.pdf':4,'quran.pdf':604,'quran_index.pdf':2,'dua.pdf':1,'waqf_symbols.pdf':5,'furati_intro.pdf':4,'usul.pdf':18}.items():
+              d=fitz.open()
+              for _ in range(count): d.new_page(width=512.402,height=652.68)
+              d.save(out/name); d.close()
+          PY
+          cd qurani-app && python3 /tmp/build.py . /tmp/payload/base.apk ../qurani-series/apps.json ../series-output-v102 && cd ..
+          python3 - <<'PY'
+          import json
+          r=json.load(open('series-output-v102/build-report.json'))
+          assert len(r)==12
+          for x in r:
+              assert x['badgingOk'] and x['nativeLibsIdenticalToBase'] and x['overlayReconstructsSkeleton']
+              assert x['versionCode']==3 and x['versionName']=='1.0.2'
+          PY
+          mkdir -p .series-generated-v102/parts
+          cp /tmp/payload/base.apk series-output-v102/base.apk
+          tar -C series-output-v102 -czf /tmp/v102.tar.gz base.apk overlays build-report.json
+          sha256sum /tmp/v102.tar.gz | tee .series-generated-v102/SHA256SUMS.txt
+          split -b 45M -d -a 2 /tmp/v102.tar.gz .series-generated-v102/parts/payload.part-
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f .series-generated-v102
+          git commit -m 'ci: persist Quran series v1.0.2 overlay payload'
+          git pull --rebase origin qurani-series-v100
+          git push origin HEAD:qurani-series-v100
