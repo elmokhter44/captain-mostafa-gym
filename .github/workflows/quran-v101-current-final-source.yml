@@ -1,0 +1,55 @@
+name: Quran Current Final Source Inspect
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-v101-current-final-source.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and apply current common patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/qapp
+          mkdir -p /tmp/qapp qurani-series/v101-debug
+          cat qurani-ci/text/part-* > /tmp/qsrc.b64
+          base64 -d /tmp/qsrc.b64 > /tmp/qsrc.tar.gz
+          tar -xzf /tmp/qsrc.tar.gz -C /tmp/qapp
+          cat qurani-v101/overlay/part-* > /tmp/qoverlay.b64
+          base64 -d /tmp/qoverlay.b64 > /tmp/qoverlay.tar.gz
+          tar -xzf /tmp/qoverlay.tar.gz -C /tmp/qapp
+          cp qurani-v101/ZoomablePdfPage.tsx /tmp/qapp/src/features/reader/ZoomablePdfPage.tsx
+          base64 -d qurani-series/apply_series_common.py.gz.b64 | gzip -dc > /tmp/apply.py
+          python3 /tmp/apply.py /tmp/qapp
+      - name: Persist effective final source
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=qurani-series/v101-debug/effective-source.txt
+          : > "$OUT"
+          for f in \
+            /tmp/qapp/src/features/reader/ReaderScreen.tsx \
+            /tmp/qapp/src/features/reader/ZoomablePdfPage.tsx \
+            /tmp/qapp/src/features/reader/PdfPage.tsx \
+            /tmp/qapp/src/features/index/IndexScreen.tsx \
+            /tmp/qapp/src/features/home/HomeScreen.tsx \
+            /tmp/qapp/src/features/home/SectionCard.tsx \
+            /tmp/qapp/src/data/sections.ts \
+            /tmp/qapp/src/services/ReaderNavigationService.ts \
+            /tmp/qapp/src/repositories/SettingsRepository.ts \
+            /tmp/qapp/android/app/build.gradle; do
+              if [ -f "$f" ]; then echo "===== FILE: ${f#/tmp/qapp/} =====" >> "$OUT"; cat "$f" >> "$OUT"; printf '\n\n' >> "$OUT"; fi
+          done
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f "$OUT"
+          git commit -m 'ci: persist effective current Quran series source' || true
+          git push origin HEAD:qurani-series-v100
