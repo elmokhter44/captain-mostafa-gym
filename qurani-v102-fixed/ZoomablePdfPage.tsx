@@ -17,9 +17,9 @@ export function ZoomablePdfPage({assetName,pageIndex,width,height,overlay,onZoom
   const scale=useRef(new Animated.Value(MIN_ZOOM)).current;
   const translateX=useRef(new Animated.Value(0)).current;
   const translateY=useRef(new Animated.Value(0)).current;
-  const scaleRef=useRef(MIN_ZOOM);
+  const scaleRef=useRef<number>(MIN_ZOOM);
   const offsetRef=useRef({x:0,y:0});
-  const pinchStart=useRef({distance:0,scale:MIN_ZOOM});
+  const pinchStart=useRef<{distance:number;scale:number}>({distance:0,scale:MIN_ZOOM});
   const panStart=useRef({x:0,y:0});
 
   const apply=(nextScale:number,x:number,y:number)=>{
