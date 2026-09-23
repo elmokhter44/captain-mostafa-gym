@@ -19,10 +19,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo 'INDEX_GEOMETRY_RUN=1'
           python3 -m pip install --quiet 'gdown==5.2.0' 'PyMuPDF==1.26.4'
           python3 -m gdown '1BVoetPB5RCq5cSV1zxaxb0nj98B0faup' -O /tmp/source.pdf --quiet
           python3 - <<'PY'
-          import fitz,json,re
+          import fitz,json
           from pathlib import Path
           doc=fitz.open('/tmp/source.pdf')
           assert doc.page_count==638,doc.page_count
@@ -40,8 +41,8 @@ jobs:
           Path('qurani-v103-working/index-words.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
           print('page609 words',len(out['609']['words']))
           print('page610 words',len(out['610']['words']))
-          print(out['609']['text'][:2000])
-          print(out['610']['text'][:2000])
+          print(out['609']['text'][:2500])
+          print(out['610']['text'][:2500])
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
