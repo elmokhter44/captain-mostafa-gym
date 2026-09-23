@@ -1,0 +1,36 @@
+name: Quran Verse Index Inspect
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-verse-index-inspect.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and inspect verse index
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/qurani
+          cat qurani-ci/text/part-* > /tmp/src.b64
+          base64 -d /tmp/src.b64 > /tmp/src.tar.gz
+          tar -xzf /tmp/src.tar.gz -C /tmp/qurani
+          cat qurani-v101/overlay/part-* > /tmp/overlay.b64
+          base64 -d /tmp/overlay.b64 > /tmp/overlay.tar.gz
+          tar -xzf /tmp/overlay.tar.gz -C /tmp/qurani
+          f=/tmp/qurani/src/data/verses.generated.ts
+          echo SIZE=$(wc -c < "$f")
+          echo QUOTED=$(grep -o '"surahNumber"' "$f" | wc -l || true)
+          echo UNQUOTED=$(grep -o 'surahNumber:' "$f" | wc -l || true)
+          echo TEXT_KEYS=$(grep -o 'text:' "$f" | wc -l || true)
+          echo FIRST2000
+          head -c 2000 "$f"
+          echo
+          echo LAST1000
+          tail -c 1000 "$f"
+          echo
+          find /tmp/qurani -type f | grep -Ei 'quran.*json|verse|ayah|uthmani' | head -100 || true
