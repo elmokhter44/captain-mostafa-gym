@@ -41,7 +41,7 @@ export function ReaderScreen({route,navigation}:Props):React.JSX.Element {
     extraSections.forEach(item=>{void services.pdf.renderPage(item.assetName,0,renderWidth).catch(()=>undefined);});
   },[extraSections,screenWidth,services]);
 
-  const onViewableItemsChanged=useRef(({viewableItems}:{viewableItems:Array<ViewToken<number>>})=>{
+  const onViewableItemsChanged=useRef(({viewableItems}:{viewableItems:Array<ViewToken>})=>{
     const visible=viewableItems.find(v=>v.isViewable&&typeof v.item==='number');
     if(typeof visible?.item==='number'){
       activePageRef.current=visible.item;
