@@ -112,12 +112,13 @@ jobs:
             "$APKSIGNER" sign \
               --ks "$KEYSTORE" --ks-key-alias androiddebugkey \
               --ks-pass pass:android --key-pass pass:android \
+              --min-sdk-version 21 \
               --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
               --out "final-apks/$filename" "$workdir/aligned.apk"
 
             unzip -t "final-apks/$filename" >/dev/null
             "$ZIPALIGN" -c -P 16 4 "final-apks/$filename"
-            "$APKSIGNER" verify --verbose "final-apks/$filename" | tee "$workdir/signing.txt"
+            "$APKSIGNER" verify --verbose --min-sdk-version 21 "final-apks/$filename" | tee "$workdir/signing.txt"
             grep -q 'Verified using v1 scheme (JAR signing): true' "$workdir/signing.txt"
             grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' "$workdir/signing.txt"
             "$AAPT" dump badging "final-apks/$filename" | tee "$workdir/badging.txt"
