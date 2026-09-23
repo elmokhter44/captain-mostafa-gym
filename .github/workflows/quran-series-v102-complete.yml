@@ -1,0 +1,279 @@
+name: Quran Series v1.0.2 Complete Payload
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-series-v102-complete.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Reconstruct source and current v1.0.2 base payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app series-output-v102-complete /tmp/payload
+          mkdir -p qurani-app /tmp/payload
+          cat qurani-ci/text/part-* > /tmp/src.b64
+          base64 -d /tmp/src.b64 > /tmp/src.tar.gz
+          echo '8419ab562a4783684b34e1bc62a96be4dc3da00f8a85e5e0d298182ab1e79192  /tmp/src.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/src.tar.gz -C qurani-app
+          cat qurani-v101/overlay/part-* > /tmp/overlay.b64
+          base64 -d /tmp/overlay.b64 > /tmp/overlay.tar.gz
+          echo 'cbb6b45021274412968d6f6747fa54048d1d46be31e92a6cea31b5d80a2b9d7e  /tmp/overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/overlay.tar.gz -C qurani-app
+          cat .series-generated-v102/parts/payload.part-* > /tmp/v102-old.tar.gz
+          tar -tzf /tmp/v102-old.tar.gz >/dev/null
+          tar -xzf /tmp/v102-old.tar.gz -C /tmp/payload
+          test -s /tmp/payload/base.apk
+          base64 -d qurani-series/apply_series_common.py.gz.b64 | gzip -dc > /tmp/apply.py
+          cp qurani-v103-working/build_all_overlays.py /tmp/build.py
+          (cd qurani-app && python3 /tmp/apply.py .)
+
+      - name: RED - prove the previous v1.0.2 source misses final requirements
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('qurani-app')
+          reader=(root/'src/features/reader/ReaderScreen.tsx').read_text(encoding='utf-8')
+          index=(root/'src/features/index/IndexScreen.tsx').read_text(encoding='utf-8')
+          app=(root/'src/app/App.tsx').read_text(encoding='utf-8')
+          verses=(root/'src/data/verses.generated.ts').read_text(encoding='utf-8')
+          missing=[]
+          if "key:'theme'" in reader or 'toggleTheme' in reader: missing.append('dark_only')
+          if 'resizeMode="contain"' not in app: missing.append('splash_contain')
+          if '609–610' in index or 'ScreenHeader' in index: missing.append('index_internal_numbers_or_padding')
+          if verses.count('mushafPage') < 100: missing.append('complete_offline_text_index')
+          print('PREVIOUS_V102_MISSING='+','.join(missing))
+          assert missing
+          PY
+
+      - name: Install build and OCR dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-ara >/dev/null
+          python3 -m pip install --quiet 'gdown==5.2.0' 'PyMuPDF==1.26.4' pillow
+          cd qurani-app && npm install --no-audit --no-fund && cd ..
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          from PIL import Image
+          b64=''.join(p.read_text() for p in sorted(Path('qurani-ci/logo').glob('part-*')))
+          src_path=Path('/tmp/qurani-logo.jpg')
+          src_path.write_bytes(base64.b64decode(b64,validate=True))
+          src=Image.open(src_path).convert('RGBA')
+          Path('qurani-app/assets/branding').mkdir(parents=True,exist_ok=True)
+          src.save('qurani-app/assets/branding/qurani-icon.png',optimize=True)
+          base=Path('qurani-app/android/app/src/main/res')
+          for folder,size in {'mipmap-mdpi':48,'mipmap-hdpi':72,'mipmap-xhdpi':96,'mipmap-xxhdpi':144,'mipmap-xxxhdpi':192}.items():
+              d=base/folder; d.mkdir(parents=True,exist_ok=True)
+              icon=src.resize((size,size),Image.Resampling.LANCZOS)
+              icon.save(d/'ic_launcher.png',optimize=True)
+              icon.save(d/'ic_launcher_round.png',optimize=True)
+          PY
+          echo '4c8d65a11c77539831be3a791e54b9eb984375cea878262fd1972ed3acf58cae  /tmp/qurani-logo.jpg' | sha256sum -c -
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
+          keytool -genkeypair -v -keystore qurani-app/android/app/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Series Build,O=QuranKarem,C=EG' >/dev/null 2>&1 || true
+          cd qurani-app/android && gradle wrapper --gradle-version 9.3.1 && chmod +x gradlew && cd ../..
+
+      - name: Apply requested v1.0.2 UI and reader fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp qurani-v102-fixed/ReaderScreen.tsx qurani-app/src/features/reader/ReaderScreen.tsx
+          cp qurani-v103-fixed/ZoomablePdfPage.tsx qurani-app/src/features/reader/ZoomablePdfPage.tsx
+          cp qurani-v101-fixed/PdfPage.tsx qurani-app/src/features/reader/PdfPage.tsx
+          cp qurani-v103-fixed/IndexScreen.tsx qurani-app/src/features/index/IndexScreen.tsx
+          cp qurani-v102-fixed/SectionCard.tsx qurani-app/src/features/home/SectionCard.tsx
+          cp qurani-v102-complete/SearchScreen.tsx qurani-app/src/features/search/SearchScreen.tsx
+          cp qurani-v102-complete/VerseSearchService.ts qurani-app/src/services/VerseSearchService.ts
+          python3 qurani-v102-complete/apply_complete_patch.py qurani-app
+
+      - name: Generate complete offline text index only from approved original PDF
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m gdown '1BVoetPB5RCq5cSV1zxaxb0nj98B0faup' -O /tmp/approved-abuamr.pdf --quiet
+          python3 - <<'PY'
+          import fitz, subprocess, os, json
+          from pathlib import Path
+          from concurrent.futures import ProcessPoolExecutor
+
+          PDF='/tmp/approved-abuamr.pdf'
+          doc=fitz.open(PDF)
+          assert doc.page_count==638,doc.page_count
+          doc.close()
+
+          def one(logical_page:int):
+              source_page=logical_page+4
+              d=fitz.open(PDF)
+              p=d[source_page-1]
+              pix=p.get_pixmap(matrix=fitz.Matrix(2.4,2.4),alpha=False,colorspace=fitz.csGRAY)
+              img=Path(f'/tmp/quran-ocr-{logical_page}.png')
+              pix.save(img)
+              d.close()
+              try:
+                  r=subprocess.run(['tesseract',str(img),'stdout','-l','ara','--psm','6'],text=True,capture_output=True,check=True)
+                  text=' '.join(r.stdout.split())
+              finally:
+                  img.unlink(missing_ok=True)
+              return logical_page,text
+
+          workers=max(1,min(2,os.cpu_count() or 1))
+          with ProcessPoolExecutor(max_workers=workers) as ex:
+              rows=list(ex.map(one,range(1,605),chunksize=1))
+          rows.sort()
+          nonempty=sum(bool(t.strip()) for _,t in rows)
+          chars=sum(len(t) for _,t in rows)
+          print('OCR_INDEX_PAGES=',len(rows))
+          print('OCR_INDEX_NONEMPTY=',nonempty)
+          print('OCR_INDEX_CHARS=',chars)
+          assert len(rows)==604
+          assert nonempty>=595,(nonempty,chars)
+          assert chars>=150000,(nonempty,chars)
+
+          out=Path('qurani-app/src/data/verses.generated.ts')
+          payload=[{'mushafPage':p,'text':t} for p,t in rows]
+          body=json.dumps(payload,ensure_ascii=False,separators=(',',':'))
+          out.write_text("import type {VerseSearchEntry} from '../services/VerseSearchService';\n\nexport const VERSE_INDEX: readonly VerseSearchEntry[] = "+body+' as const;\n',encoding='utf-8')
+          print('OCR_INDEX_SOURCE=USER_APPROVED_PDF_ONLY')
+          PY
+
+      - name: Configure v1.0.2 code 3 and exact section title
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/build.py')
+          s=p.read_text(encoding='utf-8')
+          for a,b in [
+            ("'versionCode 1'","'versionCode 3'"),
+            ("'versionName \"1.0.0\"'","'versionName \"1.0.2\"'"),
+            ("VERSION_NAME = '1.0.0'","VERSION_NAME = '1.0.2'"),
+            ("VERSION_CODE = 1","VERSION_CODE = 3"),
+            ("versionCode='1' versionName='1.0.0'","versionCode='3' versionName='1.0.2'"),
+            ("'versionCode':1,'versionName':'1.0.0'","'versionCode':3,'versionName':'1.0.2'"),
+            ("title: 'من بين يدي السلسلة الفراتية'","title: 'بين يدي السلسلة الفراتية'"),
+          ]:
+              s=s.replace(a,b)
+          p.write_text(s,encoding='utf-8')
+          assert "versionCode='3' versionName='1.0.2'" in s
+          assert "title: 'بين يدي السلسلة الفراتية'" in s
+          PY
+
+      - name: GREEN - verify requested behavior and TypeScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,re
+          root=Path('qurani-app')
+          reader=(root/'src/features/reader/ReaderScreen.tsx').read_text(encoding='utf-8')
+          index=(root/'src/features/index/IndexScreen.tsx').read_text(encoding='utf-8')
+          zoom=(root/'src/features/reader/ZoomablePdfPage.tsx').read_text(encoding='utf-8')
+          search=(root/'src/features/search/SearchScreen.tsx').read_text(encoding='utf-8')
+          service=(root/'src/services/VerseSearchService.ts').read_text(encoding='utf-8')
+          card=(root/'src/features/home/SectionCard.tsx').read_text(encoding='utf-8')
+          app=(root/'src/app/App.tsx').read_text(encoding='utf-8')
+          verses=(root/'src/data/verses.generated.ts').read_text(encoding='utf-8')
+          checks={
+            'rtl_reader':'horizontal inverted pagingEnabled' in reader,
+            'reader_zoom':'ZoomablePdfPage' in reader and 'MAX_ZOOM = 4.5' in zoom,
+            'dark_only':"const dark=true;" in reader and "key:'theme'" not in reader and 'toggleTheme' not in reader,
+            'dua_same_first':"reading:'◈',dua:'◈'" in reader and "dua: '◆'" in card,
+            'furati_different':"'furati-intro':'📖'" in reader and "'furati-intro': '📖'" in card,
+            'index_fullscreen':'width={screenWidth}' in index and 'height={screenHeight}' in index and 'ScreenHeader' not in index and '609–610' not in index,
+            'index_rtl':'horizontal' in index and 'inverted' in index and 'pagingEnabled' in index,
+            'index_114':all(x in index for x in ['start: 1, end: 28','start: 29, end: 56','start: 57, end: 85','start: 86, end: 114']),
+            'splash_contain':'resizeMode="contain"' in app,
+            'offline_text_search':'searchVerses(query, VERSE_INDEX)' in search and 'mushafPage' in service,
+            'ocr_604':verses.count('"mushafPage":')==604,
+            'full_size_reader':'width:screenWidth,height:pageHeight' in reader,
+          }
+          failed=[k for k,v in checks.items() if not v]
+          if failed: raise SystemExit('V102_COMPLETE_CONTRACT_FAIL='+','.join(failed))
+          apps=json.loads(Path('qurani-series/apps.json').read_text(encoding='utf-8'))
+          text='\n'.join(x['title']+'\n'+x['reading']+'\n'+x['usul'] for x in apps)
+          for bad in ['راوية','أبي عمر البصري','براويه','ماخالفة','الكسائى','مطلقآ','أصولقراءة']:
+              assert bad not in text,bad
+          assert 'أبي عمرو البصري' in text
+          print('V102_COMPLETE_CONTRACT_OK=1')
+          PY
+          cd qurani-app
+          cat > tsconfig.series.json <<'EOF'
+          {"extends":"./tsconfig.json","exclude":["node_modules","android","__tests__","**/*.node.test.ts"]}
+          EOF
+          npx tsc --noEmit -p tsconfig.series.json
+          echo 'TYPESCRIPT_OK=1'
+          cd ..
+
+      - name: Build and persist 12 complete v1.0.2 overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app/android/app/src/main/assets/pdf series-output-v102-complete
+          mkdir -p qurani-app/android/app/src/main/assets/pdf
+          python3 - <<'PY'
+          import fitz
+          from pathlib import Path
+          out=Path('qurani-app/android/app/src/main/assets/pdf')
+          for name,count in {'reading.pdf':4,'quran.pdf':604,'quran_index.pdf':2,'dua.pdf':1,'waqf_symbols.pdf':5,'furati_intro.pdf':4,'usul.pdf':18}.items():
+              d=fitz.open()
+              for _ in range(count): d.new_page(width=512.402,height=652.68)
+              d.save(out/name); d.close()
+          PY
+          cd qurani-app && python3 /tmp/build.py . /tmp/payload/base.apk ../qurani-series/apps.json ../series-output-v102-complete && cd ..
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.load(open('series-output-v102-complete/build-report.json'))
+          assert len(r)==12
+          packages=set()
+          for x in r:
+              assert x['badgingOk'] and x['nativeLibsIdenticalToBase'] and x['overlayReconstructsSkeleton'],x['slug']
+              assert x['versionCode']==3 and x['versionName']=='1.0.2',x
+              packages.add(x['package'])
+          assert len(packages)==12
+          sections=Path('qurani-app/src/data/sections.ts').read_text(encoding='utf-8')
+          assert "title: 'بين يدي السلسلة الفراتية'" in sections
+          assert "title: 'من بين يدي السلسلة الفراتية'" not in sections
+          assert 'sourceStartPage: 609, sourceEndPage: 610' in sections
+          print('ALL_12_OVERLAYS_OK=1')
+          PY
+          rm -rf .series-generated-v102
+          mkdir -p .series-generated-v102/parts
+          cp /tmp/payload/base.apk series-output-v102-complete/base.apk
+          tar -C series-output-v102-complete -czf /tmp/v102-complete.tar.gz base.apk overlays build-report.json
+          sha256sum /tmp/v102-complete.tar.gz | tee .series-generated-v102/SHA256SUMS.txt
+          split -b 45M -d -a 2 /tmp/v102-complete.tar.gz .series-generated-v102/parts/payload.part-
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f .series-generated-v102
+          git commit -m 'ci: persist complete Quran series v1.0.2 payload'
+          git pull --rebase origin qurani-series-v100
+          git push origin HEAD:qurani-series-v100
