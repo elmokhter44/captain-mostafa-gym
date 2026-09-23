@@ -1,0 +1,54 @@
+name: Quran v1.0.1 Source Inspect 2
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths: ['.github/workflows/quran-v101-source-inspect2.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/qapp
+          mkdir -p /tmp/qapp qurani-series/v101-debug
+          cat qurani-ci/text/part-* > /tmp/qsrc.b64
+          base64 -d /tmp/qsrc.b64 > /tmp/qsrc.tar.gz
+          tar -xzf /tmp/qsrc.tar.gz -C /tmp/qapp
+          cat qurani-v101/overlay/part-* > /tmp/qoverlay.b64
+          base64 -d /tmp/qoverlay.b64 > /tmp/qoverlay.tar.gz
+          tar -xzf /tmp/qoverlay.tar.gz -C /tmp/qapp
+          cp qurani-v101/ZoomablePdfPage.tsx /tmp/qapp/src/features/reader/ZoomablePdfPage.tsx
+      - name: Persist additional files
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=qurani-series/v101-debug/source-snapshot2.txt
+          : > "$OUT"
+          for f in \
+            /tmp/qapp/src/features/index/IndexScreen.tsx \
+            /tmp/qapp/src/features/reader/PdfPage.tsx \
+            /tmp/qapp/src/features/reader/zoomModel.ts \
+            /tmp/qapp/src/data/sections.ts \
+            /tmp/qapp/src/app/navigation.tsx \
+            /tmp/qapp/src/app/navigation.ts \
+            /tmp/qapp/src/features/search/SearchScreen.tsx \
+            /tmp/qapp/src/repositories/SectionRepository.ts \
+            /tmp/qapp/src/repositories/SurahRepository.ts; do
+              if [ -f "$f" ]; then echo "===== FILE: ${f#/tmp/qapp/} =====" >> "$OUT"; cat "$f" >> "$OUT"; printf '\n\n' >> "$OUT"; fi
+          done
+          echo '===== NAV/DATA TREE =====' >> "$OUT"
+          find /tmp/qapp/src/app /tmp/qapp/src/data /tmp/qapp/src/features/index -maxdepth 2 -type f -print | sed 's#/tmp/qapp/##' | sort >> "$OUT"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f "$OUT"
+          git commit -m 'ci: persist v1.0.1 source snapshot 2' || true
+          git push origin HEAD:qurani-series-v100
