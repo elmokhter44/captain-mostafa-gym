@@ -20,19 +20,30 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p=Path('.github/workflows/quran-series-v103-final-fixed.yml')
-          s=p.read_text(encoding='utf-8')
-          replacements={
-            "'all_section_icons_uniform': \"const SECTION_GLYPH='◆'\" in reader,": "'all_section_icons_uniform': 'const GLYPHS:Record<string,string>' in reader and reader.count(\"'◈'\") >= 6,",
-            "'verse_index_complete': verse_index.count('surahNumber:')==6236,": "'verse_index_complete': verse_index.count('\\\"surahNumber\\\":')==6236,",
-            "assert v.count('surahNumber:')==6236": "assert v.count('\\\"surahNumber\\\":')==6236",
-            "assert v.count('ayahNumber:')==6236": "assert v.count('\\\"ayahNumber\\\":')==6236",
-            "re.findall(r'mushafPage:\\\\s*(\\\\d+)',v)": "re.findall(r'\\\"mushafPage\\\":(\\\\d+)',v)",
-          }
-          for old,new in replacements.items():
-              if old not in s:
-                  raise SystemExit(f'missing pattern: {old}')
-              s=s.replace(old,new)
-          p.write_text(s,encoding='utf-8')
+          lines=p.read_text(encoding='utf-8').splitlines()
+          found=set(); out=[]
+          for line in lines:
+              indent=line[:len(line)-len(line.lstrip())]
+              if "'all_section_icons_uniform':" in line:
+                  line=indent+"'all_section_icons_uniform': 'const GLYPHS:Record<string,string>' in reader and reader.count(\"'◈'\") >= 6,"
+                  found.add('icons')
+              elif "'verse_index_complete':" in line:
+                  line=indent+"'verse_index_complete': verse_index.count('\\\"surahNumber\\\":')==6236,"
+                  found.add('index')
+              elif "assert v.count('surahNumber:')" in line:
+                  line=indent+"assert v.count('\\\"surahNumber\\\":')==6236"
+                  found.add('surah')
+              elif "assert v.count('ayahNumber:')" in line:
+                  line=indent+"assert v.count('\\\"ayahNumber\\\":')==6236"
+                  found.add('ayah')
+              elif "pages=[int(x) for x in re.findall" in line:
+                  line=indent+"pages=[int(x) for x in re.findall(r'\\\"mushafPage\\\":(\\\\d+)',v)]"
+                  found.add('pages')
+              out.append(line)
+          expected={'icons','index','surah','ayah','pages'}
+          if found != expected:
+              raise SystemExit(f'patch markers missing: {expected-found}; found={found}')
+          p.write_text('\n'.join(out)+'\n',encoding='utf-8')
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
