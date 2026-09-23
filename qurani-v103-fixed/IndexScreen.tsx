@@ -17,9 +17,9 @@ type ZoneGroup = Readonly<{
   bottom: number;
 }>;
 
-// Exact interactive rows for the two printed index pages (source PDF pages 609–610).
-// Page 609: surahs 1–28 in the right table, 29–56 in the left table.
-// Page 610: surahs 57–85 in the right table, 86–114 in the left table.
+// Exact interactive rows for the two printed index sheets.
+// First sheet: surahs 1–28 in the right table, 29–56 in the left table.
+// Second sheet: surahs 57–85 in the right table, 86–114 in the left table.
 const INDEX_ZONE_GROUPS: readonly (readonly ZoneGroup[])[] = [
   [
     {start: 1, end: 28, x: 0.615, width: 0.19, top: 0.149, bottom: 0.961},
