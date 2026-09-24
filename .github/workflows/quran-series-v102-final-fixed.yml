@@ -132,6 +132,7 @@ jobs:
           sha256sum final-apks/*.apk | tee final-apks/SHA256SUMS.txt
 
       - name: Upload final APK bundle artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: Quran-Series-v1.0.2-Final-12-APKs
