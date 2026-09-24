@@ -27,6 +27,15 @@ export function SearchScreen(): React.JSX.Element {
     ...textResults.map(item => ({kind: 'text' as const, key: `p-${item.mushafPage}`, ...item})),
   ], [surahResults, textResults]);
 
+  const surahNameForPage = (mushafPage: number): string => {
+    let current = all[0];
+    for (const surah of all) {
+      if (surah.mushafStartPage > mushafPage) break;
+      current = surah;
+    }
+    return current?.nameArabic ?? '';
+  };
+
   return (
     <View style={styles.root}>
       <ScreenHeader title="البحث في المصحف" />
@@ -34,7 +43,7 @@ export function SearchScreen(): React.JSX.Element {
         <TextInput value={query} onChangeText={setQuery} autoFocus accessibilityLabel="حقل البحث عن سورة أو نص آية" placeholder="اكتب اسم سورة أو كلمات من آية..." placeholderTextColor={COLORS.muted} style={styles.input} textAlign="right" selectionColor={COLORS.gold500} returnKeyType="search" />
         <View style={styles.icon}><Text style={styles.iconText}>⌕</Text></View>
       </View>
-      <View style={styles.counterRow}><Text style={styles.counter}>{results.length} نتيجة</Text><Text style={styles.hint}>البحث النصي يعمل دون إنترنت ويفتح الصفحة المطابقة مباشرة</Text></View>
+      <View style={styles.counterRow}><Text style={styles.counter}>{results.length} نتيجة</Text></View>
       <FlatList data={results} keyExtractor={item => item.key} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.list}
         renderItem={({item}) => item.kind === 'surah' ? (
           <Pressable accessibilityLabel={`فتح سورة ${item.nameArabic}`} style={({pressed}) => [styles.row, pressed && styles.pressed]} onPress={() => navigation.push('Reader', toSurahTarget(item))}>
@@ -42,7 +51,12 @@ export function SearchScreen(): React.JSX.Element {
           </Pressable>
         ) : (
           <Pressable accessibilityLabel={`فتح نتيجة البحث في الصفحة ${item.mushafPage}`} style={({pressed}) => [styles.row, styles.textRow, pressed && styles.pressed]} onPress={() => navigation.push('Reader', {sectionId: 'quran', logicalPage: item.mushafPage})}>
-            <View style={styles.pageBadge}><Text style={styles.pageBadgeText}>{item.mushafPage}</Text></View><View style={styles.rowText}><Text style={styles.matchTitle}>نتيجة مطابقة لنص البحث</Text><Text style={styles.page}>اضغط للانتقال إلى الصفحة مباشرة</Text></View><Text style={styles.arrow}>‹</Text>
+            <View style={styles.pageBadge}><Text style={styles.pageBadgeText}>ص {item.mushafPage}</Text></View>
+            <View style={styles.rowText}>
+              <Text style={styles.ayahText} numberOfLines={3}>{item.text}</Text>
+              <Text style={styles.page}>سورة {surahNameForPage(item.mushafPage)} • صفحة {item.mushafPage}</Text>
+            </View>
+            <Text style={styles.arrow}>‹</Text>
           </Pressable>
         )}
         ListEmptyComponent={<View style={styles.empty}><Text style={styles.emptyTitle}>لا توجد نتيجة مطابقة</Text><Text style={styles.emptyBody}>جرّب كتابة كلمتين أو أكثر من الآية بدون تشكيل.</Text></View>}
@@ -52,5 +66,5 @@ export function SearchScreen(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  root: {flex: 1, backgroundColor: COLORS.ivory}, searchWrap: {...SHADOW, margin: SPACING.lg, minHeight: 58, flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.paper, borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLORS.gold300, paddingHorizontal: SPACING.md}, input: {flex: 1, minHeight: TOUCH_TARGET, color: COLORS.ink, fontSize: 17, fontWeight: '600', writingDirection: 'rtl'}, icon: {width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.emerald100, alignItems: 'center', justifyContent: 'center'}, iconText: {fontSize: 23, color: COLORS.emerald900}, counterRow: {paddingHorizontal: SPACING.lg, paddingBottom: SPACING.sm, flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', gap: SPACING.sm}, counter: {fontSize: 12, color: COLORS.gold700, fontWeight: '800'}, hint: {flex: 1, fontSize: 11, color: COLORS.muted, textAlign: 'right', writingDirection: 'rtl'}, list: {paddingHorizontal: SPACING.lg, paddingBottom: 32, gap: SPACING.sm}, row: {minHeight: 76, flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.paper, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.line, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm}, textRow: {minHeight: 82}, number: {width: 42, height: 42, borderRadius: 21, backgroundColor: COLORS.emerald900, alignItems: 'center', justifyContent: 'center'}, numberText: {color: COLORS.gold300, fontSize: 13, fontWeight: '800'}, pageBadge: {minWidth: 46, height: 42, borderRadius: 21, paddingHorizontal: 8, backgroundColor: COLORS.emerald900, alignItems: 'center', justifyContent: 'center'}, pageBadgeText: {color: COLORS.gold300, fontSize: 11, fontWeight: '900'}, rowText: {flex: 1, paddingHorizontal: SPACING.md}, name: {fontSize: 16, color: COLORS.emerald950, fontWeight: '800', textAlign: 'right', writingDirection: 'rtl'}, matchTitle: {fontSize: 15, lineHeight: 23, color: COLORS.emerald950, fontWeight: '800', textAlign: 'right', writingDirection: 'rtl'}, page: {fontSize: 11, color: COLORS.muted, marginTop: 3, textAlign: 'right', writingDirection: 'rtl'}, arrow: {width: TOUCH_TARGET, color: COLORS.gold700, textAlign: 'center', fontSize: 28}, pressed: {opacity: 0.82}, empty: {padding: 40, alignItems: 'center'}, emptyTitle: {fontSize: 17, fontWeight: '800', color: COLORS.emerald950, textAlign: 'center'}, emptyBody: {fontSize: 13, color: COLORS.muted, textAlign: 'center', marginTop: 6},
+  root: {flex: 1, backgroundColor: COLORS.ivory}, searchWrap: {...SHADOW, margin: SPACING.lg, minHeight: 58, flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.paper, borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLORS.gold300, paddingHorizontal: SPACING.md}, input: {flex: 1, minHeight: TOUCH_TARGET, color: COLORS.ink, fontSize: 17, fontWeight: '600', writingDirection: 'rtl'}, icon: {width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.emerald100, alignItems: 'center', justifyContent: 'center'}, iconText: {fontSize: 23, color: COLORS.emerald900}, counterRow: {paddingHorizontal: SPACING.lg, paddingBottom: SPACING.sm, flexDirection: 'row-reverse', justifyContent: 'flex-start', alignItems: 'center'}, counter: {fontSize: 12, color: COLORS.gold700, fontWeight: '800'}, list: {paddingHorizontal: SPACING.lg, paddingBottom: 32, gap: SPACING.sm}, row: {minHeight: 76, flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.paper, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.line, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm}, textRow: {minHeight: 98}, number: {width: 42, height: 42, borderRadius: 21, backgroundColor: COLORS.emerald900, alignItems: 'center', justifyContent: 'center'}, numberText: {color: COLORS.gold300, fontSize: 13, fontWeight: '800'}, pageBadge: {minWidth: 54, height: 42, borderRadius: 21, paddingHorizontal: 8, backgroundColor: COLORS.emerald900, alignItems: 'center', justifyContent: 'center'}, pageBadgeText: {color: COLORS.gold300, fontSize: 10, fontWeight: '900', writingDirection: 'rtl'}, rowText: {flex: 1, paddingHorizontal: SPACING.md}, name: {fontSize: 16, color: COLORS.emerald950, fontWeight: '800', textAlign: 'right', writingDirection: 'rtl'}, ayahText: {fontSize: 15, lineHeight: 25, color: COLORS.emerald950, fontWeight: '700', textAlign: 'right', writingDirection: 'rtl'}, page: {fontSize: 11, color: COLORS.muted, marginTop: 4, textAlign: 'right', writingDirection: 'rtl'}, arrow: {width: TOUCH_TARGET, color: COLORS.gold700, textAlign: 'center', fontSize: 28}, pressed: {opacity: 0.82}, empty: {padding: 40, alignItems: 'center'}, emptyTitle: {fontSize: 17, fontWeight: '800', color: COLORS.emerald950, textAlign: 'center'}, emptyBody: {fontSize: 13, color: COLORS.muted, textAlign: 'center', marginTop: 6},
 });
