@@ -40,6 +40,39 @@ function tokenMatches(queryToken: string, pageToken: string): boolean {
   return distance(queryToken, pageToken, maxDistance) <= maxDistance;
 }
 
+export function buildMatchExcerpt(pageText: string, query: string): string {
+  const words = pageText.split(/\s+/).filter(Boolean);
+  if (!words.length) return '';
+  const queryTokens = normalizeSearchText(query).split(' ').filter(token => token.length >= 2);
+  if (!queryTokens.length) return words.slice(0, 24).join(' ');
+
+  const normalizedWords = words.map(word => normalizeSearchText(word));
+  let bestIndex = -1;
+  let bestHits = 0;
+
+  for (let i = 0; i < normalizedWords.length; i += 1) {
+    const current = normalizedWords[i]!;
+    if (!current) continue;
+    let hits = 0;
+    for (const queryToken of queryTokens) {
+      const from = Math.max(0, i - 2);
+      const to = Math.min(normalizedWords.length, i + Math.max(8, queryTokens.length * 4));
+      if (normalizedWords.slice(from, to).some(pageToken => Boolean(pageToken) && tokenMatches(queryToken, pageToken))) hits += 1;
+    }
+    if (hits > bestHits) {
+      bestHits = hits;
+      bestIndex = i;
+      if (hits === queryTokens.length) break;
+    }
+  }
+
+  if (bestIndex < 0) bestIndex = 0;
+  const start = Math.max(0, bestIndex - 8);
+  const end = Math.min(words.length, bestIndex + 18);
+  const excerpt = words.slice(start, end).join(' ');
+  return `${start > 0 ? '… ' : ''}${excerpt}${end < words.length ? ' …' : ''}`;
+}
+
 export function searchVerses(query: string, pages: readonly VerseSearchEntry[]): readonly VerseSearchEntry[] {
   const normalizedQuery = normalizeSearchText(query);
   if (normalizedQuery.length < 2) return [];
@@ -66,5 +99,5 @@ export function searchVerses(query: string, pages: readonly VerseSearchEntry[]):
   return scored
     .sort((a, b) => b.score - a.score || a.entry.mushafPage - b.entry.mushafPage)
     .slice(0, 30)
-    .map(item => item.entry);
+    .map(item => ({...item.entry, text: buildMatchExcerpt(item.entry.text, query)}));
 }
