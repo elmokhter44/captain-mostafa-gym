@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Alert, FlatList, Modal, PixelRatio, Pressable, StyleSheet, Text, View, useWindowDimensions, ViewToken} from 'react-native';
+import type {GestureResponderEvent} from 'react-native';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import type {RootStackParamList} from '../../app/navigation';
 import {COLORS} from '../../app/theme';
@@ -26,6 +27,7 @@ export function ReaderScreen({route,navigation}:Props):React.JSX.Element {
   const [theme,setTheme]=useState<'light'|'dark'>(services.settings.get().theme==='dark'?'dark':'light');
   const [viewportHeight,setViewportHeight]=useState(screenHeight);
   const listRef=useRef<FlatList<number>>(null);
+  const pageTapRef=useRef<{x:number;y:number;at:number}|null>(null);
   const pageWidth=screenWidth;
   const pageHeight=Math.max(1,viewportHeight);
   const pages=useMemo(()=>Array.from({length:total},(_,i)=>i+1),[total]);
@@ -56,6 +58,22 @@ export function ReaderScreen({route,navigation}:Props):React.JSX.Element {
   const goSearch=()=>{setMenuMode(null);navigation.navigate('Search');};
   const goIndex=()=>{setMenuMode(null);navigation.push('Index');};
   const openExtra=(id:string)=>{setMenuMode(null);navigation.push('Reader',{sectionId:id,logicalPage:1});};
+  const handlePageTouchStart=(event:GestureResponderEvent)=>{
+    const touches=event.nativeEvent.touches;
+    if(pageZoomed||touches.length!==1){pageTapRef.current=null;return;}
+    const touch=touches[0];
+    if(!touch){pageTapRef.current=null;return;}
+    pageTapRef.current={x:touch.pageX,y:touch.pageY,at:Date.now()};
+  };
+  const handlePageTouchEnd=(event:GestureResponderEvent)=>{
+    const start=pageTapRef.current;
+    pageTapRef.current=null;
+    if(!start||pageZoomed)return;
+    const touch=event.nativeEvent.changedTouches[0];
+    if(!touch)return;
+    const moved=Math.hypot(touch.pageX-start.x,touch.pageY-start.y);
+    if(moved<=10&&Date.now()-start.at<=350)setMenuMode('primary');
+  };
   const dark=theme==='dark';
   const primaryItems=[
     {key:'search',label:'البحث',glyph:'⌕',action:goSearch},
@@ -72,9 +90,9 @@ export function ReaderScreen({route,navigation}:Props):React.JSX.Element {
         keyExtractor={item=>String(item)}
         renderItem={({item})=>(
           <View style={[styles.pageSlot,{width:screenWidth,height:pageHeight}]}>
-            <Pressable accessibilityLabel={`صفحة ${item} من ${total}`} onPress={()=>{if(!pageZoomed)setMenuMode('primary');}} style={{width:pageWidth,height:pageHeight}}>
+            <View accessible accessibilityLabel={`صفحة ${item} من ${total}`} onTouchStart={handlePageTouchStart} onTouchEnd={handlePageTouchEnd} onTouchCancel={()=>{pageTapRef.current=null;}} style={{width:pageWidth,height:pageHeight}}>
               <ZoomablePdfPage assetName={section.assetName} pageIndex={item-1} width={pageWidth} height={pageHeight} onZoomStateChange={setPageZoomed}/>
-            </Pressable>
+            </View>
           </View>
         )}
         initialScrollIndex={initialPage-1}
