@@ -1,0 +1,43 @@
+name: Quran Series v1.0.3 Zoom Search Contract
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths:
+      - '.github/workflows/quran-series-v103-contract.yml'
+      - 'qurani-v102-fixed/ReaderScreen.tsx'
+      - 'qurani-v102-complete/SearchScreen.tsx'
+      - 'qurani-v102-complete/VerseSearchService.ts'
+  workflow_dispatch:
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify requested zoom and search behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          reader=Path('qurani-v102-fixed/ReaderScreen.tsx').read_text(encoding='utf-8')
+          search=Path('qurani-v102-complete/SearchScreen.tsx').read_text(encoding='utf-8')
+          service=Path('qurani-v102-complete/VerseSearchService.ts').read_text(encoding='utf-8')
+          checks={
+            'reader_passive_tap_start':'onTouchStart={handlePageTouchStart}' in reader,
+            'reader_passive_tap_end':'onTouchEnd={handlePageTouchEnd}' in reader,
+            'reader_zoom_direct':'<ZoomablePdfPage' in reader and 'scrollEnabled={!pageZoomed}' in reader,
+            'reader_no_pressable_zoom_wrapper':'<Pressable accessibilityLabel={`صفحة ${item} من ${total}`}' not in reader,
+            'search_renders_match_text':'<Text style={styles.ayahText}' in search and '{item.text}' in search,
+            'search_no_generic_title':'نتيجة مطابقة لنص البحث' not in search,
+            'search_no_instruction_card':'اضغط للانتقال إلى الصفحة مباشرة' not in search,
+            'search_no_programmatic_hint':'البحث النصي يعمل دون إنترنت ويفتح الصفحة المطابقة مباشرة' not in search,
+            'search_has_surah_page_context':'surahNameForPage' in search and 'صفحة {item.mushafPage}' in search,
+            'service_builds_excerpt':'buildMatchExcerpt' in service,
+          }
+          failed=[k for k,v in checks.items() if not v]
+          if failed:
+              raise SystemExit('V103_CONTRACT_FAIL='+','.join(failed))
+          print('V103_CONTRACT_OK=1')
+          PY
