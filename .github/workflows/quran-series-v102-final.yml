@@ -12,6 +12,7 @@ permissions:
 env:
   TAG: quran-series-v1.0.2-final12
 
+# Triggered after persisting the complete v1.0.2 payload from the approved PDFs.
 jobs:
   build-release:
     runs-on: ubuntu-latest
@@ -45,18 +46,18 @@ jobs:
           set -euo pipefail
           mkdir -p final-apks /tmp/sources /tmp/sections /tmp/apkwork
           cat > /tmp/apps.tsv <<'EOF'
-          01	abuamr	com.qurani.series.abuamr	638	1BVoetPB5RCq5cSV1zxaxb0nj98B0faup	01-AbuAmr-v1.0.2.apk
-          02	ibnamir	com.qurani.series.ibnamir	633	1zxcrxi4Q2J0jaKZS1hFPQEF3GhNIDlTZ	02-IbnAmir-v1.0.2.apk
-          03	ibnkathir	com.qurani.series.ibnkathir	632	1hFgLvZYo_tqrpTn82kzzRy30kr3agtg5	03-IbnKathir-v1.0.2.apk
-          04	khalafhamza	com.qurani.series.khalafhamza	636	14dV4ewJ75I-feQSTz0oNsMvUSz2vnlPG	04-Khalaf-Hamza-Sakt-v1.0.2.apk
-          05	alkisai	com.qurani.series.alkisai	633	1a2PHF7eHXmKtn8bgd_SHbSKSyc4vp1b3	05-AlKisai-v1.0.2.apk
-          06	khalladhamza	com.qurani.series.khalladhamza	636	1iLjNkH1nB-eovs6xXJmsh0Zd_dBagpWS	06-Khallad-Hamza-NoSakt-v1.0.2.apk
-          07	abujaafar	com.qurani.series.abujaafar	634	1ka0xEX2tK95HTJos_eU0W_yjtzYVFeKM	07-AbuJaafar-v1.0.2.apk
-          08	yaqub	com.qurani.series.yaqub	630	1-HMgAHqQbJz97EQnPUDd7tFmUJ-uHsJu	08-Yaqub-v1.0.2.apk
-          09	khalaf10	com.qurani.series.khalaf10	628	1vHJkNHxGLxLqby6pszUoxhGcOP4-wK6F	09-Khalaf10-v1.0.2.apk
-          10	asim	com.qurani.series.asim	633	1dtHbfD19xNUxc9rPNT2gHuxTTSK8XLBh	10-Asim-v1.0.2.apk
-          11	warshazraq	com.qurani.series.warshazraq	637	1eZsEfvK2WYERoHXRqdIxgfC8K6hqAcgI	11-Warsh-Azraq-v1.0.2.apk
-          12	qalunqasr	com.qurani.series.qalunqasr	632	1qTjYqpjs9S6v0UM2nZMXvUSsmBXxum3b	12-Qalun-Qasr-v1.0.2.apk
+          01\tabuamr\tcom.qurani.series.abuamr\t638\t1BVoetPB5RCq5cSV1zxaxb0nj98B0faup\t01-AbuAmr-v1.0.2.apk
+          02\tibnamir\tcom.qurani.series.ibnamir\t633\t1zxcrxi4Q2J0jaKZS1hFPQEF3GhNIDlTZ\t02-IbnAmir-v1.0.2.apk
+          03\tibnkathir\tcom.qurani.series.ibnkathir\t632\t1hFgLvZYo_tqrpTn82kzzRy30kr3agtg5\t03-IbnKathir-v1.0.2.apk
+          04\tkhalafhamza\tcom.qurani.series.khalafhamza\t636\t14dV4ewJ75I-feQSTz0oNsMvUSz2vnlPG\t04-Khalaf-Hamza-Sakt-v1.0.2.apk
+          05\talkisai\tcom.qurani.series.alkisai\t633\t1a2PHF7eHXmKtn8bgd_SHbSKSyc4vp1b3\t05-AlKisai-v1.0.2.apk
+          06\tkhalladhamza\tcom.qurani.series.khalladhamza\t636\t1iLjNkH1nB-eovs6xXJmsh0Zd_dBagpWS\t06-Khallad-Hamza-NoSakt-v1.0.2.apk
+          07\tabujaafar\tcom.qurani.series.abujaafar\t634\t1ka0xEX2tK95HTJos_eU0W_yjtzYVFeKM\t07-AbuJaafar-v1.0.2.apk
+          08\tyaqub\tcom.qurani.series.yaqub\t630\t1-HMgAHqQbJz97EQnPUDd7tFmUJ-uHsJu\t08-Yaqub-v1.0.2.apk
+          09\tkhalaf10\tcom.qurani.series.khalaf10\t628\t1vHJkNHxGLxLqby6pszUoxhGcOP4-wK6F\t09-Khalaf10-v1.0.2.apk
+          10\tasim\tcom.qurani.series.asim\t633\t1dtHbfD19xNUxc9rPNT2gHuxTTSK8XLBh\t10-Asim-v1.0.2.apk
+          11\twarshazraq\tcom.qurani.series.warshazraq\t637\t1eZsEfvK2WYERoHXRqdIxgfC8K6hqAcgI\t11-Warsh-Azraq-v1.0.2.apk
+          12\tqalunqasr\tcom.qurani.series.qalunqasr\t632\t1qTjYqpjs9S6v0UM2nZMXvUSsmBXxum3b\t12-Qalun-Qasr-v1.0.2.apk
           EOF
 
           BT="$ANDROID_HOME/build-tools/36.0.0"
