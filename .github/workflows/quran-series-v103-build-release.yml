@@ -225,6 +225,9 @@ jobs:
           assert len(packages)==12
           print('ALL_12_V103_OVERLAYS_OK=1')
           PY
+          rm -rf qurani-app /tmp/src.b64 /tmp/src.tar.gz /tmp/overlay.b64 /tmp/overlay.tar.gz /tmp/v102.tar.gz /tmp/sections
+          echo 'DISK_AFTER_OVERLAYS_CLEANUP'
+          df -h . /tmp
 
       - name: Build sign and verify final 12 APKs from approved PDFs
         shell: bash
@@ -254,24 +257,25 @@ jobs:
             src="/tmp/sources/$slug.pdf"
             if [[ "$slug" == "abuamr" ]]; then cp /tmp/approved-abuamr.pdf "$src"; else python3 -m gdown "$drive_id" -O "$src" --quiet; fi
             test -s "$src"
-            python3 - "$src" "$pages" "$slug" <<'PY'
+            workdir="/tmp/apkwork/$slug"
+            rm -rf "$workdir"
+            mkdir -p "$workdir/stage/assets/pdf" "$workdir/stage/assets"
+            python3 - "$src" "$pages" "$slug" "$workdir/stage/assets/pdf" <<'PY'
           import sys,fitz
           from pathlib import Path
-          src_path,expected,slug=sys.argv[1],int(sys.argv[2]),sys.argv[3]
+          src_path,expected,slug,out_path=sys.argv[1],int(sys.argv[2]),sys.argv[3],sys.argv[4]
           src=fitz.open(src_path); assert src.page_count==expected,(slug,src.page_count,expected)
-          outdir=Path('/tmp/sections')/slug; outdir.mkdir(parents=True,exist_ok=True)
+          outdir=Path(out_path); outdir.mkdir(parents=True,exist_ok=True)
           ranges={'reading.pdf':(1,4),'quran.pdf':(5,608),'quran_index.pdf':(609,610),'dua.pdf':(611,611),'waqf_symbols.pdf':(612,616),'furati_intro.pdf':(617,620),'usul.pdf':(621,expected)}
           for name,(start,end) in ranges.items():
               d=fitz.open(); d.insert_pdf(src,from_page=start-1,to_page=end-1); d.save(outdir/name,garbage=0,deflate=False); assert d.page_count==end-start+1; d.close()
           src.close()
           PY
-            workdir="/tmp/apkwork/$slug"; rm -rf "$workdir"; mkdir -p "$workdir/stage/assets/pdf" "$workdir/stage/assets"
             cp /tmp/payload/base.apk "$workdir/unsigned.apk"
             (zip -q -d "$workdir/unsigned.apk" 'META-INF/*' 'AndroidManifest.xml' 'resources.arsc' 'assets/index.android.bundle' 'assets/pdf/*' || true)
             cp "series-output-v103/overlays/$slug/files/AndroidManifest.xml" "$workdir/stage/AndroidManifest.xml"
             cp "series-output-v103/overlays/$slug/files/resources.arsc" "$workdir/stage/resources.arsc"
             cp "series-output-v103/overlays/$slug/files/assets/index.android.bundle" "$workdir/stage/assets/index.android.bundle"
-            cp "/tmp/sections/$slug/"*.pdf "$workdir/stage/assets/pdf/"
             (cd "$workdir/stage" && zip -q -0 "$workdir/unsigned.apk" AndroidManifest.xml resources.arsc assets/index.android.bundle assets/pdf/*.pdf)
             "$ZIPALIGN" -f -P 16 4 "$workdir/unsigned.apk" "$workdir/aligned.apk"
             "$APKSIGNER" sign --ks /tmp/quran-v103.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --min-sdk-version 21 --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out "final-apks/$filename" "$workdir/aligned.apk"
@@ -282,10 +286,15 @@ jobs:
             grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' "$workdir/signing.txt"
             "$AAPT" dump badging "final-apks/$filename" | tee "$workdir/badging.txt"
             grep -q "package: name='$package' versionCode='4' versionName='1.0.3'" "$workdir/badging.txt"
-            unzip -l "final-apks/$filename" | grep -q 'assets/pdf/quran.pdf'
-            unzip -l "final-apks/$filename" | grep -q 'assets/pdf/quran_index.pdf'
-            unzip -l "final-apks/$filename" | grep -q 'assets/pdf/usul.pdf'
+            unzip -Z1 "final-apks/$filename" > "$workdir/entries.txt"
+            grep -Fxq 'assets/pdf/quran.pdf' "$workdir/entries.txt"
+            grep -Fxq 'assets/pdf/quran_index.pdf' "$workdir/entries.txt"
+            grep -Fxq 'assets/pdf/usul.pdf' "$workdir/entries.txt"
             echo "APK_VERIFIED=$filename|$package|v1=true|v2=true"
+            rm -f "$src"
+            rm -rf "$workdir"
+            echo "DISK_AFTER_$slug"
+            df -h . /tmp
           done < /tmp/apps.txt
           test "$count" -eq 12
           test "$(find final-apks -maxdepth 1 -name '*.apk' | wc -l)" -eq 12
