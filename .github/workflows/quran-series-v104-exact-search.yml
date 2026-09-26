@@ -1,0 +1,36 @@
+name: Quran Series v1.0.4 Exact Ayah Search Final 12 APKs
+
+on:
+  push:
+    branches: [qurani-series-v100]
+    paths:
+      - '.github/workflows/quran-series-v104-exact-search.yml'
+      - 'qurani-v104-exact-search/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+      - name: Build, verify and publish v1.0.4 exact ayah search
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet PyYAML
+          python3 qurani-v104-exact-search/run_v104_build.py
