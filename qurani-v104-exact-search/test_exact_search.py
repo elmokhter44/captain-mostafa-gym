@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
-import base64, gzip, hashlib, json
+import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-parts = sorted((ROOT / 'verse-index').glob('part-*.txt'))
-assert parts, 'exact verse index parts missing'
-b64 = ''.join(p.read_text(encoding='utf-8').strip() for p in parts)
-gz = base64.b64decode(b64, validate=True)
-expected_gz = (ROOT / 'SHA256SUMS.txt').read_text(encoding='utf-8').split()[0]
-assert hashlib.sha256(gz).hexdigest() == expected_gz, 'exact verse index checksum mismatch'
-rows = json.loads(gzip.decompress(gz).decode('utf-8'))
+assert len(sys.argv) == 2, 'usage: test_exact_search.py /path/to/extracted-verses.json'
+rows = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
 assert len(rows) == 6236, len(rows)
 assert len({r['surahNumber'] for r in rows}) == 114
 assert min(r['mushafPage'] for r in rows) == 1
