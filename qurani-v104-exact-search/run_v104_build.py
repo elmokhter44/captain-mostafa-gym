@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -107,6 +108,31 @@ def validate_app_contract() -> None:
     print('TYPESCRIPT_OK=1')
 
 
+def force_v104_final_verifier(script: str) -> str:
+    # The v1.0.4 build intentionally reuses the proven v1.0.3 signing/build shell.
+    # Rewrite version checks independently so a stale paired string can never survive.
+    script = script.replace('v103', 'v104').replace('v1.0.3', 'v1.0.4')
+    script = re.sub(r"versionCode='4'", "versionCode='5'", script)
+    script = re.sub(r"versionName='1\.0\.3'", "versionName='1.0.4'", script)
+    script = re.sub(r"versionName='1\.0\.4'", "versionName='1.0.4'", script)
+
+    stale = [
+        "versionCode='4'",
+        "versionName='1.0.3'",
+        'v1.0.3',
+    ]
+    remaining = [token for token in stale if token in script]
+    if remaining:
+        raise SystemExit('STALE_V103_FINAL_VERIFIER=' + ','.join(remaining))
+    if "versionCode='5'" not in script or "versionName='1.0.4'" not in script:
+        raise SystemExit('V104_FINAL_VERIFIER_MISSING')
+
+    for line in script.splitlines():
+        if 'dump badging' in line or ('grep -q' in line and ('versionCode' in line or 'versionName' in line)):
+            print('V104_FINAL_VERIFY:', line.strip(), flush=True)
+    return script
+
+
 def main() -> None:
     steps = load_v103_steps()
     run(steps['Reconstruct app source and stable APK skeleton'], 'reconstruct source')
@@ -131,9 +157,7 @@ def main() -> None:
     overlays = overlays.replace("/tmp/sections", "/tmp/sections /tmp/verse-index.json /tmp/v104-service-test /tmp/reference-v104 /tmp/reference-extract-v104")
     run(overlays, 'build 12 v1.0.4 overlays')
 
-    final = steps['Build sign and verify final 12 APKs from approved PDFs']
-    final = final.replace('v103', 'v104').replace('v1.0.3', 'v1.0.4')
-    final = final.replace("versionCode='4' versionName='1.0.4'", "versionCode='5' versionName='1.0.4'")
+    final = force_v104_final_verifier(steps['Build sign and verify final 12 APKs from approved PDFs'])
     run(final, 'build sign and verify 12 final APKs')
 
     apk_count = len(list((ROOT / 'final-apks').glob('*.apk')))
