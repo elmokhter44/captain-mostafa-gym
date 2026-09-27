@@ -109,18 +109,46 @@ def validate_app_contract() -> None:
 
 
 def force_v104_final_verifier(script: str) -> str:
-    # The v1.0.4 build intentionally reuses the proven v1.0.3 signing/build shell.
-    # Rewrite version checks independently so a stale paired string can never survive.
+    # Reuse the proven v1.0.3 final-APK shell, but make its v1.0.4
+    # version checks and source handling explicit and self-contained.
     script = script.replace('v103', 'v104').replace('v1.0.3', 'v1.0.4')
     script = re.sub(r"versionCode='4'", "versionCode='5'", script)
     script = re.sub(r"versionName='1\.0\.3'", "versionName='1.0.4'", script)
-    script = re.sub(r"versionName='1\.0\.4'", "versionName='1.0.4'", script)
 
-    stale = [
-        "versionCode='4'",
-        "versionName='1.0.3'",
-        'v1.0.3',
-    ]
+    # v1.0.3 inherited /tmp/approved-abuamr.pdf from its OCR step. v1.0.4
+    # intentionally removed OCR, so that temporary file no longer exists.
+    # Download Abu Amr from the same approved user-provided Drive ID listed in
+    # /tmp/apps.txt, exactly like the other 11 original PDFs.
+    old_source = 'if [[ "$slug" == "abuamr" ]]; then cp /tmp/approved-abuamr.pdf "$src"; else python3 -m gdown "$drive_id" -O "$src" --quiet; fi'
+    new_source = 'python3 -m gdown "$drive_id" -O "$src" --quiet'
+    if old_source not in script:
+        raise SystemExit('V104_ABUAMR_SOURCE_PATCH_MISSING')
+    script = script.replace(old_source, new_source)
+
+    # Count only after the final APK has actually been created and verified.
+    script = script.replace('  count=$((count+1))\n  echo "===== $num $slug ====="', '  echo "===== $num $slug ====="')
+    verified_line = '  echo "APK_VERIFIED=$filename|$package|v1=true|v2=true"'
+    if verified_line not in script:
+        raise SystemExit('V104_APK_VERIFIED_MARKER_MISSING')
+    script = script.replace(verified_line, verified_line + '\n  count=$((count+1))')
+
+    # Make the final directory state obvious before any count assertion and do
+    # not hash a glob until the expected 12 APKs are confirmed.
+    old_tail = 'test "$count" -eq 12\ntest "$(find final-apks -maxdepth 1 -name \'*.apk\' | wc -l)" -eq 12\nsha256sum final-apks/*.apk | tee final-apks/SHA256SUMS.txt'
+    new_tail = '''echo '===== final-apks diagnostics ====='
+ls -lah final-apks
+find final-apks -maxdepth 1 -type f -name '*.apk' -printf '%f\\n' | sort
+apk_count="$(find final-apks -maxdepth 1 -type f -name '*.apk' | wc -l)"
+echo "FINAL_APK_LOOP_COUNT=$count"
+echo "FINAL_APK_FILE_COUNT=$apk_count"
+test "$count" -eq 12
+test "$apk_count" -eq 12
+sha256sum final-apks/*.apk | tee final-apks/SHA256SUMS.txt'''
+    if old_tail not in script:
+        raise SystemExit('V104_FINAL_COUNT_TAIL_MISSING')
+    script = script.replace(old_tail, new_tail)
+
+    stale = ["versionCode='4'", "versionName='1.0.3'", 'v1.0.3']
     remaining = [token for token in stale if token in script]
     if remaining:
         raise SystemExit('STALE_V103_FINAL_VERIFIER=' + ','.join(remaining))
