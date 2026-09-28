@@ -24,6 +24,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
       - name: Reconstruct proven v1.0.4 source base
         shell: bash
         run: |
@@ -126,12 +130,24 @@ jobs:
           EOF
           npx tsc -p tsconfig.unified.json --noEmit
 
+      - name: Bootstrap Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
+          keytool -genkeypair -v -keystore qurani-app/android/app/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Qurani Unified,O=QuranKarem,C=EG' >/dev/null 2>&1 || true
+          cd qurani-app/android
+          gradle wrapper --gradle-version 9.3.1
+          chmod +x gradlew
+          test -x ./gradlew
+          ./gradlew --version
+
       - name: Build unified release APK
         shell: bash
         run: |
           set -euo pipefail
           cd qurani-app/android
-          chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
           cd ../..
           mkdir -p final-unified
