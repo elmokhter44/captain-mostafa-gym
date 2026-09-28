@@ -66,10 +66,21 @@ jobs:
           mkdir -p qurani-app/assets/branding
           python3 - <<'PY'
           from PIL import Image
-          Image.open('/tmp/qurani-logo.jpg').convert('RGBA').save('qurani-app/assets/branding/qurani-icon.png', optimize=True)
+          from pathlib import Path
+          src=Image.open('/tmp/qurani-logo.jpg').convert('RGBA')
+          src.save('qurani-app/assets/branding/qurani-icon.png', optimize=True)
+          sizes={'mipmap-mdpi':48,'mipmap-hdpi':72,'mipmap-xhdpi':96,'mipmap-xxhdpi':144,'mipmap-xxxhdpi':192}
+          res=Path('qurani-app/android/app/src/main/res')
+          for folder,size in sizes.items():
+              d=res/folder; d.mkdir(parents=True,exist_ok=True)
+              icon=src.copy(); icon.thumbnail((size,size),Image.Resampling.LANCZOS)
+              canvas=Image.new('RGBA',(size,size),(0,0,0,0)); canvas.alpha_composite(icon,((size-icon.width)//2,(size-icon.height)//2))
+              canvas.save(d/'ic_launcher.png',optimize=True)
+              canvas.save(d/'ic_launcher_round.png',optimize=True)
           PY
           test -s qurani-app/assets/branding/qurani-icon.png
-          ls -lah qurani-app/assets/branding/qurani-icon.png
+          test -s qurani-app/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          find qurani-app/android/app/src/main/res -path '*/mipmap-*/*launcher*.png' -print
 
       - name: Install dependencies and exact 6236 ayah index
         shell: bash
@@ -140,10 +151,7 @@ jobs:
           set -euo pipefail
           cd qurani-app
           cat > tsconfig.unified.json <<'EOF'
-          {
-            "extends": "./tsconfig.json",
-            "exclude": ["__tests__", "node_modules", "android", "ios"]
-          }
+          {"extends":"./tsconfig.json","exclude":["__tests__","node_modules","android","ios"]}
           EOF
           npx tsc -p tsconfig.unified.json --noEmit
 
@@ -157,7 +165,6 @@ jobs:
           cd qurani-app/android
           gradle wrapper --gradle-version 9.3.1
           chmod +x gradlew
-          test -x ./gradlew
           ./gradlew --version
 
       - name: Build unified release APK
@@ -165,6 +172,7 @@ jobs:
         run: |
           set -euo pipefail
           test -s qurani-app/assets/branding/qurani-icon.png
+          test -s qurani-app/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
           cd qurani-app/android
           ./gradlew assembleRelease --no-daemon
           cd ../..
@@ -172,7 +180,6 @@ jobs:
           APK="$(find qurani-app/android/app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
           test -n "$APK"
           cp "$APK" final-unified/qurani-series-v1.0.0.apk
-          echo '=== FINAL UNIFIED OUTPUT ==='
           ls -lah final-unified
           sha256sum final-unified/qurani-series-v1.0.0.apk | tee final-unified/SHA256SUMS.txt
 
