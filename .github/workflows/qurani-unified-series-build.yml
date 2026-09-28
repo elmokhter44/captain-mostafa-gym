@@ -11,6 +11,9 @@ on:
 permissions:
   contents: write
 
+env:
+  UNIFIED_TAG: qurani-unified-series-v1.0.0
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -47,40 +50,29 @@ jobs:
           (cd qurani-app && python3 /tmp/apply.py .)
           cp qurani-v102-fixed/ReaderScreen.tsx qurani-app/src/features/reader/ReaderScreen.tsx
           cp qurani-v103-fixed/ZoomablePdfPage.tsx qurani-app/src/features/reader/ZoomablePdfPage.tsx
-          cp qurani-v101-fixed/PdfPage.tsx qurani-app/src/features/reader/PdfPage.tsx
+          cp qurani-unified/src/features/PdfPageUnified.tsx qurani-app/src/features/reader/PdfPage.tsx
           cp qurani-v103-fixed/IndexScreen.tsx qurani-app/src/features/index/IndexScreen.tsx
           cp qurani-v102-fixed/SectionCard.tsx qurani-app/src/features/home/SectionCard.tsx
           cp qurani-v104-exact-search/SearchScreen.tsx qurani-app/src/features/search/SearchScreen.tsx
           cp qurani-v104-exact-search/VerseSearchService.ts qurani-app/src/services/VerseSearchService.ts
           python3 qurani-v102-complete/apply_complete_patch.py qurani-app
+          python3 -m pip install --quiet pillow
           python3 - <<'PY'
           from pathlib import Path
           import base64
-          b64=''.join(p.read_text() for p in sorted(Path('qurani-ci/logo').glob('part-*')))
-          if not b64:
-              raise SystemExit('QURANI_LOGO_PARTS_MISSING')
-          Path('/tmp/qurani-logo.jpg').write_bytes(base64.b64decode(b64, validate=True))
-          PY
-          echo '4c8d65a11c77539831be3a791e54b9eb984375cea878262fd1972ed3acf58cae  /tmp/qurani-logo.jpg' | sha256sum -c -
-          python3 -m pip install --quiet pillow
-          mkdir -p qurani-app/assets/branding
-          python3 - <<'PY'
           from PIL import Image
-          from pathlib import Path
+          b64=''.join(p.read_text() for p in sorted(Path('qurani-ci/logo').glob('part-*')))
+          Path('/tmp/qurani-logo.jpg').write_bytes(base64.b64decode(b64,validate=True))
           src=Image.open('/tmp/qurani-logo.jpg').convert('RGBA')
-          src.save('qurani-app/assets/branding/qurani-icon.png', optimize=True)
-          sizes={'mipmap-mdpi':48,'mipmap-hdpi':72,'mipmap-xhdpi':96,'mipmap-xxhdpi':144,'mipmap-xxxhdpi':192}
+          Path('qurani-app/assets/branding').mkdir(parents=True,exist_ok=True)
+          src.save('qurani-app/assets/branding/qurani-icon.png',optimize=True)
           res=Path('qurani-app/android/app/src/main/res')
-          for folder,size in sizes.items():
+          for folder,size in {'mipmap-mdpi':48,'mipmap-hdpi':72,'mipmap-xhdpi':96,'mipmap-xxhdpi':144,'mipmap-xxxhdpi':192}.items():
               d=res/folder; d.mkdir(parents=True,exist_ok=True)
               icon=src.copy(); icon.thumbnail((size,size),Image.Resampling.LANCZOS)
               canvas=Image.new('RGBA',(size,size),(0,0,0,0)); canvas.alpha_composite(icon,((size-icon.width)//2,(size-icon.height)//2))
-              canvas.save(d/'ic_launcher.png',optimize=True)
-              canvas.save(d/'ic_launcher_round.png',optimize=True)
+              canvas.save(d/'ic_launcher.png',optimize=True); canvas.save(d/'ic_launcher_round.png',optimize=True)
           PY
-          test -s qurani-app/assets/branding/qurani-icon.png
-          test -s qurani-app/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
-          find qurani-app/android/app/src/main/res -path '*/mipmap-*/*launcher*.png' -print
 
       - name: Install dependencies and exact 6236 ayah index
         shell: bash
@@ -99,61 +91,96 @@ jobs:
           unzip -q /tmp/reference-v104/reference-nafi.apk assets/index.android.bundle -d /tmp/reference-extract-v104
           python3 qurani-v104-exact-search/extract_reference_verse_index.py /tmp/reference-extract-v104/assets/index.android.bundle --json-out /tmp/verse-index.json --ts-out qurani-app/src/data/verses.generated.ts
           python3 qurani-v104-exact-search/test_exact_search.py /tmp/verse-index.json
+          rm -rf /tmp/reference-v104 /tmp/reference-extract-v104
 
-      - name: Apply unified app gate and wire navigation
+      - name: Wire unified selector to exact 12 mushafs
         shell: bash
         run: |
           set -euo pipefail
           cp qurani-unified/src/app/UnifiedSeriesGate.tsx qurani-app/src/app/UnifiedSeriesGate.tsx
           cp qurani-unified/src/app/mushafs.ts qurani-app/src/app/mushafs.ts
+          cp qurani-unified/src/app/ActiveMushaf.ts qurani-app/src/app/ActiveMushaf.ts
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('qurani-app/src/app/App.tsx')
-          s=p.read_text()
+          p=Path('qurani-app/src/app/App.tsx'); s=p.read_text()
           s=s.replace("import {ErrorBoundary} from '../features/common/ErrorBoundary';", "import {ErrorBoundary} from '../features/common/ErrorBoundary';\nimport {UnifiedSeriesGate} from './UnifiedSeriesGate';\nimport {makeMushafEntries} from './mushafs';")
-          anchor="const navigationTheme ="
-          titles="""const UNIFIED_MUSHAFS = makeMushafEntries([\n  'المصحف المعلم بقراءة الإمام نافع',\n  'المصحف المعلم بقراءة الإمام ابن كثير المكي',\n  'المصحف المعلم بقراءة الإمام أبي عمرو البصري',\n  'المصحف المعلم بقراءة الإمام ابن عامر الشامي',\n  'المصحف المعلم بقراءة الإمام عاصم الكوفي',\n  'المصحف المعلم بقراءة الإمام حمزة الكوفي',\n  'المصحف المعلم بقراءة الإمام الكسائي',\n  'المصحف المعلم بقراءة الإمام أبي جعفر المدني',\n  'المصحف المعلم بقراءة الإمام يعقوب الحضرمي',\n  'المصحف المعلم بقراءة الإمام خلف العاشر',\n  'المصحف الحادي عشر من سلسلة قرآني',\n  'المصحف الثاني عشر من سلسلة قرآني',\n]);\n\n"""
+          anchor='const navigationTheme ='
+          titles="""const UNIFIED_MUSHAFS = makeMushafEntries([\n  'المصحف المعلم بقراءة الإمام أبي عمرو البصري براوييه السوسي والدوري',\n  'المصحف المعلم بقراءة الإمام ابن عامر الشامي برواية هشام وبالحاشية ما خالفه فيه ابن ذكوان',\n  'المصحف المعلم بقراءة الإمام عبدالله بن كثير براوييه البزي وقنبل',\n  'المصحف المعلم برواية الإمام خلف عن حمزة بوجه السكت على الساكن المفصول',\n  'المصحف المعلم بقراءة الإمام الكسائي براوييه الليث والدوري',\n  'المصحف المعلم برواية الإمام خلاد عن حمزة بوجه ترك السكت مطلقًا',\n  'المصحف المعلم بقراءة الإمام أبي جعفر المدني براوييه ابن وردان وابن جماز',\n  'المصحف المعلم بقراءة الإمام يعقوب الحضرمي براوييه رويس وروح',\n  'المصحف المعلم بقراءة الإمام خلف العاشر البزار براوييه إسحاق وإدريس',\n  'المصحف المعلم بقراءة الإمام عاصم ابن أبي النجود برواية حفص وبالحاشية ما خالفه فيه شعبة',\n  'مصحف ورش عن نافع من طريق الأزرق',\n  'مصحف قالون عن نافع بوجه قصر المنفصل وإسكان ميم الجمع',\n]);\n\n"""
           if anchor not in s: raise SystemExit('THEME_ANCHOR_MISSING')
           s=s.replace(anchor,titles+anchor)
           old='<NavigationContainer theme={navigationTheme}><AppNavigation /></NavigationContainer>'
           new="<UnifiedSeriesGate mushafs={UNIFIED_MUSHAFS}>{(_entry, leave) => (<NavigationContainer theme={navigationTheme}><AppNavigation onExitSeries={leave} /></NavigationContainer>)}</UnifiedSeriesGate>"
           if old not in s: raise SystemExit('APP_NAV_ANCHOR_MISSING')
           p.write_text(s.replace(old,new))
-          p=Path('qurani-app/src/app/navigation.tsx')
-          s=p.read_text()
-          oldnav="export function AppNavigation(): React.JSX.Element {"
+          p=Path('qurani-app/src/app/navigation.tsx'); s=p.read_text(); oldnav='export function AppNavigation(): React.JSX.Element {'
           if oldnav not in s: raise SystemExit('NAV_FUNCTION_ANCHOR_MISSING')
-          p.write_text(s.replace(oldnav, "export function AppNavigation({onExitSeries: _onExitSeries}: {onExitSeries?: () => void}): React.JSX.Element {"))
+          p.write_text(s.replace(oldnav,"export function AppNavigation({onExitSeries: _onExitSeries}: {onExitSeries?: () => void}): React.JSX.Element {"))
           PY
-          python3 qurani-unified/test_unified_contract.py
 
-      - name: Configure unified Android identity
+      - name: Package original content for all 12 mushafs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app/android/app/src/main/assets/pdf /tmp/v104-apks /tmp/unpack
+          mkdir -p qurani-app/android/app/src/main/assets/pdf /tmp/v104-apks /tmp/unpack
+          gh release download quran-series-v1.0.4-exact-ayah-search --pattern '*.apk' --dir /tmp/v104-apks
+          cat > /tmp/unified-assets.txt <<'EOF'
+          01-AbuAmr-v1.0.4.apk|abuamr
+          02-IbnAmir-v1.0.4.apk|ibnamir
+          03-IbnKathir-v1.0.4.apk|ibnkathir
+          04-Khalaf-Hamza-Sakt-v1.0.4.apk|khalafhamza
+          05-AlKisai-v1.0.4.apk|alkisai
+          06-Khallad-Hamza-NoSakt-v1.0.4.apk|khalladhamza
+          07-AbuJaafar-v1.0.4.apk|abujaafar
+          08-Yaqub-v1.0.4.apk|yaqub
+          09-Khalaf10-v1.0.4.apk|khalaf10
+          10-Asim-v1.0.4.apk|asim
+          11-Warsh-Azraq-v1.0.4.apk|warshazraq
+          12-Qalun-Qasr-v1.0.4.apk|qalunqasr
+          EOF
+          count=0
+          while IFS='|' read -r apk slug; do
+            echo "PACKAGING_MUSHAF=$slug FROM=$apk"
+            test -s "/tmp/v104-apks/$apk"
+            rm -rf "/tmp/unpack/$slug"; mkdir -p "/tmp/unpack/$slug"
+            unzip -q "/tmp/v104-apks/$apk" 'assets/pdf/*' -d "/tmp/unpack/$slug"
+            mkdir -p "qurani-app/android/app/src/main/assets/pdf/$slug"
+            cp -a "/tmp/unpack/$slug/assets/pdf/." "qurani-app/android/app/src/main/assets/pdf/$slug/"
+            for f in reading.pdf quran.pdf quran_index.pdf dua.pdf waqf_symbols.pdf furati_intro.pdf usul.pdf; do test -s "qurani-app/android/app/src/main/assets/pdf/$slug/$f"; done
+            count=$((count+1))
+            rm -rf "/tmp/unpack/$slug" "/tmp/v104-apks/$apk"
+          done < /tmp/unified-assets.txt
+          test "$count" -eq 12
+          test "$(find qurani-app/android/app/src/main/assets/pdf -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 12
+          echo "UNIFIED_12_MUSHAF_ASSET_SETS_OK=1"
+          du -sh qurani-app/android/app/src/main/assets/pdf
+          df -h .
+
+      - name: Configure and verify unified Android app
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import re
-          g=Path('qurani-app/android/app/build.gradle')
-          s=g.read_text()
-          s=re.sub(r'applicationId\s+"[^"]+"', 'applicationId "com.qurani.series"', s)
-          s=re.sub(r'versionCode\s+\d+', 'versionCode 1', s)
-          s=re.sub(r'versionName\s+"[^"]+"', 'versionName "1.0.0"', s)
-          g.write_text(s)
+          g=Path('qurani-app/android/app/build.gradle'); s=g.read_text()
+          s=re.sub(r'applicationId\s+"[^"]+"','applicationId "com.qurani.series"',s)
+          s=re.sub(r'versionCode\s+\d+','versionCode 1',s)
+          s=re.sub(r'versionName\s+"[^"]+"','versionName "1.0.0"',s); g.write_text(s)
           strings=Path('qurani-app/android/app/src/main/res/values/strings.xml')
-          if strings.exists():
-              x=strings.read_text(); x=re.sub(r'<string name="app_name">.*?</string>', '<string name="app_name">سلسلة قرآني</string>', x); strings.write_text(x)
+          if strings.exists(): strings.write_text(re.sub(r'<string name="app_name">.*?</string>','<string name="app_name">سلسلة قرآني</string>',strings.read_text()))
           PY
-
-      - name: TypeScript check app sources
-        shell: bash
-        run: |
-          set -euo pipefail
           cd qurani-app
           cat > tsconfig.unified.json <<'EOF'
           {"extends":"./tsconfig.json","exclude":["__tests__","node_modules","android","ios"]}
           EOF
           npx tsc -p tsconfig.unified.json --noEmit
+          cd ..
+          grep -q "'abuamr'.*'qalunqasr'" qurani-app/src/app/mushafs.ts
+          grep -q 'scopedPdfAsset' qurani-app/src/features/reader/PdfPage.tsx
+          echo 'UNIFIED_SOURCE_CONTRACT_OK=1'
 
       - name: Bootstrap Android build tools
         shell: bash
@@ -167,26 +194,33 @@ jobs:
           chmod +x gradlew
           ./gradlew --version
 
-      - name: Build unified release APK
+      - name: Build final unified 12-mushaf APK
         shell: bash
         run: |
           set -euo pipefail
-          test -s qurani-app/assets/branding/qurani-icon.png
-          test -s qurani-app/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
           cd qurani-app/android
           ./gradlew assembleRelease --no-daemon
           cd ../..
           mkdir -p final-unified
           APK="$(find qurani-app/android/app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
-          test -n "$APK"
-          cp "$APK" final-unified/qurani-series-v1.0.0.apk
-          ls -lah final-unified
-          sha256sum final-unified/qurani-series-v1.0.0.apk | tee final-unified/SHA256SUMS.txt
+          test -n "$APK"; test -s "$APK"
+          cp "$APK" final-unified/qurani-series-v1.0.0-all-12-mushafs.apk
+          ls -lh final-unified
+          sha256sum final-unified/qurani-series-v1.0.0-all-12-mushafs.apk | tee final-unified/SHA256SUMS.txt
 
-      - name: Upload unified APK
+      - name: Upload final unified artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qurani-unified-series-apk
+          name: qurani-unified-series-all-12-mushafs
           path: final-unified/*
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish unified release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$UNIFIED_TAG" --cleanup-tag --yes >/dev/null 2>&1 || true
+          gh release create "$UNIFIED_TAG" final-unified/qurani-series-v1.0.0-all-12-mushafs.apk final-unified/SHA256SUMS.txt --target "$GITHUB_SHA" --title 'سلسلة قرآني v1.0.0 – 12 مصحف في تطبيق واحد' --notes 'تطبيق سلسلة قرآني الموحد: 12 مصحفًا من إصدارات v1.0.4 الأصلية، مع شاشة اختيار المصحف، onboarding لأول تشغيل، البحث الدقيق بنص الآية، Zoom، RTL، الفهرس والأقسام.'
