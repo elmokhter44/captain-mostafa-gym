@@ -3,31 +3,27 @@ import {I18nManager, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type MushafEntry = {id: string; title: string; subtitle?: string};
-
 const ONBOARDING_KEY = '@qurani/unified/onboarding-v1';
-
 const ONBOARDING = [
   {title: 'القرآن الكريم بقراءاته بين يديك', body: 'سلسلة قرآني تجمع مصاحف السلسلة في تطبيق واحد، مع الحفاظ على تجربة كل مصحف ومحتواه.'},
   {title: 'مصاحف متعددة في مكان واحد', body: 'اختر من المصاحف والقراءات المتاحة، وانتقل إلى واجهة المصحف الكاملة بسهولة.'},
   {title: 'تجربة قراءة متكاملة', body: 'بحث بنص الآية، فهرس، تكبير الصفحات، تنقل من اليمين إلى اليسار، وأقسام تعمل دون اتصال بالإنترنت.'},
-];
+] as const;
 
 export function UnifiedSeriesGate({mushafs, children}: {mushafs: MushafEntry[]; children: (entry: MushafEntry, leave: () => void) => React.ReactNode}) {
   const [ready, setReady] = useState(false);
   const [onboarded, setOnboarded] = useState(false);
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<MushafEntry | null>(null);
-
   useEffect(() => {
     I18nManager.allowRTL(true);
-    AsyncStorage.getItem(ONBOARDING_KEY).then(v => {setOnboarded(v === '1'); setReady(true);});
+    AsyncStorage.getItem(ONBOARDING_KEY).then((v: string | null) => {setOnboarded(v === '1'); setReady(true);});
   }, []);
-
   if (!ready) return <SafeAreaView style={s.splash}><Text style={s.brand}>قرآني</Text><Text style={s.series}>سلسلة قرآني</Text></SafeAreaView>;
   if (!onboarded) {
-    const item = ONBOARDING[page];
+    const item = ONBOARDING[page] ?? ONBOARDING[0];
     const last = page === ONBOARDING.length - 1;
-    return <SafeAreaView style={s.root}><View style={s.onboarding}><View style={s.logo}><Text style={s.logoText}>قرآني</Text></View><Text style={s.title}>{item.title}</Text><Text style={s.body}>{item.body}</Text><View style={s.dots}>{ONBOARDING.map((_, i) => <View key={i} style={[s.dot, i === page && s.dotActive]}/>)}</View><Pressable style={s.primary} onPress={async () => {if (!last) return setPage(p => p + 1); await AsyncStorage.setItem(ONBOARDING_KEY, '1'); setOnboarded(true);}}><Text style={s.primaryText}>{last ? 'ابدأ الآن' : 'التالي'}</Text></Pressable></View></SafeAreaView>;
+    return <SafeAreaView style={s.root}><View style={s.onboarding}><View style={s.logo}><Text style={s.logoText}>قرآني</Text></View><Text style={s.title}>{item.title}</Text><Text style={s.body}>{item.body}</Text><View style={s.dots}>{ONBOARDING.map((_, i) => <View key={i} style={[s.dot, i === page && s.dotActive]}/>)}</View><Pressable style={s.primary} onPress={async () => {if (!last) {setPage(p => Math.min(p + 1, ONBOARDING.length - 1)); return;} await AsyncStorage.setItem(ONBOARDING_KEY, '1'); setOnboarded(true);}}><Text style={s.primaryText}>{last ? 'ابدأ الآن' : 'التالي'}</Text></Pressable></View></SafeAreaView>;
   }
   if (selected) return <>{children(selected, () => setSelected(null))}</>;
   return <SafeAreaView style={s.root}><ScrollView contentContainerStyle={s.selector}><View style={s.logo}><Text style={s.logoText}>قرآني</Text></View><Text style={s.seriesTitle}>سلسلة قرآني</Text><Text style={s.choose}>اختر المصحف</Text><View style={s.grid}>{mushafs.map((m, i) => <Pressable key={m.id} testID={`mushaf-card-${m.id}`} style={s.card} onPress={() => setSelected(m)}><Text style={s.cardNumber}>{String(i + 1).padStart(2, '0')}</Text><Text style={s.cardTitle}>{m.title}</Text>{m.subtitle ? <Text style={s.cardSubtitle}>{m.subtitle}</Text> : null}<Text style={s.open}>فتح المصحف ←</Text></Pressable>)}</View></ScrollView></SafeAreaView>;
