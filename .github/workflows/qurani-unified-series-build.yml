@@ -57,9 +57,12 @@ jobs:
         run: |
           set -euo pipefail
           echo '===== App.tsx ====='; cat qurani-app/src/app/App.tsx
-          echo '===== navigation ====='; cat qurani-app/src/app/navigation.ts || cat qurani-app/src/app/navigation.tsx
+          echo '===== navigation ====='; cat qurani-app/src/app/navigation.tsx
           echo '===== AppServicesContext ====='; cat qurani-app/src/app/AppServicesContext.tsx
-          echo '===== sections ====='; cat qurani-app/src/data/sections.ts
-          echo '===== HomeScreen ====='; sed -n '1,120p' qurani-app/src/features/home/HomeScreen.tsx
-          echo 'RECON_ONLY_NEEDS_UNIFIED_PATCH=1'
-          exit 1
+          echo '===== bootstrap ====='; cat qurani-app/src/app/bootstrap.ts
+          echo '===== SettingsRepository ====='; cat qurani-app/src/repositories/SettingsRepository.ts
+          echo '===== schemas ====='; find qurani-app/src -maxdepth 3 -type f \( -iname '*schema*' -o -iname '*model*' \) -print
+          echo '===== SearchScreen ====='; sed -n '1,260p' qurani-app/src/features/search/SearchScreen.tsx
+          echo '===== IndexScreen ====='; sed -n '1,260p' qurani-app/src/features/index/IndexScreen.tsx
+          echo '===== PdfAssetService ====='; cat qurani-app/src/services/PdfAssetService.ts
+          echo 'RECON_PASS=1'
