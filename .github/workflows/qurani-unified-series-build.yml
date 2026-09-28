@@ -91,7 +91,7 @@ jobs:
           s=p.read_text()
           oldnav="export function AppNavigation(): React.JSX.Element {"
           if oldnav not in s: raise SystemExit('NAV_FUNCTION_ANCHOR_MISSING')
-          p.write_text(s.replace(oldnav, "export function AppNavigation({_onExitSeries}: {_onExitSeries?: () => void}): React.JSX.Element {"))
+          p.write_text(s.replace(oldnav, "export function AppNavigation({onExitSeries: _onExitSeries}: {onExitSeries?: () => void}): React.JSX.Element {"))
           PY
           python3 qurani-unified/test_unified_contract.py
 
