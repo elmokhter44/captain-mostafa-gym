@@ -1,0 +1,65 @@
+name: Qurani Unified Series APK
+
+on:
+  push:
+    branches: [qurani-unified-series-v100]
+    paths:
+      - '.github/workflows/qurani-unified-series-build.yml'
+      - 'qurani-unified/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+      - name: Reconstruct proven v1.0.4 source base
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf qurani-app /tmp/payload
+          mkdir -p qurani-app /tmp/payload
+          cat qurani-ci/text/part-* > /tmp/src.b64
+          base64 -d /tmp/src.b64 > /tmp/src.tar.gz
+          echo '8419ab562a4783684b34e1bc62a96be4dc3da00f8a85e5e0d298182ab1e79192  /tmp/src.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/src.tar.gz -C qurani-app
+          cat qurani-v101/overlay/part-* > /tmp/overlay.b64
+          base64 -d /tmp/overlay.b64 > /tmp/overlay.tar.gz
+          tar -xzf /tmp/overlay.tar.gz -C qurani-app
+          cat .series-generated-v102/parts/payload.part-* > /tmp/v102.tar.gz
+          tar -xzf /tmp/v102.tar.gz -C /tmp/payload
+          base64 -d qurani-series/apply_series_common.py.gz.b64 | gzip -dc > /tmp/apply.py
+          (cd qurani-app && python3 /tmp/apply.py .)
+          cp qurani-v102-fixed/ReaderScreen.tsx qurani-app/src/features/reader/ReaderScreen.tsx
+          cp qurani-v103-fixed/ZoomablePdfPage.tsx qurani-app/src/features/reader/ZoomablePdfPage.tsx
+          cp qurani-v101-fixed/PdfPage.tsx qurani-app/src/features/reader/PdfPage.tsx
+          cp qurani-v103-fixed/IndexScreen.tsx qurani-app/src/features/index/IndexScreen.tsx
+          cp qurani-v102-fixed/SectionCard.tsx qurani-app/src/features/home/SectionCard.tsx
+          cp qurani-v104-exact-search/SearchScreen.tsx qurani-app/src/features/search/SearchScreen.tsx
+          cp qurani-v104-exact-search/VerseSearchService.ts qurani-app/src/services/VerseSearchService.ts
+          python3 qurani-v102-complete/apply_complete_patch.py qurani-app
+      - name: Source contract reconnaissance
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '===== App.tsx ====='; cat qurani-app/src/app/App.tsx
+          echo '===== navigation ====='; cat qurani-app/src/app/navigation.ts || cat qurani-app/src/app/navigation.tsx
+          echo '===== AppServicesContext ====='; cat qurani-app/src/app/AppServicesContext.tsx
+          echo '===== sections ====='; cat qurani-app/src/data/sections.ts
+          echo '===== HomeScreen ====='; sed -n '1,120p' qurani-app/src/features/home/HomeScreen.tsx
+          echo 'RECON_ONLY_NEEDS_UNIFIED_PATCH=1'
+          exit 1
