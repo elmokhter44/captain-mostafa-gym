@@ -24,9 +24,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.3.1'
       - name: Reconstruct proven v1.0.4 source base
         shell: bash
         run: |
@@ -52,17 +49,96 @@ jobs:
           cp qurani-v104-exact-search/SearchScreen.tsx qurani-app/src/features/search/SearchScreen.tsx
           cp qurani-v104-exact-search/VerseSearchService.ts qurani-app/src/services/VerseSearchService.ts
           python3 qurani-v102-complete/apply_complete_patch.py qurani-app
-      - name: Source contract reconnaissance
+
+      - name: Install dependencies and exact 6236 ayah index
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          npm ci --no-audit --no-fund
+          cd ..
+          rm -rf /tmp/reference-v104 /tmp/reference-extract-v104
+          mkdir -p /tmp/reference-v104 /tmp/reference-extract-v104
+          gh release download qurani-v1.0.2-nafi-final --pattern default.apk --dir /tmp/reference-v104
+          mv /tmp/reference-v104/default.apk /tmp/reference-v104/reference-nafi.apk
+          unzip -q /tmp/reference-v104/reference-nafi.apk assets/index.android.bundle -d /tmp/reference-extract-v104
+          python3 qurani-v104-exact-search/extract_reference_verse_index.py /tmp/reference-extract-v104/assets/index.android.bundle --json-out /tmp/verse-index.json --ts-out qurani-app/src/data/verses.generated.ts
+          python3 qurani-v104-exact-search/test_exact_search.py /tmp/verse-index.json
+
+      - name: Apply unified app gate and wire navigation
         shell: bash
         run: |
           set -euo pipefail
-          echo '===== App.tsx ====='; cat qurani-app/src/app/App.tsx
-          echo '===== navigation ====='; cat qurani-app/src/app/navigation.tsx
-          echo '===== AppServicesContext ====='; cat qurani-app/src/app/AppServicesContext.tsx
-          echo '===== bootstrap ====='; cat qurani-app/src/app/bootstrap.ts
-          echo '===== SettingsRepository ====='; cat qurani-app/src/repositories/SettingsRepository.ts
-          echo '===== schemas ====='; find qurani-app/src -maxdepth 3 -type f \( -iname '*schema*' -o -iname '*model*' \) -print
-          echo '===== SearchScreen ====='; sed -n '1,260p' qurani-app/src/features/search/SearchScreen.tsx
-          echo '===== IndexScreen ====='; sed -n '1,260p' qurani-app/src/features/index/IndexScreen.tsx
-          echo '===== PdfAssetService ====='; cat qurani-app/src/services/PdfAssetService.ts
-          echo 'RECON_PASS=1'
+          cp qurani-unified/src/app/UnifiedSeriesGate.tsx qurani-app/src/app/UnifiedSeriesGate.tsx
+          cp qurani-unified/src/app/mushafs.ts qurani-app/src/app/mushafs.ts
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('qurani-app/src/app/App.tsx')
+          s=p.read_text()
+          s=s.replace("import {ErrorBoundary} from '../features/common/ErrorBoundary';", "import {ErrorBoundary} from '../features/common/ErrorBoundary';\nimport {UnifiedSeriesGate} from './UnifiedSeriesGate';\nimport {makeMushafEntries} from './mushafs';")
+          anchor="const navigationTheme ="
+          titles="""const UNIFIED_MUSHAFS = makeMushafEntries([\n  'المصحف المعلم بقراءة الإمام نافع',\n  'المصحف المعلم بقراءة الإمام ابن كثير المكي',\n  'المصحف المعلم بقراءة الإمام أبي عمرو البصري',\n  'المصحف المعلم بقراءة الإمام ابن عامر الشامي',\n  'المصحف المعلم بقراءة الإمام عاصم الكوفي',\n  'المصحف المعلم بقراءة الإمام حمزة الكوفي',\n  'المصحف المعلم بقراءة الإمام الكسائي',\n  'المصحف المعلم بقراءة الإمام أبي جعفر المدني',\n  'المصحف المعلم بقراءة الإمام يعقوب الحضرمي',\n  'المصحف المعلم بقراءة الإمام خلف العاشر',\n  'المصحف الحادي عشر من سلسلة قرآني',\n  'المصحف الثاني عشر من سلسلة قرآني',\n]);\n\n"""
+          s=s.replace(anchor,titles+anchor)
+          old='<NavigationContainer theme={navigationTheme}><AppNavigation /></NavigationContainer>'
+          new="<UnifiedSeriesGate mushafs={UNIFIED_MUSHAFS}>{(_entry, leave) => (<NavigationContainer theme={navigationTheme}><AppNavigation onExitSeries={leave} /></NavigationContainer>)}</UnifiedSeriesGate>"
+          if old not in s: raise SystemExit('APP_NAV_ANCHOR_MISSING')
+          p.write_text(s.replace(old,new))
+
+          p=Path('qurani-app/src/app/navigation.tsx')
+          s=p.read_text()
+          s=s.replace("export function AppNavigation(): React.JSX.Element {", "export function AppNavigation({onExitSeries}: {onExitSeries?: () => void}): React.JSX.Element {")
+          # Native stack owns in-app back. Android back from Home is intercepted in App.tsx gate on next UI pass;
+          # this prop keeps the contract explicit without altering proven reader/search/index behavior.
+          p.write_text(s)
+          PY
+          python3 qurani-unified/test_unified_contract.py
+
+      - name: Configure unified Android identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          g=Path('qurani-app/android/app/build.gradle')
+          s=g.read_text()
+          import re
+          s=re.sub(r'applicationId\s+"[^"]+"', 'applicationId "com.qurani.series"', s)
+          s=re.sub(r'versionCode\s+\d+', 'versionCode 1', s)
+          s=re.sub(r'versionName\s+"[^"]+"', 'versionName "1.0.0"', s)
+          g.write_text(s)
+          strings=Path('qurani-app/android/app/src/main/res/values/strings.xml')
+          if strings.exists():
+              x=strings.read_text(); x=re.sub(r'<string name="app_name">.*?</string>', '<string name="app_name">سلسلة قرآني</string>', x); strings.write_text(x)
+          PY
+
+      - name: TypeScript check
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app
+          npx tsc --noEmit
+
+      - name: Build unified release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app/android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cd ../..
+          mkdir -p final-unified
+          APK="$(find qurani-app/android/app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
+          test -n "$APK"
+          cp "$APK" final-unified/qurani-series-v1.0.0.apk
+          ls -lah final-unified
+          sha256sum final-unified/qurani-series-v1.0.0.apk | tee final-unified/SHA256SUMS.txt
+
+      - name: Upload unified APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: qurani-unified-series-apk
+          path: final-unified/*
+          if-no-files-found: error
+          retention-days: 30
