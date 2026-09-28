@@ -58,6 +58,7 @@ jobs:
           set -euo pipefail
           cd qurani-app
           npm install --no-audit --no-fund
+          npm install --no-audit --no-fund @react-native-async-storage/async-storage
           cd ..
           rm -rf /tmp/reference-v104 /tmp/reference-extract-v104
           mkdir -p /tmp/reference-v104 /tmp/reference-extract-v104
@@ -80,6 +81,7 @@ jobs:
           s=s.replace("import {ErrorBoundary} from '../features/common/ErrorBoundary';", "import {ErrorBoundary} from '../features/common/ErrorBoundary';\nimport {UnifiedSeriesGate} from './UnifiedSeriesGate';\nimport {makeMushafEntries} from './mushafs';")
           anchor="const navigationTheme ="
           titles="""const UNIFIED_MUSHAFS = makeMushafEntries([\n  'المصحف المعلم بقراءة الإمام نافع',\n  'المصحف المعلم بقراءة الإمام ابن كثير المكي',\n  'المصحف المعلم بقراءة الإمام أبي عمرو البصري',\n  'المصحف المعلم بقراءة الإمام ابن عامر الشامي',\n  'المصحف المعلم بقراءة الإمام عاصم الكوفي',\n  'المصحف المعلم بقراءة الإمام حمزة الكوفي',\n  'المصحف المعلم بقراءة الإمام الكسائي',\n  'المصحف المعلم بقراءة الإمام أبي جعفر المدني',\n  'المصحف المعلم بقراءة الإمام يعقوب الحضرمي',\n  'المصحف المعلم بقراءة الإمام خلف العاشر',\n  'المصحف الحادي عشر من سلسلة قرآني',\n  'المصحف الثاني عشر من سلسلة قرآني',\n]);\n\n"""
+          if anchor not in s: raise SystemExit('THEME_ANCHOR_MISSING')
           s=s.replace(anchor,titles+anchor)
           old='<NavigationContainer theme={navigationTheme}><AppNavigation /></NavigationContainer>'
           new="<UnifiedSeriesGate mushafs={UNIFIED_MUSHAFS}>{(_entry, leave) => (<NavigationContainer theme={navigationTheme}><AppNavigation onExitSeries={leave} /></NavigationContainer>)}</UnifiedSeriesGate>"
@@ -87,8 +89,9 @@ jobs:
           p.write_text(s.replace(old,new))
           p=Path('qurani-app/src/app/navigation.tsx')
           s=p.read_text()
-          s=s.replace("export function AppNavigation(): React.JSX.Element {", "export function AppNavigation({onExitSeries}: {onExitSeries?: () => void}): React.JSX.Element {")
-          p.write_text(s)
+          oldnav="export function AppNavigation(): React.JSX.Element {"
+          if oldnav not in s: raise SystemExit('NAV_FUNCTION_ANCHOR_MISSING')
+          p.write_text(s.replace(oldnav, "export function AppNavigation({_onExitSeries}: {_onExitSeries?: () => void}): React.JSX.Element {"))
           PY
           python3 qurani-unified/test_unified_contract.py
 
@@ -110,12 +113,18 @@ jobs:
               x=strings.read_text(); x=re.sub(r'<string name="app_name">.*?</string>', '<string name="app_name">سلسلة قرآني</string>', x); strings.write_text(x)
           PY
 
-      - name: TypeScript check
+      - name: TypeScript check app sources
         shell: bash
         run: |
           set -euo pipefail
           cd qurani-app
-          npx tsc --noEmit
+          cat > tsconfig.unified.json <<'EOF'
+          {
+            "extends": "./tsconfig.json",
+            "exclude": ["__tests__", "node_modules", "android", "ios"]
+          }
+          EOF
+          npx tsc -p tsconfig.unified.json --noEmit
 
       - name: Build unified release APK
         shell: bash
@@ -129,6 +138,7 @@ jobs:
           APK="$(find qurani-app/android/app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
           test -n "$APK"
           cp "$APK" final-unified/qurani-series-v1.0.0.apk
+          echo '=== FINAL UNIFIED OUTPUT ==='
           ls -lah final-unified
           sha256sum final-unified/qurani-series-v1.0.0.apk | tee final-unified/SHA256SUMS.txt
 
