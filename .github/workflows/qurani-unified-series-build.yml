@@ -53,6 +53,23 @@ jobs:
           cp qurani-v104-exact-search/SearchScreen.tsx qurani-app/src/features/search/SearchScreen.tsx
           cp qurani-v104-exact-search/VerseSearchService.ts qurani-app/src/services/VerseSearchService.ts
           python3 qurani-v102-complete/apply_complete_patch.py qurani-app
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          b64=''.join(p.read_text() for p in sorted(Path('qurani-ci/logo').glob('part-*')))
+          if not b64:
+              raise SystemExit('QURANI_LOGO_PARTS_MISSING')
+          Path('/tmp/qurani-logo.jpg').write_bytes(base64.b64decode(b64, validate=True))
+          PY
+          echo '4c8d65a11c77539831be3a791e54b9eb984375cea878262fd1972ed3acf58cae  /tmp/qurani-logo.jpg' | sha256sum -c -
+          python3 -m pip install --quiet pillow
+          mkdir -p qurani-app/assets/branding
+          python3 - <<'PY'
+          from PIL import Image
+          Image.open('/tmp/qurani-logo.jpg').convert('RGBA').save('qurani-app/assets/branding/qurani-icon.png', optimize=True)
+          PY
+          test -s qurani-app/assets/branding/qurani-icon.png
+          ls -lah qurani-app/assets/branding/qurani-icon.png
 
       - name: Install dependencies and exact 6236 ayah index
         shell: bash
@@ -147,6 +164,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -s qurani-app/assets/branding/qurani-icon.png
           cd qurani-app/android
           ./gradlew assembleRelease --no-daemon
           cd ../..
