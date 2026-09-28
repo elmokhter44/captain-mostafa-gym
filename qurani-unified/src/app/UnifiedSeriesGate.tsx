@@ -1,0 +1,36 @@
+import React, {useEffect, useState} from 'react';
+import {I18nManager, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+export type MushafEntry = {id: string; title: string; subtitle?: string};
+
+const ONBOARDING_KEY = '@qurani/unified/onboarding-v1';
+
+const ONBOARDING = [
+  {title: 'القرآن الكريم بقراءاته بين يديك', body: 'سلسلة قرآني تجمع مصاحف السلسلة في تطبيق واحد، مع الحفاظ على تجربة كل مصحف ومحتواه.'},
+  {title: 'مصاحف متعددة في مكان واحد', body: 'اختر من المصاحف والقراءات المتاحة، وانتقل إلى واجهة المصحف الكاملة بسهولة.'},
+  {title: 'تجربة قراءة متكاملة', body: 'بحث بنص الآية، فهرس، تكبير الصفحات، تنقل من اليمين إلى اليسار، وأقسام تعمل دون اتصال بالإنترنت.'},
+];
+
+export function UnifiedSeriesGate({mushafs, children}: {mushafs: MushafEntry[]; children: (entry: MushafEntry, leave: () => void) => React.ReactNode}) {
+  const [ready, setReady] = useState(false);
+  const [onboarded, setOnboarded] = useState(false);
+  const [page, setPage] = useState(0);
+  const [selected, setSelected] = useState<MushafEntry | null>(null);
+
+  useEffect(() => {
+    I18nManager.allowRTL(true);
+    AsyncStorage.getItem(ONBOARDING_KEY).then(v => {setOnboarded(v === '1'); setReady(true);});
+  }, []);
+
+  if (!ready) return <SafeAreaView style={s.splash}><Text style={s.brand}>قرآني</Text><Text style={s.series}>سلسلة قرآني</Text></SafeAreaView>;
+  if (!onboarded) {
+    const item = ONBOARDING[page];
+    const last = page === ONBOARDING.length - 1;
+    return <SafeAreaView style={s.root}><View style={s.onboarding}><View style={s.logo}><Text style={s.logoText}>قرآني</Text></View><Text style={s.title}>{item.title}</Text><Text style={s.body}>{item.body}</Text><View style={s.dots}>{ONBOARDING.map((_, i) => <View key={i} style={[s.dot, i === page && s.dotActive]}/>)}</View><Pressable style={s.primary} onPress={async () => {if (!last) return setPage(p => p + 1); await AsyncStorage.setItem(ONBOARDING_KEY, '1'); setOnboarded(true);}}><Text style={s.primaryText}>{last ? 'ابدأ الآن' : 'التالي'}</Text></Pressable></View></SafeAreaView>;
+  }
+  if (selected) return <>{children(selected, () => setSelected(null))}</>;
+  return <SafeAreaView style={s.root}><ScrollView contentContainerStyle={s.selector}><View style={s.logo}><Text style={s.logoText}>قرآني</Text></View><Text style={s.seriesTitle}>سلسلة قرآني</Text><Text style={s.choose}>اختر المصحف</Text><View style={s.grid}>{mushafs.map((m, i) => <Pressable key={m.id} testID={`mushaf-card-${m.id}`} style={s.card} onPress={() => setSelected(m)}><Text style={s.cardNumber}>{String(i + 1).padStart(2, '0')}</Text><Text style={s.cardTitle}>{m.title}</Text>{m.subtitle ? <Text style={s.cardSubtitle}>{m.subtitle}</Text> : null}<Text style={s.open}>فتح المصحف ←</Text></Pressable>)}</View></ScrollView></SafeAreaView>;
+}
+
+const s = StyleSheet.create({root:{flex:1,backgroundColor:'#071F1A'},splash:{flex:1,backgroundColor:'#071F1A',alignItems:'center',justifyContent:'center'},brand:{color:'#D7B96E',fontSize:44,fontWeight:'900'},series:{color:'#F7F1E4',fontSize:18,marginTop:10},onboarding:{flex:1,padding:28,alignItems:'center',justifyContent:'center'},logo:{width:92,height:92,borderRadius:46,borderWidth:1,borderColor:'#D7B96E',alignItems:'center',justifyContent:'center',marginBottom:24},logoText:{color:'#D7B96E',fontSize:24,fontWeight:'900'},title:{color:'#FFF',fontSize:28,lineHeight:42,fontWeight:'900',textAlign:'center',writingDirection:'rtl'},body:{color:'#D9E3DF',fontSize:17,lineHeight:30,textAlign:'center',writingDirection:'rtl',marginTop:16},dots:{flexDirection:'row',gap:8,marginVertical:32},dot:{width:8,height:8,borderRadius:4,backgroundColor:'#547068'},dotActive:{width:24,backgroundColor:'#D7B96E'},primary:{backgroundColor:'#D7B96E',borderRadius:16,paddingVertical:15,paddingHorizontal:54},primaryText:{color:'#071F1A',fontSize:17,fontWeight:'900'},selector:{padding:22,paddingBottom:44,alignItems:'center'},seriesTitle:{color:'#FFF',fontSize:30,fontWeight:'900',writingDirection:'rtl'},choose:{color:'#D7B96E',fontSize:18,fontWeight:'800',marginTop:8,marginBottom:24,writingDirection:'rtl'},grid:{width:'100%',flexDirection:'row-reverse',flexWrap:'wrap',justifyContent:'space-between'},card:{width:'48.5%',minHeight:178,backgroundColor:'#0D3028',borderWidth:1,borderColor:'#315B50',borderRadius:22,padding:17,marginBottom:14},cardNumber:{color:'#D7B96E',fontSize:12,fontWeight:'900'},cardTitle:{color:'#FFF',fontSize:17,lineHeight:27,fontWeight:'900',textAlign:'right',writingDirection:'rtl',marginTop:10},cardSubtitle:{color:'#B8CBC5',fontSize:12,lineHeight:20,textAlign:'right',writingDirection:'rtl',marginTop:5},open:{color:'#D7B96E',fontSize:12,fontWeight:'800',textAlign:'right',marginTop:'auto'}});
