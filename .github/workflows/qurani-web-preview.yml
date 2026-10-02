@@ -24,19 +24,50 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare preview
+      - name: Prepare preview and extract 12 original reading PDFs
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p _site
+          mkdir -p _site/pdfs /tmp/v104-apks /tmp/unpack
           cp qurani-unified-web/index.html _site/index.html
           cp qurani-unified-web/app.js _site/app.js
           cp qurani-unified-web/style.css _site/style.css
           cat > _site/.nojekyll <<'EOF'
           
           EOF
+          cat > /tmp/unified-assets.txt <<'EOF'
+          01-AbuAmr-v1.0.4.apk|abuamr
+          02-IbnAmir-v1.0.4.apk|ibnamir
+          03-IbnKathir-v1.0.4.apk|ibnkathir
+          04-Khalaf-Hamza-Sakt-v1.0.4.apk|khalafhamza
+          05-AlKisai-v1.0.4.apk|alkisai
+          06-Khallad-Hamza-NoSakt-v1.0.4.apk|khalladhamza
+          07-AbuJaafar-v1.0.4.apk|abujaafar
+          08-Yaqub-v1.0.4.apk|yaqub
+          09-Khalaf10-v1.0.4.apk|khalaf10
+          10-Asim-v1.0.4.apk|asim
+          11-Warsh-Azraq-v1.0.4.apk|warshazraq
+          12-Qalun-Qasr-v1.0.4.apk|qalunqasr
+          EOF
+          gh release download quran-series-v1.0.4-exact-ayah-search --pattern '*.apk' --dir /tmp/v104-apks
+          count=0
+          while IFS='|' read -r apk slug; do
+            test -s "/tmp/v104-apks/$apk"
+            rm -rf /tmp/unpack/current
+            mkdir -p /tmp/unpack/current
+            unzip -q "/tmp/v104-apks/$apk" 'assets/pdf/reading.pdf' -d /tmp/unpack/current
+            test -s /tmp/unpack/current/assets/pdf/reading.pdf
+            cp /tmp/unpack/current/assets/pdf/reading.pdf "_site/pdfs/$slug.pdf"
+            count=$((count+1))
+          done < /tmp/unified-assets.txt
+          test "$count" -eq 12
+          test "$(find _site/pdfs -type f -name '*.pdf' | wc -l)" -eq 12
+          sha256sum _site/pdfs/*.pdf | tee _site/pdfs/SHA256SUMS.txt
           test -s _site/index.html
           test -s _site/app.js
           test -s _site/style.css
+          du -sh _site
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
