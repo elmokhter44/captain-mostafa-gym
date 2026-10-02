@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -68,6 +68,18 @@ jobs:
           test -s _site/app.js
           test -s _site/style.css
           du -sh _site
+
+      - name: Publish preview PDFs as release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/qurani-preview-release
+          mkdir -p /tmp/qurani-preview-release
+          cp _site/pdfs/*.pdf /tmp/qurani-preview-release/
+          gh release delete qurani-preview-pdfs-v1 --cleanup-tag --yes >/dev/null 2>&1 || true
+          gh release create qurani-preview-pdfs-v1 /tmp/qurani-preview-release/*.pdf --target "${GITHUB_SHA}" --title 'Qurani Web Preview PDFs v1' --notes 'Original reading PDFs extracted from the verified v1.0.4 standalone APKs for browser preview. Each PDF is a distinct mushaf.'
+          test "$(gh release view qurani-preview-pdfs-v1 --json assets --jq '.assets | length')" -eq 12
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
