@@ -9,6 +9,10 @@ export function getActiveMushafId(): string {
 }
 
 export function scopedPdfAsset(assetName: string): string {
-  if (assetName.includes('/')) return assetName;
-  return `${activeMushafId}/${assetName}`;
+  const normalized = assetName.replace(/^\/+/, '');
+  const parts = normalized.split('/');
+  if (parts[0] === activeMushafId) return normalized;
+  const file = parts.pop() ?? normalized;
+  const dir = parts.length ? parts.join('/') + '/' : '';
+  return `${activeMushafId}/${dir}${activeMushafId}-${file}`;
 }
