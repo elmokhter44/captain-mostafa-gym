@@ -1,0 +1,54 @@
+name: Qurani Web Preview
+
+on:
+  push:
+    branches: [qurani-unified-series-v100]
+    paths:
+      - 'qurani-unified-web/**'
+      - '.github/workflows/qurani-web-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Prepare preview
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          cp qurani-unified-web/index.html _site/index.html
+          cp qurani-unified-web/app.js _site/app.js
+          cp qurani-unified-web/style.css _site/style.css
+          cat > _site/.nojekyll <<'EOF'
+          
+          EOF
+          test -s _site/index.html
+          test -s _site/app.js
+          test -s _site/style.css
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
