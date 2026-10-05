@@ -12,7 +12,7 @@ export function PdfPage({assetName,pageIndex,width,height,overlay}:{assetName:st
   useEffect(()=>{
     let active=true; setUri(null); setError(false);
     const renderWidth=Math.min(2000,Math.max(640,Math.round(width*PixelRatio.get()*1.35)));
-    pdf.renderPage(selectedAsset,pageIndex,renderWidth).then(v=>{if(active)setUri(v);}).catch(()=>{if(active)setError(true);});
+    pdf.renderPage(selectedAsset,pageIndex,renderWidth).then(v=>{console.log('[QURANI] PDF_RENDER_OK='+selectedAsset+' page='+pageIndex);if(active)setUri(v);}).catch(e=>{console.log('[QURANI] PDF_RENDER_ERROR='+selectedAsset+' '+String(e));if(active)setError(true);});
     return()=>{active=false;};
   },[selectedAsset,pageIndex,pdf,retry,width]);
   return <View style={[styles.page,{width,height:resolvedHeight}]}>{uri?<Image source={{uri}} style={StyleSheet.absoluteFill} resizeMode="stretch"/>:error?<View style={styles.center}><Text style={styles.errorTitle}>تعذر عرض هذه الصفحة</Text><Pressable onPress={()=>setRetry(v=>v+1)} style={styles.retry}><Text style={styles.retryText}>إعادة المحاولة</Text></Pressable></View>:<View style={styles.center}><ActivityIndicator color={COLORS.gold700} size="large"/><Text style={styles.loading}>جارٍ تجهيز الصفحة...</Text></View>}{uri?overlay:null}</View>;
