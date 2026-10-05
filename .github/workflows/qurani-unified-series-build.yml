@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 env:
-  UNIFIED_TAG: qurani-unified-series-v1.0.1
+  UNIFIED_TAG: qurani-unified-series-v1.0.2
 
 jobs:
   build:
@@ -161,14 +161,14 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           root=Path('qurani-app/android/app/src/main/assets/pdf')
+          # Keep original filenames intact inside each mushaf directory.
+          # The runtime resolver scopes reading.pdf/quran_index.pdf/etc. to the selected directory.
+          renamed=[]
           for mushaf in sorted(p for p in root.iterdir() if p.is_dir()):
-              slug=mushaf.name
-              for src in sorted(mushaf.rglob('*')):
-                  if not src.is_file():
-                      continue
-                  rel=src.relative_to(mushaf)
-                  dst=src.with_name(f"{slug}-{src.name}")
-                  src.rename(dst)
+              for src in mushaf.rglob('*'):
+                  if src.is_file() and '-' + mushaf.name + '-' in src.name:
+                      raise SystemExit(f'Unexpected renamed asset: {src}')
+          print('PDF_ASSET_FILENAMES_PRESERVED=1')
           PY
           echo "=== ISOLATED PDF ASSETS ==="
           find qurani-app/android/app/src/main/assets/pdf -type f -name '*.pdf' | sort | head -40
@@ -185,8 +185,8 @@ jobs:
           import re
           g=Path('qurani-app/android/app/build.gradle'); s=g.read_text()
           s=re.sub(r'applicationId\s+"[^"]+"','applicationId "com.qurani.series"',s)
-          s=re.sub(r'versionCode\s+\d+','versionCode 1',s)
-          s=re.sub(r'versionName\s+"[^"]+"','versionName "1.0.1"',s); g.write_text(s)
+          s=re.sub(r'versionCode\s+\d+','versionCode 2',s)
+          s=re.sub(r'versionName\s+"[^"]+"','versionName "1.0.2"',s); g.write_text(s)
           strings=Path('qurani-app/android/app/src/main/res/values/strings.xml')
           if strings.exists(): strings.write_text(re.sub(r'<string name="app_name">.*?</string>','<string name="app_name">سلسلة قرآني</string>',strings.read_text()))
           PY
@@ -222,7 +222,7 @@ jobs:
           mkdir -p final-unified
           APK="$(find qurani-app/android/app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
           test -n "$APK"; test -s "$APK"
-          cp "$APK" final-unified/qurani-series-v1.0.1-all-12-mushafs.apk
+          cp "$APK" final-unified/qurani-series-v1.0.2-all-12-mushafs.apk
           ls -lh final-unified
           sha256sum final-unified/qurani-series-v1.0.1-all-12-mushafs.apk | tee final-unified/SHA256SUMS.txt
           echo "=== FINAL APK CONTENT VERIFICATION ==="
@@ -248,4 +248,4 @@ jobs:
         run: |
           set -euo pipefail
           gh release delete "$UNIFIED_TAG" --cleanup-tag --yes >/dev/null 2>&1 || true
-          gh release create "$UNIFIED_TAG" final-unified/qurani-series-v1.0.1-all-12-mushafs.apk final-unified/SHA256SUMS.txt --target "$GITHUB_SHA" --title 'سلسلة قرآني v1.0.1 – 12 مصحف مستقل داخل تطبيق واحد' --notes 'تطبيق سلسلة قرآني الموحد: كل بطاقة مرتبطة بملفات المصحف الأصلية الخاصة بها من إصدارات v1.0.4، مع شاشة اختيار المصحف، onboarding لأول تشغيل، البحث الدقيق بنص الآية، Zoom، RTL، الفهرس والأقسام.'
+          gh release create "$UNIFIED_TAG" final-unified/qurani-series-v1.0.1-all-12-mushafs.apk final-unified/SHA256SUMS.txt --target "$GITHUB_SHA" --title 'سلسلة قرآني v1.0.2 – 12 مصحف مستقل داخل تطبيق واحد' --notes 'تطبيق سلسلة قرآني الموحد: كل بطاقة مرتبطة بملفات المصحف الأصلية الخاصة بها من إصدارات v1.0.4، مع شاشة اختيار المصحف، onboarding لأول تشغيل، البحث الدقيق بنص الآية، Zoom، RTL، الفهرس والأقسام.'
