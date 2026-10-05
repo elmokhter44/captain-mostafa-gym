@@ -255,8 +255,9 @@ jobs:
           dump_ui(){ adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1; adb pull /sdcard/window.xml /tmp/window.xml >/dev/null 2>&1; }
           tap_target(){
             local target="$1"
-            dump_ui
-            python3 - "$target" <<'PY'
+            for attempt in $(seq 1 12); do
+              dump_ui
+              if python3 - "$target" <<'PY'
           import sys,xml.etree.ElementTree as ET,re,subprocess
           target=sys.argv[1]
           root=ET.parse('/tmp/window.xml').getroot()
@@ -264,15 +265,22 @@ jobs:
               t=n.attrib.get('text','')
               rid=n.attrib.get('resource-id','')
               if target in t or target in rid:
-                  m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+                  m=re.match(r'\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]',n.attrib.get('bounds',''))
                   if m:
                       x=(int(m.group(1))+int(m.group(3)))//2
                       y=(int(m.group(2))+int(m.group(4)))//2
                       subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
                       print('TAPPED',target,x,y)
                       raise SystemExit(0)
-          raise SystemExit('TEXT_OR_ID_NOT_FOUND='+target)
+          raise SystemExit(1)
           PY
+              then return 0; fi
+              adb shell input swipe 540 1850 540 650 500 >/dev/null 2>&1 || true
+              sleep 1
+            done
+            echo "TEXT_OR_ID_NOT_FOUND=$target"
+            cat /tmp/window.xml 2>/dev/null || true
+            return 1
           }
           # Finish onboarding only on the first run.
           for i in 1 2 3; do
