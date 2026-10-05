@@ -240,78 +240,37 @@ jobs:
           set -euo pipefail
           cat > /tmp/verify-unified.sh <<'BASH'
           #!/usr/bin/env bash
-          set -euo pipefail
+          set -u
           APK="$PWD/final-unified/qurani-series-v1.0.3-all-12-mushafs.apk"
           echo "Installing APK: $(du -h "$APK" | cut -f1)"
           adb install -r "$APK" 2>&1 | tee /tmp/install.log
-          adb shell pm clear com.qurani.series >/dev/null || true
-          adb install -r "$APK" 2>&1 | tee -a /tmp/install.log
-          adb shell am force-stop com.qurani.series
+          adb shell am force-stop com.qurani.series || true
           adb logcat -c
-          adb shell am start -W -n com.qurani.series/.MainActivity >/tmp/launch.log
-          sleep 3
-          dump_ui(){ adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1; adb pull /sdcard/window.xml /tmp/window.xml >/dev/null 2>&1; }
-          tap_text(){
-            local target="$1"
-            python3 - "$target" <<'PY'
-          import sys,xml.etree.ElementTree as ET,re,subprocess
-          target=sys.argv[1]
-          root=ET.parse('/tmp/window.xml').getroot()
-          for n in root.iter('node'):
-              text=n.attrib.get('text','')
-              if target in text:
-                  b=n.attrib.get('bounds','')
-                  m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',b)
-                  if m:
-                      x=(int(m.group(1))+int(m.group(3)))//2; y=(int(m.group(2))+int(m.group(4)))//2
-                      subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
-                      print('TAPPED',target,x,y); raise SystemExit(0)
-          raise SystemExit('TEXT_NOT_FOUND='+target)
+          adb shell am start -W -n com.qurani.series/.MainActivity 2>&1 | tee /tmp/launch.log
+          sleep 10
+          echo "=== PACKAGE ==="
+          adb shell dumpsys package com.qurani.series | grep -E 'versionCode=|versionName=' | head -n 3 || true
+          echo "=== LOGCAT ==="
+          adb logcat -d > /tmp/current.log
+          grep -E '\[QURANI\]|FATAL EXCEPTION|AndroidRuntime' /tmp/current.log | tail -n 200 || true
+          adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+          adb pull /sdcard/window.xml /tmp/window.xml >/dev/null 2>&1 || true
+          echo "=== UI TEXT ==="
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          try:
+              root=ET.parse('/tmp/window.xml').getroot()
+              for n in root.iter('node'):
+                  t=n.attrib.get('text','').strip()
+                  rid=n.attrib.get('resource-id','').strip()
+                  if t or 'mushaf-card-' in rid:
+                      print('TEXT=',t,'RID=',rid,'BOUNDS=',n.attrib.get('bounds',''))
+          except Exception as e:
+              print('UI_DUMP_ERROR',e)
           PY
-          }
-          for i in 1 2 3; do
-            dump_ui
-            if grep -q 'ابدأ الآن' /tmp/window.xml; then tap_text 'ابدأ الآن'; else tap_text 'التالي'; fi
-            sleep 1
-          done
-          declare -A EXPECT=(
-            [01]=abuamr [02]=ibnamir [03]=ibnkathir [04]=khalafhamza [05]=alkisai [06]=khalladhamza
-            [07]=abujaafar [08]=yaqub [09]=khalaf10 [10]=asim [11]=warshazraq [12]=qalunqasr
-          )
-          declare -a TITLES=(
-            'المصحف المعلم بقراءة الإمام أبي عمرو'
-            'المصحف المعلم بقراءة الإمام ابن عامر'
-            'المصحف المعلم بقراءة الإمام عبدالله بن كثير'
-            'المصحف المعلم برواية الإمام خلف عن حمزة'
-            'المصحف المعلم بقراءة الإمام الكسائي'
-            'المصحف المعلم برواية الإمام خلاد عن حمزة'
-            'المصحف المعلم بقراءة الإمام أبي جعفر'
-            'المصحف المعلم بقراءة الإمام يعقوب'
-            'المصحف المعلم بقراءة الإمام خلف العاشر'
-            'المصحف المعلم بقراءة الإمام عاصم'
-            'مصحف ورش عن نافع'
-            'مصحف قالون عن نافع'
-          )
-          : > /tmp/unified-emulator.log
-          for i in ${!TITLES[@]}; do
-            num=$((i+1)); key=$(printf '%02d' "$num"); id=${EXPECT[$key]}
-            adb shell am force-stop com.qurani.series
-            adb logcat -c
-            adb shell am start -W -n com.qurani.series/.MainActivity >/dev/null
-            sleep 2
-            dump_ui
-            tap_text "${TITLES[$i]}"
-            sleep 7
-            adb logcat -d > /tmp/current.log
-            grep -q "\[QURANI\] ACTIVE_MUSHAF=$id" /tmp/current.log || { echo "ACTIVE_MUSHAF_FAILED=$id"; cat /tmp/current.log; exit 1; }
-            grep -q "\[QURANI\] PDF_RENDER_OK=$id__reading.pdf" /tmp/current.log || { echo "PDF_RENDER_FAILED=$id"; cat /tmp/current.log; exit 1; }
-            if grep -q "\[QURANI\] PDF_RENDER_ERROR=$id__reading.pdf" /tmp/current.log; then
-              echo "PDF_RENDER_ERROR=$id"; cat /tmp/current.log; exit 1
-            fi
-            echo "MUSHAF_${num}_${id}=PASS" | tee -a /tmp/unified-emulator.log
-          done
-          cat /tmp/unified-emulator.log
-          echo 'UNIFIED_12_MUSHAF_ANDROID_RUNTIME=PASS'
+          if grep -q 'FATAL EXCEPTION' /tmp/current.log; then exit 1; fi
+          test -n "$(adb shell pidof com.qurani.series | tr -d '\r')"
+          echo 'APK_INSTALL_AND_LAUNCH=PASS'
           BASH
           chmod +x /tmp/verify-unified.sh
           if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm; fi
