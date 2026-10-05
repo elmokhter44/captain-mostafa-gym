@@ -310,10 +310,10 @@ jobs:
             if ! grep -q "\[QURANI\] ACTIVE_MUSHAF=$id" /tmp/current.log; then
               echo "ACTIVE_MUSHAF_FAILED=$id"; cat /tmp/current.log; exit 1
             fi
-            if ! grep -q "\[QURANI\] PDF_RENDER_OK=${id}__reading.pdf" /tmp/current.log; then
+            if ! grep -q "\[QURANI\] PDF_RENDER_OK=${id}__quran.pdf" /tmp/current.log; then
               echo "PDF_RENDER_FAILED=$id"; cat /tmp/current.log; exit 1
             fi
-            if grep -q "\[QURANI\] PDF_RENDER_ERROR=${id}__reading.pdf" /tmp/current.log; then
+            if grep -q "\[QURANI\] PDF_RENDER_ERROR=${id}__quran.pdf" /tmp/current.log; then
               echo "PDF_RENDER_ERROR=$id"; cat /tmp/current.log; exit 1
             fi
             echo "MUSHAF_$((i+1))_$id=PASS"
