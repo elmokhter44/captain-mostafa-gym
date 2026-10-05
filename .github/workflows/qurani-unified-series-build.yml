@@ -242,9 +242,10 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           APK="$PWD/final-unified/qurani-series-v1.0.3-all-12-mushafs.apk"
-          adb install -r "$APK" >/tmp/install.log
-          adb shell pm clear com.qurani.series >/dev/null
-          adb install -r "$APK" >/dev/null
+          echo "Installing APK: $(du -h "$APK" | cut -f1)"
+          adb install -r "$APK" 2>&1 | tee /tmp/install.log
+          adb shell pm clear com.qurani.series >/dev/null || true
+          adb install -r "$APK" 2>&1 | tee -a /tmp/install.log
           adb shell am force-stop com.qurani.series
           adb logcat -c
           adb shell am start -W -n com.qurani.series/.MainActivity >/tmp/launch.log
@@ -325,6 +326,7 @@ jobs:
           cores: 2
           ram-size: 3072M
           heap-size: 512M
+          disk-size: 8192M
           disable-animations: true
           emulator-options: -no-snapshot -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-metrics
           script: bash /tmp/verify-unified.sh
