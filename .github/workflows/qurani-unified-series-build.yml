@@ -289,7 +289,27 @@ jobs:
             adb shell monkey -p "$PKG" 1 >/dev/null 2>&1
             sleep 3
             if ! tap_target "mushaf-card-$id"; then tap_target "${TITLES[$i]}"; fi
-            sleep 8
+            sleep 2
+            # The selector intentionally opens the selected mushaf's original app shell.
+            # Enter its reader from that shell before asserting PDF rendering.
+            if ! tap_target "فتح المصحف"; then
+              if ! tap_target "المصحف"; then
+                if ! tap_target "قراءة"; then
+                  echo "READER_ENTRY_NOT_FOUND=$id"
+                  adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+                  adb pull /sdcard/window.xml /tmp/reader-entry.xml >/dev/null 2>&1 || true
+                  cat /tmp/reader-entry.xml 2>/dev/null || true
+                  exit 1
+                fi
+              fi
+            fi
+            sleep 10
+            dump_ui
+            if grep -Eq 'تعذر (عرض|تحميل)|Failed to fetch|تعذر' /tmp/window.xml; then
+              echo "READER_UI_ERROR=$id"
+              cat /tmp/window.xml
+              exit 1
+            fi
             adb logcat -d > /tmp/current.log
             if ! grep -q "\[QURANI\] ACTIVE_MUSHAF=$id" /tmp/current.log; then
               echo "ACTIVE_MUSHAF_FAILED=$id"; cat /tmp/current.log; exit 1
