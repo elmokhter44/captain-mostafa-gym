@@ -289,7 +289,7 @@ jobs:
             id=${IDS[$i]}
             adb shell am force-stop "$PKG" || true
             adb logcat -c
-            adb shell am start -W -n "$PKG/$ACTIVITY" >/dev/null
+            adb shell monkey -p "$PKG" 1 >/dev/null 2>&1
             sleep 3
             if ! tap_target "mushaf-card-$id"; then tap_target "${TITLES[$i]}"; fi
             sleep 8
