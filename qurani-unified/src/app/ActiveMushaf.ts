@@ -8,11 +8,13 @@ export function getActiveMushafId(): string {
   return activeMushafId;
 }
 
+/**
+ * Unified APK stores every original v1.0.4 PDF set under its own mushaf directory.
+ * Reader/Index/section code continues to pass the original asset filename.
+ * Always scope that filename to the currently selected mushaf.
+ */
 export function scopedPdfAsset(assetName: string): string {
   const normalized = assetName.replace(/^\/+/, '');
-  const parts = normalized.split('/');
-  if (parts[0] === activeMushafId) return normalized;
-  const file = parts.pop() ?? normalized;
-  const dir = parts.length ? parts.join('/') + '/' : '';
-  return `${activeMushafId}/${dir}${activeMushafId}-${file}`;
+  if (normalized.startsWith(activeMushafId + '/')) return normalized;
+  return `${activeMushafId}/${normalized}`;
 }
