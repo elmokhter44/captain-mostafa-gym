@@ -2,6 +2,7 @@ let activeMushafId = 'abuamr';
 
 export function setActiveMushafId(id: string): void {
   activeMushafId = id;
+  console.log('[QURANI] ACTIVE_MUSHAF=' + id);
 }
 
 export function getActiveMushafId(): string {
@@ -9,12 +10,13 @@ export function getActiveMushafId(): string {
 }
 
 /**
- * Unified APK stores every original v1.0.4 PDF set under its own mushaf directory.
- * Reader/Index/section code continues to pass the original asset filename.
- * Always scope that filename to the currently selected mushaf.
+ * The Android PDF service resolves files relative to assets/pdf/.
+ * Use a unique flat filename rather than a nested directory so the native
+ * renderer works consistently on Android release builds.
  */
 export function scopedPdfAsset(assetName: string): string {
   const normalized = assetName.replace(/^\/+/, '');
-  if (normalized.startsWith(activeMushafId + '/')) return normalized;
-  return `${activeMushafId}/${normalized}`;
+  const scoped = `${activeMushafId}__${normalized}`;
+  console.log('[QURANI] PDF_ASSET=' + scoped);
+  return scoped;
 }
