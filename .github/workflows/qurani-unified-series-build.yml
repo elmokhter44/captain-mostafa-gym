@@ -224,13 +224,13 @@ jobs:
           test -n "$APK"; test -s "$APK"
           cp "$APK" final-unified/qurani-series-v1.0.2-all-12-mushafs.apk
           ls -lh final-unified
-          sha256sum final-unified/qurani-series-v1.0.1-all-12-mushafs.apk | tee final-unified/SHA256SUMS.txt
+          sha256sum final-unified/qurani-series-v1.0.2-all-12-mushafs.apk | tee final-unified/SHA256SUMS.txt
           echo "=== FINAL APK CONTENT VERIFICATION ==="
           rm -rf /tmp/final-apk-check && mkdir -p /tmp/final-apk-check
-          unzip -q final-unified/qurani-series-v1.0.1-all-12-mushafs.apk 'assets/pdf/*' -d /tmp/final-apk-check
+          unzip -q final-unified/qurani-series-v1.0.2-all-12-mushafs.apk 'assets/pdf/*' -d /tmp/final-apk-check
           test "$(find /tmp/final-apk-check/assets/pdf -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 12
-          test "$(find /tmp/final-apk-check/assets/pdf -mindepth 2 -type f -name '*-reading.pdf' | wc -l)" -eq 12
-          test "$(find /tmp/final-apk-check/assets/pdf -mindepth 2 -type f -name '*-reading.pdf' -print0 | sort -z | xargs -0 sha256sum | cut -d' ' -f1 | sort -u | wc -l)" -eq 12
+          test "$(find /tmp/final-apk-check/assets/pdf -mindepth 2 -type f -name 'reading.pdf' | wc -l)" -eq 12
+          test "$(find /tmp/final-apk-check/assets/pdf -mindepth 2 -type f -name 'reading.pdf' -print0 | sort -z | xargs -0 sha256sum | cut -d' ' -f1 | sort -u | wc -l)" -eq 12
           echo "FINAL_APK_12_UNIQUE_MUSHAF_ASSETS_OK=1"
 
       - name: Upload final unified artifact
@@ -248,4 +248,4 @@ jobs:
         run: |
           set -euo pipefail
           gh release delete "$UNIFIED_TAG" --cleanup-tag --yes >/dev/null 2>&1 || true
-          gh release create "$UNIFIED_TAG" final-unified/qurani-series-v1.0.1-all-12-mushafs.apk final-unified/SHA256SUMS.txt --target "$GITHUB_SHA" --title 'سلسلة قرآني v1.0.2 – 12 مصحف مستقل داخل تطبيق واحد' --notes 'تطبيق سلسلة قرآني الموحد: كل بطاقة مرتبطة بملفات المصحف الأصلية الخاصة بها من إصدارات v1.0.4، مع شاشة اختيار المصحف، onboarding لأول تشغيل، البحث الدقيق بنص الآية، Zoom، RTL، الفهرس والأقسام.'
+          gh release create "$UNIFIED_TAG" final-unified/qurani-series-v1.0.2-all-12-mushafs.apk final-unified/SHA256SUMS.txt --target "$GITHUB_SHA" --title 'سلسلة قرآني v1.0.2 – 12 مصحف مستقل داخل تطبيق واحد' --notes 'تطبيق سلسلة قرآني الموحد: كل بطاقة مرتبطة بملفات المصحف الأصلية الخاصة بها من إصدارات v1.0.4، مع شاشة اختيار المصحف، onboarding لأول تشغيل، البحث الدقيق بنص الآية، Zoom، RTL، الفهرس والأقسام.'
