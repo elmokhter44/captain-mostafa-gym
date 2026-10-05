@@ -243,9 +243,17 @@ jobs:
           set -euo pipefail
           APK="$PWD/final-unified/qurani-series-v1.0.3-all-12-mushafs.apk"
           adb install -r "$APK" 2>&1 | tee /tmp/install.log
-          adb shell am force-stop com.qurani.series || true
+          PKG="$(aapt dump badging "$APK" | sed -n "s/^package: name=\\'\\([^\\']*\\)\\'.*/\\1/p" | head -n1)"
+          test -n "$PKG"
+          echo "DETECTED_PACKAGE=$PKG"
+          adb shell pm path "$PKG" | tee /tmp/pm-path.log
+          adb shell am force-stop "$PKG" || true
           adb logcat -c
-          adb shell am start -W -n com.qurani.series/.MainActivity >/tmp/launch.log
+          ACTIVITY="$(aapt dump badging "$APK" | sed -n "s/^launchable-activity: name=\\'\\([^\\']*\\)\\'.*/\\1/p" | head -n1)"
+          test -n "$ACTIVITY"
+          echo "DETECTED_ACTIVITY=$ACTIVITY"
+          adb shell am start -W -n "$PKG/$ACTIVITY" >/tmp/launch.log
+          cat /tmp/launch.log
           sleep 10
           dump_ui(){ adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1; adb pull /sdcard/window.xml /tmp/window.xml >/dev/null 2>&1; }
           tap_target(){
@@ -279,15 +287,19 @@ jobs:
           declare -a TITLES=('المصحف المعلم بقراءة الإمام أبي عمرو' 'المصحف المعلم بقراءة الإمام ابن عامر' 'المصحف المعلم بقراءة الإمام عبدالله بن كثير' 'المصحف المعلم برواية الإمام خلف عن حمزة' 'المصحف المعلم بقراءة الإمام الكسائي' 'المصحف المعلم برواية الإمام خلاد عن حمزة' 'المصحف المعلم بقراءة الإمام أبي جعفر' 'المصحف المعلم بقراءة الإمام يعقوب' 'المصحف المعلم بقراءة الإمام خلف العاشر' 'المصحف المعلم بقراءة الإمام عاصم' 'مصحف ورش عن نافع' 'مصحف قالون عن نافع')
           for i in ${!IDS[@]}; do
             id=${IDS[$i]}
-            adb shell am force-stop com.qurani.series
+            adb shell am force-stop "$PKG" || true
             adb logcat -c
-            adb shell am start -W -n com.qurani.series/.MainActivity >/dev/null
+            adb shell am start -W -n "$PKG/$ACTIVITY" >/dev/null
             sleep 3
             if ! tap_target "mushaf-card-$id"; then tap_target "${TITLES[$i]}"; fi
             sleep 8
             adb logcat -d > /tmp/current.log
-            grep -q "\[QURANI\] ACTIVE_MUSHAF=$id" /tmp/current.log
-            grep -q "\[QURANI\] PDF_RENDER_OK=$id__reading.pdf" /tmp/current.log
+            if ! grep -q "\[QURANI\] ACTIVE_MUSHAF=$id" /tmp/current.log; then
+              echo "ACTIVE_MUSHAF_FAILED=$id"; cat /tmp/current.log; exit 1
+            fi
+            if ! grep -q "\[QURANI\] PDF_RENDER_OK=$id__reading.pdf" /tmp/current.log; then
+              echo "PDF_RENDER_FAILED=$id"; cat /tmp/current.log; exit 1
+            fi
             if grep -q "\[QURANI\] PDF_RENDER_ERROR=$id__reading.pdf" /tmp/current.log; then
               echo "PDF_RENDER_ERROR=$id"; cat /tmp/current.log; exit 1
             fi
