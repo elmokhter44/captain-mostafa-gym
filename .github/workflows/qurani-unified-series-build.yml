@@ -243,16 +243,13 @@ jobs:
           set -euo pipefail
           APK="$PWD/final-unified/qurani-series-v1.0.3-all-12-mushafs.apk"
           adb install -r "$APK" 2>&1 | tee /tmp/install.log
-          PKG="$(aapt dump badging "$APK" | sed -n "s/^package: name=\\'\\([^\\']*\\)\\'.*/\\1/p" | head -n1)"
-          test -n "$PKG"
-          echo "DETECTED_PACKAGE=$PKG"
+          PKG="com.qurani.series"
+          echo "EXPECTED_PACKAGE=$PKG"
           adb shell pm path "$PKG" | tee /tmp/pm-path.log
+          grep -q "package:" /tmp/pm-path.log
           adb shell am force-stop "$PKG" || true
           adb logcat -c
-          ACTIVITY="$(aapt dump badging "$APK" | sed -n "s/^launchable-activity: name=\\'\\([^\\']*\\)\\'.*/\\1/p" | head -n1)"
-          test -n "$ACTIVITY"
-          echo "DETECTED_ACTIVITY=$ACTIVITY"
-          adb shell am start -W -n "$PKG/$ACTIVITY" >/tmp/launch.log
+          adb shell monkey -p "$PKG" 1 >/tmp/launch.log 2>&1
           cat /tmp/launch.log
           sleep 10
           dump_ui(){ adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1; adb pull /sdcard/window.xml /tmp/window.xml >/dev/null 2>&1; }
