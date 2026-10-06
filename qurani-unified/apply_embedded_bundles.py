@@ -61,34 +61,53 @@ component=mc.group(1)
 pkg_dir=java_root/Path(pkg.replace(".","/"))
 pkg_dir.mkdir(parents=True,exist_ok=True)
 activity=pkg_dir/"MushafBundleActivity.java"
-activity.write_text(f'''package {pkg};
+host=pkg_dir/"MushafBundleHost.java"
+host.write_text(f'''package {pkg};
 
-import android.net.Uri;
-import android.os.Bundle;
-import androidx.annotation.Nullable;
-import com.facebook.react.ReactActivity;
-import com.facebook.react.ReactActivityDelegate;
-import com.facebook.react.defaults.DefaultReactActivityDelegate;
+import android.app.Application;
+import com.facebook.react.PackageList;
+import com.facebook.react.ReactPackage;
+import com.facebook.react.defaults.DefaultReactNativeHost;
+import java.util.List;
 
-public class MushafBundleActivity extends ReactActivity {{
-  @Override
-  protected String getMainComponentName() {{ return "{component}"; }}
-
-  @Override
-  protected ReactActivityDelegate createReactActivityDelegate() {{
-    return new DefaultReactActivityDelegate(this, getMainComponentName(), BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {{
-      @Override
-      protected String getBundleAssetName() {{
-        Uri uri = getPlainActivity().getIntent().getData();
-        String slug = uri == null ? null : uri.getLastPathSegment();
-        if (slug == null || !slug.matches("[a-z0-9]+")) slug = "abuamr";
-        return "mushaf-bundles/" + slug + "/index.android.bundle";
-      }}
-    }};
-  }}
+public class MushafBundleHost extends DefaultReactNativeHost {{
+  private final String bundleAsset;
+  public MushafBundleHost(Application application, String bundleAsset) {{ super(application); this.bundleAsset = bundleAsset; }}
+  @Override protected List<ReactPackage> getPackages() {{ return new PackageList(this).getPackages(); }}
+  @Override protected String getJSMainModuleName() {{ return "index"; }}
+  @Override public boolean getUseDeveloperSupport() {{ return false; }}
+  @Override protected String getBundleAssetName() {{ return bundleAsset; }}
+  @Override public boolean isNewArchEnabled() {{ return BuildConfig.IS_NEW_ARCHITECTURE_ENABLED; }}
+  @Override public Boolean isHermesEnabled() {{ return BuildConfig.IS_HERMES_ENABLED; }}
 }}
 ''',encoding="utf-8")
+activity.write_text(f'''package {pkg};
 
+import android.app.Activity;
+import android.os.Bundle;
+import android.net.Uri;
+import com.facebook.react.ReactRootView;
+import com.facebook.react.bridge.ReactContext;
+
+public class MushafBundleActivity extends Activity {{
+  private ReactRootView rootView;
+  private MushafBundleHost host;
+  @Override protected void onCreate(Bundle state) {{
+    super.onCreate(state);
+    Uri uri=getIntent().getData();
+    String slug=uri==null?null:uri.getLastPathSegment();
+    if(slug==null || !slug.matches("[a-z0-9]+")) slug="abuamr";
+    String bundle="mushaf-bundles/"+slug+"/index.android.bundle";
+    host=new MushafBundleHost(getApplication(), bundle);
+    rootView=new ReactRootView(this);
+    rootView.startReactApplication(host.getReactInstanceManager(), "{component}", null);
+    setContentView(rootView);
+  }}
+  @Override protected void onResume() {{ super.onResume(); if(host!=null) host.getReactInstanceManager().onHostResume(this); }}
+  @Override protected void onPause() {{ if(host!=null) host.getReactInstanceManager().onHostPause(this); super.onPause(); }}
+  @Override protected void onDestroy() {{ if(rootView!=null) rootView.unmountReactApplication(); if(host!=null) host.getReactInstanceManager().onHostDestroy(this); super.onDestroy(); }}
+}}
+''',encoding="utf-8")
 # Register the activity + custom URI scheme.
 ms=manifest.read_text(encoding="utf-8")
 if "MushafBundleActivity" not in ms:
