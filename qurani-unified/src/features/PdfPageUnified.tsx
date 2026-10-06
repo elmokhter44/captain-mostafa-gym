@@ -1,13 +1,14 @@
 import React, {useEffect, useState} from 'react';
 import {ActivityIndicator, Image, PixelRatio, Pressable, StyleSheet, Text, View} from 'react-native';
 import {useAppServices} from '../../app/AppServicesContext';
+import {scopedPdfAsset} from '../../app/ActiveMushaf';
 import {A4_ASPECT, COLORS, RADIUS, SPACING} from '../../app/theme';
 
 export function PdfPage({assetName,pageIndex,width,height,overlay}:{assetName:string;pageIndex:number;width:number;height?:number;overlay?:React.ReactNode}):React.JSX.Element {
   const {pdf}=useAppServices();
   const [uri,setUri]=useState<string|null>(null); const [error,setError]=useState(false); const [retry,setRetry]=useState(0);
   const resolvedHeight=height??width*A4_ASPECT;
-  const selectedAsset=assetName;
+  const selectedAsset=scopedPdfAsset(assetName);
   useEffect(()=>{
     let active=true; setUri(null); setError(false);
     const renderWidth=Math.min(2000,Math.max(640,Math.round(width*PixelRatio.get()*1.35)));
