@@ -1,7 +1,7 @@
 name: Qurani Unified Series APK
 # rebuild after delegate import fix
 # Runtime host delegate fix validation
-# Native launcher Kotlin registration fix validation
+# Dedicated host package registration fix validation
 
 on:
   push:
