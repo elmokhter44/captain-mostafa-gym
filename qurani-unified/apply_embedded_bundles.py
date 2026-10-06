@@ -28,14 +28,16 @@ for apk,slug in mapping:
         data=z.read("assets/index.android.bundle")
     (out/"index.android.bundle").write_bytes(data)
     # Keep all non-PDF assets from the original app namespaced for future native assets.
-    for n in z.namelist():
+    with zipfile.ZipFile(ap) as z:
+        for n in z.namelist():
         if n.startswith("assets/") and not n.endswith("/") and not n.startswith("assets/pdf/") and n!="assets/index.android.bundle":
             rel=Path(n).relative_to("assets")
             dst=out/rel
             dst.parent.mkdir(parents=True,exist_ok=True)
             dst.write_bytes(z.read(n))
     # Merge RN drawable/mipmap resources when identical; reject conflicting resources.
-    for n in z.namelist():
+    with zipfile.ZipFile(ap) as z:
+        for n in z.namelist():
         if not n.startswith(("res/drawable","res/mipmap")) or n.endswith("/"): continue
         rel=Path(n).relative_to("res")
         src_bytes=z.read(n)
