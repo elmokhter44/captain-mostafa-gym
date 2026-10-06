@@ -266,7 +266,7 @@ jobs:
               rid=n.attrib.get('resource-id','')
               desc=n.attrib.get('content-desc','')
               if target in t or target in rid or target in desc:
-                  m=re.match(r'\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]',n.attrib.get('bounds',''))
+                  m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
                   if m:
                       x=(int(m.group(1))+int(m.group(3)))//2
                       y=(int(m.group(2))+int(m.group(4)))//2
