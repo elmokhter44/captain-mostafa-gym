@@ -178,6 +178,14 @@ jobs:
           du -sh qurani-app/android/app/src/main/assets/pdf
           df -h .
 
+      - name: Embed the 12 standalone app UI bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 qurani-unified/apply_embedded_bundles.py qurani-app /tmp/v104-apks
+          test "$(find qurani-app/android/app/src/main/assets/mushaf-bundles -mindepth 2 -name index.android.bundle | wc -l)" -eq 12
+          echo 'STANDALONE_UI_BUNDLES_12_OK=1'
+
       - name: Configure and verify unified Android app
         shell: bash
         run: |
