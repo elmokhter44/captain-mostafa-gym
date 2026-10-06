@@ -78,7 +78,7 @@ public class MushafBundleHost extends DefaultReactNativeHost {{
   @Override public boolean getUseDeveloperSupport() {{ return false; }}
   @Override protected String getBundleAssetName() {{ return bundleAsset; }}
   @Override public boolean isNewArchEnabled() {{ return BuildConfig.IS_NEW_ARCHITECTURE_ENABLED; }}
-  @Override public Boolean isHermesEnabled() {{ return BuildConfig.IS_HERMES_ENABLED; }}
+  @Override protected boolean isHermesEnabled() {{ return BuildConfig.IS_HERMES_ENABLED; }}
 }}
 ''',encoding="utf-8")
 activity.write_text(f'''package {pkg};
