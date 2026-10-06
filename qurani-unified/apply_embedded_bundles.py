@@ -37,6 +37,19 @@ for apk,slug in mapping:
         dst=out/rel
         dst.parent.mkdir(parents=True,exist_ok=True)
         dst.write_bytes(src_bytes)
+    # Per-mushaf asset pack: original asset paths are preserved so the standalone
+    # bundle can keep using bundle-assets://pdf/... and all of its original assets.
+    pack_dir=assets/"mushaf-packs"
+    pack_dir.mkdir(parents=True,exist_ok=True)
+    pack=pack_dir/f"{slug}.apk"
+    with zipfile.ZipFile(apk) as zsrc, zipfile.ZipFile(pack,"w",zipfile.ZIP_DEFLATED,compresslevel=6) as zp:
+        zp.writestr("AndroidManifest.xml", zsrc.read("AndroidManifest.xml"), compress_type=zipfile.ZIP_STORED)
+        if "resources.arsc" in zsrc.namelist():
+            zp.writestr("resources.arsc", zsrc.read("resources.arsc"), compress_type=zipfile.ZIP_STORED)
+        for n in asset_names:
+            if n.startswith("assets/") and not n.endswith("/") and n != "assets/index.android.bundle":
+                zp.writestr(n, zsrc.read(n), compress_type=zipfile.ZIP_DEFLATED)
+    if pack.stat().st_size <= 0: raise SystemExit(f"empty asset pack {pack}")
     for n,src_bytes in resource_bytes.items():
         rel=Path(n).relative_to("res")
         dst=res_root/rel
@@ -86,18 +99,57 @@ activity.write_text(f'''package {pkg};
 import android.app.Activity;
 import android.os.Bundle;
 import android.net.Uri;
+import android.content.res.AssetManager;
+import android.util.Log;
 import com.facebook.react.ReactRootView;
-import com.facebook.react.bridge.ReactContext;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.lang.reflect.Method;
 
 public class MushafBundleActivity extends Activity {{
+  private static final String TAG = "QURANI";
   private ReactRootView rootView;
   private MushafBundleHost host;
+
+  private void installAssetPack(String slug) throws Exception {{
+    File dir = new File(getFilesDir(), "mushaf-packs");
+    if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Cannot create asset pack dir");
+    File pack = new File(dir, slug + ".apk");
+    if (!pack.exists() || pack.length() < 1024) {{
+      try (InputStream in = getAssets().open("mushaf-packs/" + slug + ".apk");
+           FileOutputStream out = new FileOutputStream(pack)) {{
+        byte[] buf = new byte[1024 * 1024];
+        int n;
+        while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+      }}
+    }}
+    AssetManager am = getAssets();
+    Method addAssetPath = AssetManager.class.getDeclaredMethod("addAssetPath", String.class);
+    addAssetPath.setAccessible(true);
+    Object result = addAssetPath.invoke(am, pack.getAbsolutePath());
+    int cookie = result instanceof Integer ? (Integer) result : 0;
+    if (cookie == 0) throw new IllegalStateException("AssetManager rejected " + pack.getAbsolutePath());
+    Log.i(TAG, "ASSET_PACK_OK=" + slug + " cookie=" + cookie);
+    try (InputStream test = am.open("pdf/reading.pdf")) {{
+      if (test.read() < 0) throw new IllegalStateException("Selected reading.pdf is empty");
+    }}
+    Log.i(TAG, "ASSET_PDF_OK=" + slug);
+  }}
+
   @Override protected void onCreate(Bundle state) {{
     super.onCreate(state);
     Uri uri=getIntent().getData();
     String slug=uri==null?null:uri.getLastPathSegment();
     if(slug==null || !slug.matches("[a-z0-9]+")) slug="abuamr";
+    try {{
+      installAssetPack(slug);
+    }} catch (Exception e) {{
+      Log.e(TAG, "ASSET_PACK_ERROR=" + slug, e);
+      throw new RuntimeException(e);
+    }}
     String bundle="mushaf-bundles/"+slug+"/index.android.bundle";
+    Log.i(TAG, "BUNDLE_START=" + slug + " asset=" + bundle);
     host=new MushafBundleHost(getApplication(), bundle);
     rootView=new ReactRootView(this);
     rootView.startReactApplication(host.getReactInstanceManager(), "{component}", null);
@@ -111,7 +163,7 @@ public class MushafBundleActivity extends Activity {{
 # Register the activity + custom URI scheme.
 ms=manifest.read_text(encoding="utf-8")
 if "MushafBundleActivity" not in ms:
-    insertion='''\n        <activity android:name=".MushafBundleActivity" android:exported="false">\n            <intent-filter>\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="qurani" android:host="mushaf" />\n            </intent-filter>\n        </activity>\n'''
+    insertion='''\n        <activity android:name=".MushafBundleActivity" android:exported="true">\n            <intent-filter>\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="qurani" android:host="mushaf" />\n            </intent-filter>\n        </activity>\n'''
     ms=ms.replace("</application>",insertion+"    </application>")
     manifest.write_text(ms,encoding="utf-8")
 
