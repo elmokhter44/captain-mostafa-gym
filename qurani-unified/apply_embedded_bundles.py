@@ -69,10 +69,15 @@ main=java_files[0].read_text(encoding="utf-8")
 m=re.search(r"package\s+([A-Za-z0-9_.]+)",main)
 if not m: raise SystemExit("MainActivity package not found")
 pkg=m.group(1)
-mc=re.search(r"getMainComponentName\(\).*?[{]\s*return\s+[\\"']([^\\"']+)[\\"']",main,re.S)
-if not mc: mc=re.search(r"getMainComponentName\(\).*?[\\"']([^\\"']+)[\\"']",main,re.S)
-if not mc: raise SystemExit("Main component name not found")
-component=mc.group(1)
+# Extract the RN component name without a fragile multi-quote regex.
+# Supports Java `return "App";` and Kotlin `= "App"` forms.
+marker="getMainComponentName"
+pos=main.find(marker)
+if pos < 0: raise SystemExit("Main component name method not found")
+snippet=main[pos:pos+1200]
+q=re.search(r"""["']([^"']+)["']""",snippet)
+if not q: raise SystemExit("Main component name not found")
+component=q.group(1)
 pkg_dir=java_root/Path(pkg.replace(".","/"))
 pkg_dir.mkdir(parents=True,exist_ok=True)
 activity=pkg_dir/"MushafBundleActivity.java"
