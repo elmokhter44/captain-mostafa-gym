@@ -153,7 +153,7 @@ jobs:
             done
             test -s "qurani-app/android/app/src/main/assets/pdf/${slug}__reading.pdf"
             count=$((count+1))
-            rm -rf "/tmp/unpack/$slug" "/tmp/v104-apks/$apk"
+            rm -rf "/tmp/unpack/$slug"
           done < /tmp/unified-assets.txt
           test "$count" -eq 12
           test "$(find qurani-app/android/app/src/main/assets/pdf -maxdepth 1 -type f -name '*__reading.pdf' | wc -l)" -eq 12
