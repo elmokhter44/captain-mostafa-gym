@@ -26,26 +26,23 @@ for apk,slug in mapping:
     out.mkdir(parents=True,exist_ok=True)
     with zipfile.ZipFile(ap) as z:
         data=z.read("assets/index.android.bundle")
+        asset_names=z.namelist()
+        non_pdf=[n for n in asset_names if n.startswith("assets/") and not n.endswith("/") and not n.startswith("assets/pdf/") and n!="assets/index.android.bundle"]
+        resource_names=[n for n in asset_names if n.startswith(("res/drawable","res/mipmap")) and not n.endswith("/")]
+        asset_bytes={n:z.read(n) for n in non_pdf}
+        resource_bytes={n:z.read(n) for n in resource_names}
     (out/"index.android.bundle").write_bytes(data)
-    # Keep all non-PDF assets from the original app namespaced for future native assets.
-    with zipfile.ZipFile(ap) as z:
-        for n in z.namelist():
-        if n.startswith("assets/") and not n.endswith("/") and not n.startswith("assets/pdf/") and n!="assets/index.android.bundle":
-            rel=Path(n).relative_to("assets")
-            dst=out/rel
-            dst.parent.mkdir(parents=True,exist_ok=True)
-            dst.write_bytes(z.read(n))
-    # Merge RN drawable/mipmap resources when identical; reject conflicting resources.
-    with zipfile.ZipFile(ap) as z:
-        for n in z.namelist():
-        if not n.startswith(("res/drawable","res/mipmap")) or n.endswith("/"): continue
+    for n,src_bytes in asset_bytes.items():
+        rel=Path(n).relative_to("assets")
+        dst=out/rel
+        dst.parent.mkdir(parents=True,exist_ok=True)
+        dst.write_bytes(src_bytes)
+    for n,src_bytes in resource_bytes.items():
         rel=Path(n).relative_to("res")
-        src_bytes=z.read(n)
         dst=res_root/rel
         dst.parent.mkdir(parents=True,exist_ok=True)
         if dst.exists():
             if hashlib.sha256(dst.read_bytes()).digest()!=hashlib.sha256(src_bytes).digest():
-                # Preserve the already-built master resource; most series apps share the same UI assets.
                 print(f"RESOURCE_CONFLICT_KEEP_MASTER={rel}")
         else:
             dst.write_bytes(src_bytes)
