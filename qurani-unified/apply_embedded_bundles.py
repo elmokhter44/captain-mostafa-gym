@@ -154,12 +154,12 @@ public class MushafBundleActivity extends ReactActivity {{
     Log.i(TAG, "ASSET_PDF_OK=" + slug);
   }}
 
-  @Override protected ReactNativeHost getReactNativeHost() {{
-    return host;
-  }}
-
-  @Override protected String getMainComponentName() {{
-    return "{component}";
+  @Override protected ReactActivityDelegate createReactActivityDelegate() {{
+    return new ReactActivityDelegate(this, "{component}") {{
+      @Override protected ReactNativeHost getReactNativeHost() {{
+        return host;
+      }}
+    }};
   }}
 
   @Override protected void onCreate(Bundle savedInstanceState) {{
