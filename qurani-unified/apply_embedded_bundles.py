@@ -78,6 +78,26 @@ snippet=main[pos:pos+1200]
 q=re.search(r"""["']([^"']+)["']""",snippet)
 if not q: raise SystemExit("Main component name not found")
 component=q.group(1)
+
+# Register the launcher in the ORIGINAL app host as well. The series selector
+# invokes MushafLauncher from this host; without this registration the card tap
+# is a no-op/JS native-module failure. Use toMutableList().also{...} because
+# PackageList(...).packages is exposed as an immutable Kotlin List in this RN setup.
+main_apps=list(java_root.rglob("MainApplication.kt")) + list(java_root.rglob("MainApplication.java"))
+if not main_apps:
+    raise SystemExit("MainApplication source not found")
+main_app=main_apps[0]
+main_src=main_app.read_text(encoding="utf-8")
+if "MushafLauncherPackage" not in main_src:
+    qualified=f"{pkg}.MushafLauncherPackage"
+    if "PackageList(this).packages" not in main_src:
+        raise SystemExit("PackageList(this).packages not found in MainApplication")
+    main_src=main_src.replace(
+        "PackageList(this).packages",
+        f"PackageList(this).packages.toMutableList().also {{ it.add({qualified}()) }}",
+        1
+    )
+    main_app.write_text(main_src,encoding="utf-8")
 pkg_dir=java_root/Path(pkg.replace(".","/"))
 pkg_dir.mkdir(parents=True,exist_ok=True)
 launcher=pkg_dir/"MushafLauncherModule.java"
