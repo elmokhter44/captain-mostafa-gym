@@ -1,4 +1,5 @@
 name: Qurani Unified Series APK
+# rebuild after delegate import fix
 # Runtime host delegate fix validation
 
 on:
