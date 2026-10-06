@@ -139,11 +139,12 @@ if "MushafLauncherPackage" not in ms:
         ms=ms[:ret]+"packages.add(new MushafLauncherPackage());\n          "+ms[ret:]
     else:
         ms=ms.replace("import com.facebook.react.PackageList", "import com.facebook.react.PackageList\nimport "+pkg+".MushafLauncherPackage")
-        pos=ms.find("getPackages()")
-        end=ms.find("PackageList(this).packages.apply {",pos)
-        close=ms.find("}",end)
-        if pos<0 or end<0 or close<0: raise SystemExit("Kotlin getPackages anchor missing")
-        ms=ms[:close]+"  add(MushafLauncherPackage())\n"+ms[close:]
+        marker="PackageList(this).packages.apply {"
+        if marker not in ms:
+            marker="PackageList(this).packages.apply {"
+        if marker not in ms:
+            raise SystemExit("Kotlin PackageList apply anchor missing")
+        ms=ms.replace(marker, marker+"\n              add(MushafLauncherPackage())", 1)
     app.write_text(ms,encoding="utf-8")
 
 activity=pkg_dir/"MushafBundleActivity.java"
