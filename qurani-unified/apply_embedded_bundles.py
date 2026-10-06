@@ -83,8 +83,79 @@ component=q.group(1)
 # The selector does not depend on a custom React Native module. Each card opens
 # qurani://mushaf/<slug>, which Android resolves directly to MushafBundleActivity.
 # This avoids PackageList/native-module registration failures in the selector.
-pkg_dir=java_root/Path(pkg.replace(".","/"))
+pkg_dir=java_root/Path(pkg.replace(".", "/"))
 pkg_dir.mkdir(parents=True,exist_ok=True)
+
+# Register an explicit native launcher in the proven base application. The selector
+# calls this module, which starts MushafBundleActivity with an explicit ComponentName.
+# This avoids Android intent-resolution ambiguity and keeps each card -> bundle mapping deterministic.
+main_apps=list(java_root.rglob("MainApplication.kt")) + list(java_root.rglob("MainApplication.java"))
+if not main_apps:
+    raise SystemExit("MainApplication source not found")
+main_app=main_apps[0]
+main_src=main_app.read_text(encoding="utf-8")
+if "MushafLauncherPackage" not in main_src:
+    qualified=f"{pkg}.MushafLauncherPackage"
+    if "PackageList(this).packages" in main_src:
+        main_src=main_src.replace(
+            "PackageList(this).packages",
+            f"PackageList(this).packages.toMutableList().also {{ it.add({qualified}()) }}",
+            1
+        )
+    elif "new PackageList(this).getPackages()" in main_src:
+        main_src=main_src.replace(
+            "new PackageList(this).getPackages()",
+            f"new PackageList(this).getPackages() {{ new MushafLauncherPackage() }}",
+            1
+        )
+    else:
+        raise SystemExit("Cannot locate React Native PackageList registration")
+    main_app.write_text(main_src,encoding="utf-8")
+
+launcher=pkg_dir/"MushafLauncherModule.java"
+launcher.write_text(f'''package {pkg};
+
+import android.app.Activity;
+import android.content.ComponentName;
+import android.content.Intent;
+import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.bridge.ReactContextBaseJavaModule;
+import com.facebook.react.bridge.ReactMethod;
+
+public class MushafLauncherModule extends ReactContextBaseJavaModule {{
+  public MushafLauncherModule(ReactApplicationContext context) {{ super(context); }}
+  @Override public String getName() {{ return "MushafLauncher"; }}
+  @ReactMethod public void open(String slug) {{
+    if (slug == null || !slug.matches("[a-z0-9]+")) throw new IllegalArgumentException("Invalid mushaf id");
+    Activity activity = getCurrentActivity();
+    android.content.Context context = activity != null ? activity : getReactApplicationContext();
+    Intent intent = new Intent();
+    intent.setComponent(new ComponentName(context, MushafBundleActivity.class));
+    intent.setData(android.net.Uri.parse("qurani://mushaf/" + slug));
+    if (activity == null) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    context.startActivity(intent);
+  }}
+}}
+''',encoding="utf-8")
+launcher_pkg=pkg_dir/"MushafLauncherPackage.java"
+launcher_pkg.write_text(f'''package {pkg};
+
+import com.facebook.react.ReactPackage;
+import com.facebook.react.bridge.NativeModule;
+import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.uimanager.ViewManager;
+import java.util.Collections;
+import java.util.List;
+
+public class MushafLauncherPackage implements ReactPackage {{
+  @Override public List<NativeModule> createNativeModules(ReactApplicationContext context) {{
+    return Collections.singletonList(new MushafLauncherModule(context));
+  }}
+  @Override public List<ViewManager> createViewManagers(ReactApplicationContext context) {{
+    return Collections.emptyList();
+  }}
+}}
+''',encoding="utf-8")
 
 host=pkg_dir/"MushafBundleHost.java"
 host.write_text(f'''package {pkg};
@@ -188,7 +259,7 @@ public class MushafBundleActivity extends ReactActivity {{
 
 ms=manifest.read_text(encoding="utf-8")
 if "MushafBundleActivity" not in ms:
-    insertion='''\n        <activity android:name=".MushafBundleActivity" android:exported="true" android:launchMode="singleTop">\n            <intent-filter>\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="qurani" android:host="mushaf" />\n            </intent-filter>\n        </activity>\n'''
+    insertion='''\n        <activity android:name=".MushafBundleActivity" android:exported="false" android:launchMode="standard" />\n'''
     ms=ms.replace("</application>",insertion+"    </application>")
     manifest.write_text(ms,encoding="utf-8")
 
