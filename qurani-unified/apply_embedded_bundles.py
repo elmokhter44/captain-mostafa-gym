@@ -60,15 +60,17 @@ for apk,slug in mapping:
         else:
             dst.write_bytes(src_bytes)
 
-# Find Android package from the existing MainActivity and create a dedicated ReactActivity
-# whose bundle is selected by the card URI: qurani://mushaf/<slug>.
+# Find Android package and create a dedicated ReactActivity whose bundle is selected
+# by qurani://mushaf/<slug>. ReactActivity owns the RN lifecycle; the previous hand-wired
+# ReactRootView Activity could terminate immediately after the card tap.
 java_files=list(java_root.rglob("MainActivity.java"))+list(java_root.rglob("MainActivity.kt"))
 if not java_files: raise SystemExit("MainActivity source not found")
 main=java_files[0].read_text(encoding="utf-8")
 m=re.search(r"package\s+([A-Za-z0-9_.]+)",main)
 if not m: raise SystemExit("MainActivity package not found")
 pkg=m.group(1)
-mc=re.search(r'getMainComponentName\(\).*?["\']([^"\']+)["\']',main,re.S)
+mc=re.search(r'getMainComponentName\(\).*?[{]\s*return\s+["\\']([^"\\']+)["\\']',main,re.S)
+if not mc: mc=re.search(r'getMainComponentName\(\).*?["\\']([^"\\']+)["\\']',main,re.S)
 if not mc: raise SystemExit("Main component name not found")
 component=mc.group(1)
 pkg_dir=java_root/Path(pkg.replace(".","/"))
@@ -85,32 +87,42 @@ import java.util.List;
 
 public class MushafBundleHost extends DefaultReactNativeHost {{
   private final String bundleAsset;
-  public MushafBundleHost(Application application, String bundleAsset) {{ super(application); this.bundleAsset = bundleAsset; }}
-  @Override protected List<ReactPackage> getPackages() {{ return new PackageList(this).getPackages(); }}
+  public MushafBundleHost(Application application, String bundleAsset) {{
+    super(application);
+    this.bundleAsset = bundleAsset;
+  }}
+  @Override protected List<ReactPackage> getPackages() {{
+    return new PackageList(this).getPackages();
+  }}
   @Override protected String getJSMainModuleName() {{ return "index"; }}
-  @Override public boolean getUseDeveloperSupport() {{ return false; }}
   @Override protected String getBundleAssetName() {{ return bundleAsset; }}
+  @Override public boolean getUseDeveloperSupport() {{ return false; }}
   @Override public boolean isNewArchEnabled() {{ return BuildConfig.IS_NEW_ARCHITECTURE_ENABLED; }}
-  @Override protected boolean isHermesEnabled() {{ return BuildConfig.IS_HERMES_ENABLED; }}
+  @Override public boolean isHermesEnabled() {{ return BuildConfig.IS_HERMES_ENABLED; }}
 }}
 ''',encoding="utf-8")
 activity.write_text(f'''package {pkg};
 
-import android.app.Activity;
-import android.os.Bundle;
 import android.net.Uri;
-import android.content.res.AssetManager;
+import android.os.Bundle;
 import android.util.Log;
-import com.facebook.react.ReactRootView;
+import android.content.res.AssetManager;
+import com.facebook.react.ReactActivity;
+import com.facebook.react.ReactNativeHost;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 
-public class MushafBundleActivity extends Activity {{
+public class MushafBundleActivity extends ReactActivity {{
   private static final String TAG = "QURANI";
-  private ReactRootView rootView;
   private MushafBundleHost host;
+
+  private String selectedSlug() {{
+    Uri uri = getIntent() == null ? null : getIntent().getData();
+    String slug = uri == null ? null : uri.getLastPathSegment();
+    return slug != null && slug.matches("[a-z0-9]+") ? slug : "abuamr";
+  }}
 
   private void installAssetPack(String slug) throws Exception {{
     File dir = new File(getFilesDir(), "mushaf-packs");
@@ -137,33 +149,32 @@ public class MushafBundleActivity extends Activity {{
     Log.i(TAG, "ASSET_PDF_OK=" + slug);
   }}
 
-  @Override protected void onCreate(Bundle state) {{
-    super.onCreate(state);
-    Uri uri=getIntent().getData();
-    String slug=uri==null?null:uri.getLastPathSegment();
-    if(slug==null || !slug.matches("[a-z0-9]+")) slug="abuamr";
+  @Override protected ReactNativeHost getReactNativeHost() {{
+    return host;
+  }}
+
+  @Override protected String getMainComponentName() {{
+    return "{component}";
+  }}
+
+  @Override protected void onCreate(Bundle savedInstanceState) {{
+    String slug = selectedSlug();
     try {{
       installAssetPack(slug);
+      String bundle = "mushaf-bundles/" + slug + "/index.android.bundle";
+      Log.i(TAG, "BUNDLE_START=" + slug + " asset=" + bundle);
+      host = new MushafBundleHost(getApplication(), bundle);
     }} catch (Exception e) {{
-      Log.e(TAG, "ASSET_PACK_ERROR=" + slug, e);
+      Log.e(TAG, "BUNDLE_BOOT_ERROR=" + slug, e);
       throw new RuntimeException(e);
     }}
-    String bundle="mushaf-bundles/"+slug+"/index.android.bundle";
-    Log.i(TAG, "BUNDLE_START=" + slug + " asset=" + bundle);
-    host=new MushafBundleHost(getApplication(), bundle);
-    rootView=new ReactRootView(this);
-    rootView.startReactApplication(host.getReactInstanceManager(), "{component}", null);
-    setContentView(rootView);
+    super.onCreate(savedInstanceState);
   }}
-  @Override protected void onResume() {{ super.onResume(); if(host!=null) host.getReactInstanceManager().onHostResume(this); }}
-  @Override protected void onPause() {{ if(host!=null) host.getReactInstanceManager().onHostPause(this); super.onPause(); }}
-  @Override protected void onDestroy() {{ if(rootView!=null) rootView.unmountReactApplication(); if(host!=null) host.getReactInstanceManager().onHostDestroy(this); super.onDestroy(); }}
 }}
 ''',encoding="utf-8")
-# Register the activity + custom URI scheme.
 ms=manifest.read_text(encoding="utf-8")
 if "MushafBundleActivity" not in ms:
-    insertion='''\n        <activity android:name=".MushafBundleActivity" android:exported="true">\n            <intent-filter>\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="qurani" android:host="mushaf" />\n            </intent-filter>\n        </activity>\n'''
+    insertion='''\n        <activity android:name=".MushafBundleActivity" android:exported="true" android:launchMode="singleTop">\n            <intent-filter>\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="qurani" android:host="mushaf" />\n            </intent-filter>\n        </activity>\n'''
     ms=ms.replace("</application>",insertion+"    </application>")
     manifest.write_text(ms,encoding="utf-8")
 
