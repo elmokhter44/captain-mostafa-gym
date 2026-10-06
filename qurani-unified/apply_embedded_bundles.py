@@ -80,6 +80,72 @@ if not q: raise SystemExit("Main component name not found")
 component=q.group(1)
 pkg_dir=java_root/Path(pkg.replace(".","/"))
 pkg_dir.mkdir(parents=True,exist_ok=True)
+launcher=pkg_dir/"MushafLauncherModule.java"
+launcher.write_text(f'''package {pkg};
+
+import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
+import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.bridge.ReactContextBaseJavaModule;
+import com.facebook.react.bridge.ReactMethod;
+
+public class MushafLauncherModule extends ReactContextBaseJavaModule {{
+  public MushafLauncherModule(ReactApplicationContext context) {{ super(context); }}
+  @Override public String getName() {{ return "MushafLauncher"; }}
+  @ReactMethod public void open(String slug) {{
+    if (slug == null || !slug.matches("[a-z0-9]+")) throw new IllegalArgumentException("Invalid mushaf id");
+    Activity activity = getCurrentActivity();
+    android.content.Context context = activity != null ? activity : getReactApplicationContext();
+    Intent intent = new Intent(context, MushafBundleActivity.class);
+    intent.setData(Uri.parse("qurani://mushaf/" + slug));
+    if (activity == null) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    context.startActivity(intent);
+  }}
+}}
+''',encoding="utf-8")
+launcher_pkg=pkg_dir/"MushafLauncherPackage.java"
+launcher_pkg.write_text(f'''package {pkg};
+
+import com.facebook.react.ReactPackage;
+import com.facebook.react.bridge.NativeModule;
+import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.uimanager.ViewManager;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+public class MushafLauncherPackage implements ReactPackage {{
+  @Override public List<NativeModule> createNativeModules(ReactApplicationContext context) {{
+    List<NativeModule> modules = new ArrayList<>();
+    modules.add(new MushafLauncherModule(context));
+    return modules;
+  }}
+  @Override public List<ViewManager> createViewManagers(ReactApplicationContext context) {{
+    return Collections.emptyList();
+  }}
+}}
+''',encoding="utf-8")
+main_files=list(java_root.rglob("MainApplication.java"))+list(java_root.rglob("MainApplication.kt"))
+if not main_files: raise SystemExit("MainApplication source not found")
+app=main_files[0]
+ms=app.read_text(encoding="utf-8")
+if "MushafLauncherPackage" not in ms:
+    if app.suffix==".java":
+        ms=ms.replace("import com.facebook.react.PackageList;", "import com.facebook.react.PackageList;\nimport "+pkg+".MushafLauncherPackage;")
+        pos=ms.find("getPackages()")
+        ret=ms.find("return packages;",pos)
+        if pos<0 or ret<0: raise SystemExit("Java getPackages anchor missing")
+        ms=ms[:ret]+"packages.add(new MushafLauncherPackage());\n          "+ms[ret:]
+    else:
+        ms=ms.replace("import com.facebook.react.PackageList", "import com.facebook.react.PackageList\nimport "+pkg+".MushafLauncherPackage")
+        pos=ms.find("getPackages()")
+        end=ms.find("PackageList(this).packages.apply {",pos)
+        close=ms.find("}",end)
+        if pos<0 or end<0 or close<0: raise SystemExit("Kotlin getPackages anchor missing")
+        ms=ms[:close]+"  add(MushafLauncherPackage())\n"+ms[close:]
+    app.write_text(ms,encoding="utf-8")
+
 activity=pkg_dir/"MushafBundleActivity.java"
 host=pkg_dir/"MushafBundleHost.java"
 host.write_text(f'''package {pkg};
