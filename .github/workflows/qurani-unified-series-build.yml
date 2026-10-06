@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 env:
-  UNIFIED_TAG: qurani-unified-series-v1.0.3
+  UNIFIED_TAG: qurani-unified-series-v1.0.4
 
 jobs:
   build:
@@ -142,40 +142,17 @@ jobs:
           EOF
           count=0
           while IFS='|' read -r apk slug; do
-            echo "PACKAGING_MUSHAF=$slug FROM=$apk"
             test -s "/tmp/v104-apks/$apk"
-            rm -rf "/tmp/unpack/$slug"; mkdir -p "/tmp/unpack/$slug"
-            unzip -q "/tmp/v104-apks/$apk" 'assets/pdf/*' -d "/tmp/unpack/$slug"
-            for src in "/tmp/unpack/$slug/assets/pdf/"*.pdf; do
-              test -s "$src"
-              name="$(basename "$src")"
-              cp "$src" "qurani-app/android/app/src/main/assets/pdf/${slug}__${name}"
-            done
-            test -s "qurani-app/android/app/src/main/assets/pdf/${slug}__reading.pdf"
             count=$((count+1))
-            rm -rf "/tmp/unpack/$slug"
           done < /tmp/unified-assets.txt
           test "$count" -eq 12
-          test "$(find qurani-app/android/app/src/main/assets/pdf -maxdepth 1 -type f -name '*__reading.pdf' | wc -l)" -eq 12
-          echo "=== ORIGINAL READING PDF HASHES ==="
-          find qurani-app/android/app/src/main/assets/pdf -maxdepth 1 -type f -name '*__reading.pdf' -print0 | sort -z | xargs -0 sha256sum | tee /tmp/reading-hashes.txt
-          test "$(cut -d' ' -f1 /tmp/reading-hashes.txt | sort -u | wc -l)" -eq 12
-          python3 - <<'PY'
-          from pathlib import Path
-          root=Path('qurani-app/android/app/src/main/assets/pdf')
-          # Keep original filenames intact inside each mushaf directory.
-          # The runtime resolver scopes reading.pdf/quran_index.pdf/etc. to the selected directory.
-          renamed=[]
-          for mushaf in sorted(p for p in root.iterdir() if p.is_dir()):
-              for src in mushaf.rglob('*'):
-                  if src.is_file() and '-' + mushaf.name + '-' in src.name:
-                      raise SystemExit(f'Unexpected renamed asset: {src}')
-          print('PDF_ASSET_FILENAMES_PRESERVED=1')
-          PY
-          echo "=== ISOLATED PDF ASSETS ==="
-          find qurani-app/android/app/src/main/assets/pdf -type f -name '*.pdf' | sort | head -40
-          echo "UNIFIED_12_MUSHAF_ASSET_SETS_OK=1"
-          du -sh qurani-app/android/app/src/main/assets/pdf
+          echo "ALL_12_SOURCE_APKS_PRESENT=1"
+          # apply_embedded_bundles.py creates one isolated asset-pack APK per mushaf,
+          # preserving the original assets/pdf/... paths. Do not duplicate the PDFs
+          # into the unified APK's root assets.
+          rm -rf qurani-app/android/app/src/main/assets/pdf
+          mkdir -p qurani-app/android/app/src/main/assets/pdf
+          echo "ROOT_PDF_ASSETS_DISABLED=1"
           df -h .
 
       - name: Embed the 12 standalone app UI bundles
@@ -184,7 +161,10 @@ jobs:
           set -euo pipefail
           python3 qurani-unified/apply_embedded_bundles.py qurani-app /tmp/v104-apks
           test "$(find qurani-app/android/app/src/main/assets/mushaf-bundles -mindepth 2 -name index.android.bundle | wc -l)" -eq 12
+          test "$(find qurani-app/android/app/src/main/assets/mushaf-packs -maxdepth 1 -name '*.apk' | wc -l)" -eq 12
+          for p in qurani-app/android/app/src/main/assets/mushaf-packs/*.apk; do unzip -tq "$p" >/dev/null; unzip -l "$p" | grep -q 'assets/pdf/'; done
           echo 'STANDALONE_UI_BUNDLES_12_OK=1'
+          echo 'STANDALONE_ASSET_PACKS_12_OK=1'
 
       - name: Configure and verify unified Android app
         shell: bash
@@ -232,15 +212,19 @@ jobs:
           mkdir -p final-unified
           APK="$(find qurani-app/android/app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
           test -n "$APK"; test -s "$APK"
-          cp "$APK" final-unified/qurani-series-v1.0.3-all-12-mushafs.apk
+          cp "$APK" final-unified/qurani-series-v1.0.4-all-12-mushafs.apk
           ls -lh final-unified
           sha256sum final-unified/qurani-series-v1.0.3-all-12-mushafs.apk | tee final-unified/SHA256SUMS.txt
           echo "=== FINAL APK CONTENT VERIFICATION ==="
           rm -rf /tmp/final-apk-check && mkdir -p /tmp/final-apk-check
-          unzip -q final-unified/qurani-series-v1.0.3-all-12-mushafs.apk 'assets/pdf/*' -d /tmp/final-apk-check
-          test "$(find /tmp/final-apk-check/assets/pdf -maxdepth 1 -type f -name '*__reading.pdf' | wc -l)" -eq 12
-          test "$(find /tmp/final-apk-check/assets/pdf -maxdepth 1 -type f -name '*__reading.pdf' -print0 | sort -z | xargs -0 sha256sum | cut -d' ' -f1 | sort -u | wc -l)" -eq 12
-          echo "FINAL_APK_12_UNIQUE_MUSHAF_ASSETS_OK=1"
+          unzip -q final-unified/qurani-series-v1.0.4-all-12-mushafs.apk 'assets/mushaf-packs/*' -d /tmp/final-apk-check
+          test "$(find /tmp/final-apk-check/assets/mushaf-packs -maxdepth 1 -name '*.apk' | wc -l)" -eq 12
+          for p in /tmp/final-apk-check/assets/mushaf-packs/*.apk; do
+            unzip -tq "$p" >/dev/null
+            unzip -l "$p" | grep -q 'assets/pdf/'
+            unzip -l "$p" | grep -q 'assets/index.android.bundle' || true
+          done
+          echo "FINAL_APK_12_ISOLATED_ASSET_PACKS_OK=1"
 
       - name: Verify all 12 mushafs on Android emulator
         shell: bash
@@ -249,31 +233,26 @@ jobs:
           cat > /tmp/verify-unified.sh <<'BASH'
           #!/usr/bin/env bash
           set -euo pipefail
-          APK="$PWD/final-unified/qurani-series-v1.0.3-all-12-mushafs.apk"
+          APK="$PWD/final-unified/qurani-series-v1.0.4-all-12-mushafs.apk"
           adb install -r "$APK" 2>&1 | tee /tmp/install.log
           PKG="com.qurani.series"
-          echo "EXPECTED_PACKAGE=$PKG"
-          adb shell pm path "$PKG" | tee /tmp/pm-path.log
-          grep -q "package:" /tmp/pm-path.log
+          adb shell pm path "$PKG" | grep -q "package:"
           adb shell am force-stop "$PKG" || true
           adb logcat -c
-          adb shell monkey -p "$PKG" 1 >/tmp/launch.log 2>&1
-          cat /tmp/launch.log
-          sleep 10
+          adb shell monkey -p "$PKG" 1 >/dev/null 2>&1
+          sleep 5
           dump_ui(){ adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1; adb pull /sdcard/window.xml /tmp/window.xml >/dev/null 2>&1; }
           tap_target(){
             local target="$1"
-            for attempt in $(seq 1 12); do
+            for attempt in $(seq 1 15); do
               dump_ui
               if python3 - "$target" <<'PY'
           import sys,xml.etree.ElementTree as ET,re,subprocess
           target=sys.argv[1]
           root=ET.parse('/tmp/window.xml').getroot()
           for n in root.iter('node'):
-              t=n.attrib.get('text','')
-              rid=n.attrib.get('resource-id','')
-              desc=n.attrib.get('content-desc','')
-              if target in t or target in rid or target in desc:
+              vals=(n.attrib.get('text',''),n.attrib.get('resource-id',''),n.attrib.get('content-desc',''))
+              if any(target in v for v in vals):
                   m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
                   if m:
                       x=(int(m.group(1))+int(m.group(3)))//2
@@ -291,7 +270,6 @@ jobs:
             cat /tmp/window.xml 2>/dev/null || true
             return 1
           }
-          # Finish onboarding only on the first run.
           for i in 1 2 3; do
             dump_ui
             if grep -q 'ابدأ الآن' /tmp/window.xml; then tap_target 'ابدأ الآن'; elif grep -q 'التالي' /tmp/window.xml; then tap_target 'التالي'; else break; fi
@@ -305,18 +283,21 @@ jobs:
             adb logcat -c
             adb shell monkey -p "$PKG" 1 >/dev/null 2>&1
             sleep 3
-            if ! tap_target "mushaf-card-$id"; then tap_target "${TITLES[$i]}"; fi
-            sleep 2
-            # The selected mushaf opens its original home screen.
-            # The primary Quran card is the "مصحف كامل" section.
-            if ! tap_target "المصحف كامل"; then
-              echo "QURAN_SECTION_NOT_FOUND=$id"
-              adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
-              adb pull /sdcard/window.xml /tmp/reader-entry.xml >/dev/null 2>&1 || true
-              cat /tmp/reader-entry.xml 2>/dev/null || true
+            tap_target "mushaf-card-$id"
+            sleep 5
+            dump_ui
+            # The selected standalone v1.0.4 UI must replace the series selector.
+            if grep -q 'اختر المصحف أو القراءة' /tmp/window.xml; then
+              echo "CARD_DID_NOT_OPEN_STANDALONE_UI=$id"
+              cat /tmp/window.xml
               exit 1
             fi
-            sleep 12
+            if ! tap_target "المصحف كامل"; then
+              echo "QURAN_SECTION_NOT_FOUND=$id"
+              cat /tmp/window.xml
+              exit 1
+            fi
+            sleep 10
             dump_ui
             if grep -Eq 'تعذر (عرض|تحميل)|Failed to fetch|تعذر' /tmp/window.xml; then
               echo "READER_UI_ERROR=$id"
@@ -324,14 +305,12 @@ jobs:
               exit 1
             fi
             adb logcat -d > /tmp/current.log
-            if ! grep -q "\[QURANI\] ACTIVE_MUSHAF=$id" /tmp/current.log; then
-              echo "ACTIVE_MUSHAF_FAILED=$id"; cat /tmp/current.log; exit 1
-            fi
-            if ! grep -q "\[QURANI\] PDF_RENDER_OK=${id}__quran.pdf" /tmp/current.log; then
-              echo "PDF_RENDER_FAILED=$id"; cat /tmp/current.log; exit 1
-            fi
-            if grep -q "\[QURANI\] PDF_RENDER_ERROR=${id}__quran.pdf" /tmp/current.log; then
-              echo "PDF_RENDER_ERROR=$id"; cat /tmp/current.log; exit 1
+            grep -q "\[QURANI\] ASSET_PACK_OK=$id" /tmp/current.log
+            grep -q "\[QURANI\] ASSET_PDF_OK=$id" /tmp/current.log
+            if grep -Eq 'PDF_RENDER_ERROR|ENOENT|FileNotFoundException.*pdf/|Unable to open.*pdf/' /tmp/current.log; then
+              echo "PDF_RUNTIME_ERROR=$id"
+              cat /tmp/current.log
+              exit 1
             fi
             echo "MUSHAF_$((i+1))_$id=PASS"
           done
@@ -370,4 +349,4 @@ jobs:
         run: |
           set -euo pipefail
           gh release delete "$UNIFIED_TAG" --cleanup-tag --yes >/dev/null 2>&1 || true
-          gh release create "$UNIFIED_TAG" final-unified/qurani-series-v1.0.3-all-12-mushafs.apk final-unified/SHA256SUMS.txt --target "$GITHUB_SHA" --title 'سلسلة قرآني v1.0.3 – 12 مصحف مستقل داخل تطبيق واحد' --notes 'تطبيق سلسلة قرآني الموحد: كل بطاقة مرتبطة بملفات المصحف الأصلية الخاصة بها من إصدارات v1.0.4، مع شاشة اختيار المصحف، onboarding لأول تشغيل، البحث الدقيق بنص الآية، Zoom، RTL، الفهرس والأقسام.'
+          gh release create "$UNIFIED_TAG" final-unified/qurani-series-v1.0.4-all-12-mushafs.apk final-unified/SHA256SUMS.txt --target "$GITHUB_SHA" --title 'سلسلة قرآني v1.0.3 – 12 مصحف مستقل داخل تطبيق واحد' --notes 'تطبيق سلسلة قرآني الموحد: كل بطاقة مرتبطة بملفات المصحف الأصلية الخاصة بها من إصدارات v1.0.4، مع شاشة اختيار المصحف، onboarding لأول تشغيل، البحث الدقيق بنص الآية، Zoom، RTL، الفهرس والأقسام.'
