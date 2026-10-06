@@ -79,77 +79,13 @@ q=re.search(r"""["']([^"']+)["']""",snippet)
 if not q: raise SystemExit("Main component name not found")
 component=q.group(1)
 
-# Register the launcher in the ORIGINAL app host as well. The series selector
-# invokes MushafLauncher from this host; without this registration the card tap
-# is a no-op/JS native-module failure. Use toMutableList().also{...} because
-# PackageList(...).packages is exposed as an immutable Kotlin List in this RN setup.
-main_apps=list(java_root.rglob("MainApplication.kt")) + list(java_root.rglob("MainApplication.java"))
-if not main_apps:
-    raise SystemExit("MainApplication source not found")
-main_app=main_apps[0]
-main_src=main_app.read_text(encoding="utf-8")
-if "MushafLauncherPackage" not in main_src:
-    qualified=f"{pkg}.MushafLauncherPackage"
-    if "PackageList(this).packages" not in main_src:
-        raise SystemExit("PackageList(this).packages not found in MainApplication")
-    main_src=main_src.replace(
-        "PackageList(this).packages",
-        f"PackageList(this).packages.toMutableList().also {{ it.add({qualified}()) }}",
-        1
-    )
-    main_app.write_text(main_src,encoding="utf-8")
+# Architecture: Android deep-link host.
+# The selector does not depend on a custom React Native module. Each card opens
+# qurani://mushaf/<slug>, which Android resolves directly to MushafBundleActivity.
+# This avoids PackageList/native-module registration failures in the selector.
 pkg_dir=java_root/Path(pkg.replace(".","/"))
 pkg_dir.mkdir(parents=True,exist_ok=True)
-launcher=pkg_dir/"MushafLauncherModule.java"
-launcher.write_text(f'''package {pkg};
 
-import android.app.Activity;
-import android.content.Intent;
-import android.net.Uri;
-import com.facebook.react.bridge.ReactApplicationContext;
-import com.facebook.react.bridge.ReactContextBaseJavaModule;
-import com.facebook.react.bridge.ReactMethod;
-
-public class MushafLauncherModule extends ReactContextBaseJavaModule {{
-  public MushafLauncherModule(ReactApplicationContext context) {{ super(context); }}
-  @Override public String getName() {{ return "MushafLauncher"; }}
-  @ReactMethod public void open(String slug) {{
-    if (slug == null || !slug.matches("[a-z0-9]+")) throw new IllegalArgumentException("Invalid mushaf id");
-    Activity activity = getCurrentActivity();
-    android.content.Context context = activity != null ? activity : getReactApplicationContext();
-    Intent intent = new Intent(context, MushafBundleActivity.class);
-    intent.setData(Uri.parse("qurani://mushaf/" + slug));
-    if (activity == null) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-    context.startActivity(intent);
-  }}
-}}
-''',encoding="utf-8")
-launcher_pkg=pkg_dir/"MushafLauncherPackage.java"
-launcher_pkg.write_text(f'''package {pkg};
-
-import com.facebook.react.ReactPackage;
-import com.facebook.react.bridge.NativeModule;
-import com.facebook.react.bridge.ReactApplicationContext;
-import com.facebook.react.uimanager.ViewManager;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
-public class MushafLauncherPackage implements ReactPackage {{
-  @Override public List<NativeModule> createNativeModules(ReactApplicationContext context) {{
-    List<NativeModule> modules = new ArrayList<>();
-    modules.add(new MushafLauncherModule(context));
-    return modules;
-  }}
-  @Override public List<ViewManager> createViewManagers(ReactApplicationContext context) {{
-    return Collections.emptyList();
-  }}
-}}
-''',encoding="utf-8")
-# Do not modify MainApplication. The unified launcher package is registered only
-# in the dedicated per-mushaf React Native host below, which avoids coupling the
-# proven base application's Kotlin MainApplication to our embedded launcher.
-activity=pkg_dir/"MushafBundleActivity.java"
 host=pkg_dir/"MushafBundleHost.java"
 host.write_text(f'''package {pkg};
 
@@ -157,7 +93,6 @@ import android.app.Application;
 import com.facebook.react.PackageList;
 import com.facebook.react.ReactPackage;
 import com.facebook.react.defaults.DefaultReactNativeHost;
-import {pkg}.MushafLauncherPackage;
 import java.util.List;
 
 public class MushafBundleHost extends DefaultReactNativeHost {{
@@ -167,9 +102,7 @@ public class MushafBundleHost extends DefaultReactNativeHost {{
     this.bundleAsset = bundleAsset;
   }}
   @Override protected List<ReactPackage> getPackages() {{
-    List<ReactPackage> packages = new PackageList(this).getPackages();
-    packages.add(new MushafLauncherPackage());
-    return packages;
+    return new PackageList(this).getPackages();
   }}
   @Override protected String getJSMainModuleName() {{ return "index"; }}
   @Override protected String getBundleAssetName() {{ return bundleAsset; }}
@@ -178,6 +111,8 @@ public class MushafBundleHost extends DefaultReactNativeHost {{
   @Override public boolean isHermesEnabled() {{ return BuildConfig.IS_HERMES_ENABLED; }}
 }}
 ''',encoding="utf-8")
+
+activity=pkg_dir/"MushafBundleActivity.java"
 activity.write_text(f'''package {pkg};
 
 import android.net.Uri;
@@ -250,6 +185,7 @@ public class MushafBundleActivity extends ReactActivity {{
   }}
 }}
 ''',encoding="utf-8")
+
 ms=manifest.read_text(encoding="utf-8")
 if "MushafBundleActivity" not in ms:
     insertion='''\n        <activity android:name=".MushafBundleActivity" android:exported="true" android:launchMode="singleTop">\n            <intent-filter>\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="qurani" android:host="mushaf" />\n            </intent-filter>\n        </activity>\n'''
