@@ -264,7 +264,8 @@ jobs:
           for n in root.iter('node'):
               t=n.attrib.get('text','')
               rid=n.attrib.get('resource-id','')
-              if target in t or target in rid:
+              desc=n.attrib.get('content-desc','')
+              if target in t or target in rid or target in desc:
                   m=re.match(r'\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]',n.attrib.get('bounds',''))
                   if m:
                       x=(int(m.group(1))+int(m.group(3)))//2
