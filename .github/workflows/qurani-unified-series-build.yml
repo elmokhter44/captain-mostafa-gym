@@ -2,7 +2,7 @@ name: Qurani Unified Series APK
 
 on:
   push:
-    branches: [qurani-unified-series-v100]
+    branches: [qurani-unified-series-v100, fix/qurani-unified-native-bundle-launch]
     paths:
       - '.github/workflows/qurani-unified-series-build.yml'
       - 'qurani-unified/**'
