@@ -126,27 +126,9 @@ public class MushafLauncherPackage implements ReactPackage {{
   }}
 }}
 ''',encoding="utf-8")
-main_files=list(java_root.rglob("MainApplication.java"))+list(java_root.rglob("MainApplication.kt"))
-if not main_files: raise SystemExit("MainApplication source not found")
-app=main_files[0]
-ms=app.read_text(encoding="utf-8")
-if "MushafLauncherPackage" not in ms:
-    if app.suffix==".java":
-        ms=ms.replace("import com.facebook.react.PackageList;", "import com.facebook.react.PackageList;\nimport "+pkg+".MushafLauncherPackage;")
-        pos=ms.find("getPackages()")
-        ret=ms.find("return packages;",pos)
-        if pos<0 or ret<0: raise SystemExit("Java getPackages anchor missing")
-        ms=ms[:ret]+"packages.add(new MushafLauncherPackage());\n          "+ms[ret:]
-    else:
-        ms=ms.replace("import com.facebook.react.PackageList", "import com.facebook.react.PackageList\nimport "+pkg+".MushafLauncherPackage")
-        marker="PackageList(this).packages.apply {"
-        if marker not in ms:
-            marker="PackageList(this).packages.apply {"
-        if marker not in ms:
-            raise SystemExit("Kotlin PackageList apply anchor missing")
-        ms=ms.replace(marker, marker+"\n              add(MushafLauncherPackage())", 1)
-    app.write_text(ms,encoding="utf-8")
-
+# Do not modify MainApplication. The unified launcher package is registered only
+# in the dedicated per-mushaf React Native host below, which avoids coupling the
+# proven base application's Kotlin MainApplication to our embedded launcher.
 activity=pkg_dir/"MushafBundleActivity.java"
 host=pkg_dir/"MushafBundleHost.java"
 host.write_text(f'''package {pkg};
@@ -155,6 +137,7 @@ import android.app.Application;
 import com.facebook.react.PackageList;
 import com.facebook.react.ReactPackage;
 import com.facebook.react.defaults.DefaultReactNativeHost;
+import {pkg}.MushafLauncherPackage;
 import java.util.List;
 
 public class MushafBundleHost extends DefaultReactNativeHost {{
@@ -164,7 +147,9 @@ public class MushafBundleHost extends DefaultReactNativeHost {{
     this.bundleAsset = bundleAsset;
   }}
   @Override protected List<ReactPackage> getPackages() {{
-    return new PackageList(this).getPackages();
+    List<ReactPackage> packages = new PackageList(this).getPackages();
+    packages.add(new MushafLauncherPackage());
+    return packages;
   }}
   @Override protected String getJSMainModuleName() {{ return "index"; }}
   @Override protected String getBundleAssetName() {{ return bundleAsset; }}
