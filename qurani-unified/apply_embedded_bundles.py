@@ -42,7 +42,7 @@ for apk,slug in mapping:
     pack_dir=assets/"mushaf-packs"
     pack_dir.mkdir(parents=True,exist_ok=True)
     pack=pack_dir/f"{slug}.apk"
-    with zipfile.ZipFile(apk) as zsrc, zipfile.ZipFile(pack,"w",zipfile.ZIP_DEFLATED,compresslevel=6) as zp:
+    with zipfile.ZipFile(ap) as zsrc, zipfile.ZipFile(pack,"w",zipfile.ZIP_DEFLATED,compresslevel=6) as zp:
         zp.writestr("AndroidManifest.xml", zsrc.read("AndroidManifest.xml"), compress_type=zipfile.ZIP_STORED)
         if "resources.arsc" in zsrc.namelist():
             zp.writestr("resources.arsc", zsrc.read("resources.arsc"), compress_type=zipfile.ZIP_STORED)
