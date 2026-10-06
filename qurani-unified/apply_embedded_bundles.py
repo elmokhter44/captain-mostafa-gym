@@ -113,6 +113,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.content.res.AssetManager;
 import com.facebook.react.ReactActivity;
+import com.facebook.react.ReactActivityDelegate;
 import com.facebook.react.ReactNativeHost;
 import java.io.File;
 import java.io.FileOutputStream;
