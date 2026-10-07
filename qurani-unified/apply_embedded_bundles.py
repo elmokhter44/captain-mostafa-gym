@@ -127,8 +127,10 @@ if "QURANI_SELECTED_BUNDLE" not in app_src:
                 language="java"
                 break
     if not match:
-        context=" | ".join(line.strip() for line in app_src.splitlines() if "ReactNativeHost" in line or "JSMain" in line or "reactNativeHost" in line)
-        raise SystemExit("ReactNativeHost JS module anchor not found: "+context[:1200])
+        print("=== QURANI_MAIN_APPLICATION_BEGIN ===")
+        print(app_src)
+        print("=== QURANI_MAIN_APPLICATION_END ===")
+        raise SystemExit("React host bundle anchor not found")
     anchor=match.group(0)
     if language=="kt":
         inject=anchor+'''
