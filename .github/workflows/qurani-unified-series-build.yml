@@ -299,11 +299,19 @@ jobs:
             adb shell monkey -p "$PKG" 1 >/dev/null 2>&1
             sleep 3
             tap_target "mushaf-card-$id"
-            sleep 5
-            dump_ui
+            # Allow the deep-link Activity and its selected bundle time to start.
+            for attempt in $(seq 1 12); do
+              sleep 1
+              dump_ui
+              if ! grep -q 'اختر المصحف أو القراءة' /tmp/window.xml; then break; fi
+            done
             # The selected standalone v1.0.4 UI must replace the series selector.
             if grep -q 'اختر المصحف أو القراءة' /tmp/window.xml; then
               echo "CARD_DID_NOT_OPEN_STANDALONE_UI=$id"
+              echo "=== CURRENT ACTIVITY ==="
+              adb shell dumpsys activity activities | grep -m 3 -E 'mResumedActivity|mFocusedApp' || true
+              echo "=== QURANI LOGCAT ==="
+              adb logcat -d -s QURANI:* ReactNativeJS:* AndroidRuntime:E || true
               cat /tmp/window.xml
               exit 1
             fi
