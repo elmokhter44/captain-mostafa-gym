@@ -97,31 +97,41 @@ component=q.group(1)
 pkg_dir=java_root/Path(pkg.replace(".","/"))
 pkg_dir.mkdir(parents=True,exist_ok=True)
 
-host=pkg_dir/"MushafBundleHost.java"
-host.write_text(f'''package {pkg};
-
-import android.app.Application;
-import com.facebook.react.PackageList;
-import com.facebook.react.ReactPackage;
-import com.facebook.react.defaults.DefaultReactNativeHost;
-import java.util.List;
-
-public class MushafBundleHost extends DefaultReactNativeHost {{
-  private final String bundleAsset;
-  public MushafBundleHost(Application application, String bundleAsset) {{
-    super(application);
-    this.bundleAsset = bundleAsset;
-  }}
-  @Override protected List<ReactPackage> getPackages() {{
-    return new PackageList(this).getPackages();
-  }}
-  @Override protected String getJSMainModuleName() {{ return "index"; }}
-  @Override protected String getBundleAssetName() {{ return bundleAsset; }}
-  @Override public boolean getUseDeveloperSupport() {{ return false; }}
-  @Override public boolean isNewArchEnabled() {{ return BuildConfig.IS_NEW_ARCHITECTURE_ENABLED; }}
-  @Override public boolean isHermesEnabled() {{ return BuildConfig.IS_HERMES_ENABLED; }}
-}}
-''',encoding="utf-8")
+# Make the proven application's default ReactNativeHost select the requested
+# standalone bundle. The mushaf Activity runs in a separate Android process, so
+# its host is created fresh for every launch and cannot reuse the unified bundle.
+main_apps=list(java_root.rglob("MainApplication.kt"))+list(java_root.rglob("MainApplication.java"))
+if not main_apps:
+    raise SystemExit("MainApplication source not found")
+main_app=main_apps[0]
+app_src=main_app.read_text(encoding="utf-8")
+if "QURANI_SELECTED_BUNDLE" not in app_src:
+    kt_anchor='override fun getJSMainModuleName(): String = "index"'
+    java_anchor='@Override protected String getJSMainModuleName() { return "index"; }'
+    if kt_anchor in app_src:
+        inject=kt_anchor+'''
+      // QURANI_SELECTED_BUNDLE
+      override fun getBundleAssetName(): String {
+        val selected = java.io.File(this@MainApplication.filesDir, "active-mushaf.txt")
+        val id = if (selected.isFile) selected.readText().trim() else ""
+        return if (id.matches(Regex("[a-z0-9]+"))) "mushaf-bundles/$id/index.android.bundle" else "index.android.bundle"
+      }'''
+        app_src=app_src.replace(kt_anchor,inject,1)
+    elif java_anchor in app_src:
+        inject=java_anchor+'''
+      // QURANI_SELECTED_BUNDLE
+      @Override protected String getBundleAssetName() {
+        java.io.File selected = new java.io.File(MainApplication.this.getFilesDir(), "active-mushaf.txt");
+        String id = "";
+        try {
+          if (selected.isFile()) id = new String(java.nio.file.Files.readAllBytes(selected.toPath()), java.nio.charset.StandardCharsets.UTF_8).trim();
+        } catch (Exception ignored) {}
+        return id.matches("[a-z0-9]+") ? "mushaf-bundles/" + id + "/index.android.bundle" : "index.android.bundle";
+      }'''
+        app_src=app_src.replace(java_anchor,inject,1)
+    else:
+        raise SystemExit("ReactNativeHost JS module anchor not found")
+    main_app.write_text(app_src,encoding="utf-8")
 
 activity=pkg_dir/"MushafBundleActivity.java"
 activity.write_text(f'''package {pkg};
@@ -131,8 +141,6 @@ import android.os.Bundle;
 import android.util.Log;
 import android.content.res.AssetManager;
 import com.facebook.react.ReactActivity;
-import com.facebook.react.ReactActivityDelegate;
-import com.facebook.react.ReactNativeHost;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -140,11 +148,16 @@ import java.lang.reflect.Method;
 
 public class MushafBundleActivity extends ReactActivity {{
   private static final String TAG = "QURANI";
-  private MushafBundleHost host;
 
   private String selectedSlug() {{
     Uri uri = getIntent() == null ? null : getIntent().getData();
     String slug = uri == null ? null : uri.getLastPathSegment();
+    if (slug == null || !slug.matches("[a-z0-9]+")) {{
+      try {{
+        File selected = new File(getFilesDir(), "active-mushaf.txt");
+        if (selected.isFile()) slug = new String(java.nio.file.Files.readAllBytes(selected.toPath()), java.nio.charset.StandardCharsets.UTF_8).trim();
+      }} catch (Exception ignored) {{}}
+    }}
     return slug != null && slug.matches("[a-z0-9]+") ? slug : "abuamr";
   }}
 
@@ -173,26 +186,26 @@ public class MushafBundleActivity extends ReactActivity {{
     Log.i(TAG, "ASSET_PDF_OK=" + slug);
   }}
 
-  @Override protected ReactActivityDelegate createReactActivityDelegate() {{
-    return new ReactActivityDelegate(this, "{component}") {{
-      @Override protected ReactNativeHost getReactNativeHost() {{
-        return host;
-      }}
-    }};
+  @Override protected String getMainComponentName() {{
+    return "{component}";
   }}
 
   @Override protected void onCreate(Bundle savedInstanceState) {{
     String slug = selectedSlug();
     try {{
       installAssetPack(slug);
-      String bundle = "mushaf-bundles/" + slug + "/index.android.bundle";
-      Log.i(TAG, "BUNDLE_START=" + slug + " asset=" + bundle);
-      host = new MushafBundleHost(getApplication(), bundle);
+      Log.i(TAG, "BUNDLE_START=" + slug + " asset=mushaf-bundles/" + slug + "/index.android.bundle");
     }} catch (Exception e) {{
       Log.e(TAG, "BUNDLE_BOOT_ERROR=" + slug, e);
       throw new RuntimeException(e);
     }}
     super.onCreate(savedInstanceState);
+  }}
+
+  @Override protected void onDestroy() {{
+    boolean finishing = isFinishing();
+    super.onDestroy();
+    if (finishing) android.os.Process.killProcess(android.os.Process.myPid());
   }}
 }}
 ''',encoding="utf-8")
@@ -271,6 +284,14 @@ public class UnifiedSelectorActivity extends Activity {{
       card.setBackgroundColor(Color.rgb(13,48,40));
       card.setContentDescription("mushaf-card-" + slug + "، " + TITLES[i]);
       card.setOnClickListener(v -> {{
+        try {{
+          java.io.File selected = new java.io.File(getFilesDir(), "active-mushaf.txt");
+          try (java.io.FileOutputStream out = new java.io.FileOutputStream(selected, false)) {{
+            out.write(slug.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+          }}
+        }} catch (Exception e) {{
+          throw new RuntimeException(e);
+        }}
         Intent intent = new Intent(UnifiedSelectorActivity.this, MushafBundleActivity.class);
         intent.setData(Uri.parse("qurani://mushaf/" + slug));
         startActivity(intent);
@@ -296,11 +317,11 @@ insert='''
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <activity android:name=".MushafBundleActivity" android:exported="false" android:launchMode="standard"/>
+        <activity android:name=".MushafBundleActivity" android:exported="false" android:launchMode="standard" android:process=":mushaf"/>
 '''
 if "</application>" not in ms:
     raise SystemExit("manifest application end not found")
 ms=ms.replace("</application>",insert+"    </application>")
 manifest.write_text(ms,encoding="utf-8")
 
-print(f"NATIVE_SELECTOR_SHELL=1 EMBEDDED_STANDALONE_BUNDLES=12 COMPONENT={component} PACKAGE={pkg}")
+print(f"NATIVE_SELECTOR_SHELL=1 ISOLATED_MUSHAF_PROCESS=1 EMBEDDED_STANDALONE_BUNDLES=12 COMPONENT={component} PACKAGE={pkg}")
