@@ -175,48 +175,25 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-
+          import re
           gp = Path('qurani-app/android/gradle.properties')
-          if gp.exists():
-              lines = gp.read_text().splitlines()
-              found = False
-              out = []
-              for line in lines:
-                  if line.strip().startswith('newArchEnabled='):
-                      out.append('newArchEnabled=false')
-                      found = True
-                  else:
-                      out.append(line)
-              if not found:
-                  out.append('newArchEnabled=false')
-              gp.write_text('\n'.join(out) + '\n')
-
+          gs = gp.read_text() if gp.exists() else ''
+          if re.search(r'^newArchEnabled\s*=', gs, re.M):
+              gs = re.sub(r'^newArchEnabled\s*=.*$', 'newArchEnabled=false', gs, flags=re.M)
+          else:
+              gs += '\nnewArchEnabled=false\n'
+          gp.write_text(gs)
           g = Path('qurani-app/android/app/build.gradle')
-          text = g.read_text()
-          lines = text.splitlines()
-          out = []
-          for line in lines:
-              if line.strip().startswith('applicationId '):
-                  out.append('        applicationId "com.qurani.series"')
-              elif line.strip().startswith('versionCode '):
-                  out.append('        versionCode 3')
-              elif line.strip().startswith('versionName '):
-                  out.append('        versionName "1.0.3"')
-              else:
-                  out.append(line)
-          g.write_text('\n'.join(out) + '\n')
-
+          gs = g.read_text()
+          gs = re.sub(r'applicationId\s+"[^"]+"', 'applicationId "com.qurani.series"', gs)
+          gs = re.sub(r'versionCode\s+\d+', 'versionCode 3', gs)
+          gs = re.sub(r'versionName\s+"[^"]+"', 'versionName "1.0.3"', gs)
+          g.write_text(gs)
           strings = Path('qurani-app/android/app/src/main/res/values/strings.xml')
           if strings.exists():
-              text = strings.read_text()
-              marker = '<string name="app_name">'
-              a = text.find(marker)
-              if a >= 0:
-                  b = text.find('</string>', a)
-                  if b >= 0:
-                      b += len('</string>')
-                      text = text[:a] + '<string name="app_name">سلسلة قرآني</string>' + text[b:]
-                      strings.write_text(text)
+              ss = strings.read_text()
+              ss = re.sub(r'<string name="app_name">.*?</string>', '<string name="app_name">سلسلة قرآني</string>', ss)
+              strings.write_text(ss)
           PY
           cd qurani-app
           cat > tsconfig.unified.json <<'EOF'
