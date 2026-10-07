@@ -258,9 +258,26 @@ public class MushafBundleActivity extends ReactActivity {{
 ''',encoding="utf-8")
 
 ms=manifest.read_text(encoding="utf-8")
+# Dedicated deep-link entry point for every mushaf card.
+import re
+ms=re.sub(r'<activity android:name="\\.MushafBundleActivity"[^>]*/>', '''<activity android:name=".MushafBundleActivity" android:exported="true" android:launchMode="standard">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="qurani" android:host="mushaf"/>
+            </intent-filter>
+        </activity>''', ms)
 if "MushafBundleActivity" not in ms:
-    insertion='''\n        <activity android:name=".MushafBundleActivity" android:exported="false" android:launchMode="standard" />\n'''
+    insertion='''\n        <activity android:name=".MushafBundleActivity" android:exported="true" android:launchMode="standard">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="qurani" android:host="mushaf"/>
+            </intent-filter>
+        </activity>\n'''
     ms=ms.replace("</application>",insertion+"    </application>")
-    manifest.write_text(ms,encoding="utf-8")
+manifest.write_text(ms,encoding="utf-8")
 
 print(f"EMBEDDED_STANDALONE_BUNDLES=12 COMPONENT={component} PACKAGE={pkg}")
