@@ -106,19 +106,40 @@ if not main_apps:
 main_app=main_apps[0]
 app_src=main_app.read_text(encoding="utf-8")
 if "QURANI_SELECTED_BUNDLE" not in app_src:
-    kt_anchor='override fun getJSMainModuleName(): String = "index"'
-    java_anchor='@Override protected String getJSMainModuleName() { return "index"; }'
-    if kt_anchor in app_src:
-        inject=kt_anchor+'''
+    kt_patterns=[
+        r'override\\s+fun\\s+getJSMainModuleName\\s*\\(\\s*\\)\\s*:\\s*String\\s*=\\s*"[^"]+"',
+        r'override\\s+fun\\s+getJSMainModuleName\\s*\\(\\s*\\)\\s*:\\s*String\\s*\\{.*?\\}',
+    ]
+    java_patterns=[
+        r'@Override\\s+(?:public|protected)\\s+String\\s+getJSMainModuleName\\s*\\(\\s*\\)\\s*\\{.*?\\}',
+    ]
+    match=None
+    language=None
+    for pattern in kt_patterns:
+        match=re.search(pattern,app_src,flags=re.S)
+        if match:
+            language="kt"
+            break
+    if not match:
+        for pattern in java_patterns:
+            match=re.search(pattern,app_src,flags=re.S)
+            if match:
+                language="java"
+                break
+    if not match:
+        context=" | ".join(line.strip() for line in app_src.splitlines() if "ReactNativeHost" in line or "JSMain" in line or "reactNativeHost" in line)
+        raise SystemExit("ReactNativeHost JS module anchor not found: "+context[:1200])
+    anchor=match.group(0)
+    if language=="kt":
+        inject=anchor+'''
       // QURANI_SELECTED_BUNDLE
       override fun getBundleAssetName(): String {
         val selected = java.io.File(this@MainApplication.filesDir, "active-mushaf.txt")
         val id = if (selected.isFile) selected.readText().trim() else ""
         return if (id.matches(Regex("[a-z0-9]+"))) "mushaf-bundles/$id/index.android.bundle" else "index.android.bundle"
       }'''
-        app_src=app_src.replace(kt_anchor,inject,1)
-    elif java_anchor in app_src:
-        inject=java_anchor+'''
+    else:
+        inject=anchor+'''
       // QURANI_SELECTED_BUNDLE
       @Override protected String getBundleAssetName() {
         java.io.File selected = new java.io.File(MainApplication.this.getFilesDir(), "active-mushaf.txt");
@@ -128,9 +149,7 @@ if "QURANI_SELECTED_BUNDLE" not in app_src:
         } catch (Exception ignored) {}
         return id.matches("[a-z0-9]+") ? "mushaf-bundles/" + id + "/index.android.bundle" : "index.android.bundle";
       }'''
-        app_src=app_src.replace(java_anchor,inject,1)
-    else:
-        raise SystemExit("ReactNativeHost JS module anchor not found")
+    app_src=app_src[:match.start()]+inject+app_src[match.end():]
     main_app.write_text(app_src,encoding="utf-8")
 
 activity=pkg_dir/"MushafBundleActivity.java"
