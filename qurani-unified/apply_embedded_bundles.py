@@ -106,52 +106,35 @@ if not main_apps:
 main_app=main_apps[0]
 app_src=main_app.read_text(encoding="utf-8")
 if "QURANI_SELECTED_BUNDLE" not in app_src:
-    kt_patterns=[
-        r'override\\s+fun\\s+getJSMainModuleName\\s*\\(\\s*\\)\\s*:\\s*String\\s*=\\s*"[^"]+"',
-        r'override\\s+fun\\s+getJSMainModuleName\\s*\\(\\s*\\)\\s*:\\s*String\\s*\\{.*?\\}',
-    ]
-    java_patterns=[
-        r'@Override\\s+(?:public|protected)\\s+String\\s+getJSMainModuleName\\s*\\(\\s*\\)\\s*\\{.*?\\}',
-    ]
-    match=None
-    language=None
-    for pattern in kt_patterns:
-        match=re.search(pattern,app_src,flags=re.S)
-        if match:
-            language="kt"
-            break
-    if not match:
-        for pattern in java_patterns:
-            match=re.search(pattern,app_src,flags=re.S)
-            if match:
-                language="java"
-                break
-    if not match:
+    react_anchor='''class MainApplication : Application(), ReactApplication {
+  override val reactHost: ReactHost by lazy {
+    getDefaultReactHost(
+      context = applicationContext,
+      packageList = PackageList(this).packages.apply { add(PdfAssetPackage()) },
+    )
+  }'''
+    if react_anchor not in app_src:
         print("=== QURANI_MAIN_APPLICATION_BEGIN ===")
         print(app_src)
         print("=== QURANI_MAIN_APPLICATION_END ===")
-        raise SystemExit("React host bundle anchor not found")
-    anchor=match.group(0)
-    if language=="kt":
-        inject=anchor+'''
-      // QURANI_SELECTED_BUNDLE
-      override fun getBundleAssetName(): String {
-        val selected = java.io.File(this@MainApplication.filesDir, "active-mushaf.txt")
-        val id = if (selected.isFile) selected.readText().trim() else ""
-        return if (id.matches(Regex("[a-z0-9]+"))) "mushaf-bundles/$id/index.android.bundle" else "index.android.bundle"
-      }'''
-    else:
-        inject=anchor+'''
-      // QURANI_SELECTED_BUNDLE
-      @Override protected String getBundleAssetName() {
-        java.io.File selected = new java.io.File(MainApplication.this.getFilesDir(), "active-mushaf.txt");
-        String id = "";
-        try {
-          if (selected.isFile()) id = new String(java.nio.file.Files.readAllBytes(selected.toPath()), java.nio.charset.StandardCharsets.UTF_8).trim();
-        } catch (Exception ignored) {}
-        return id.matches("[a-z0-9]+") ? "mushaf-bundles/" + id + "/index.android.bundle" : "index.android.bundle";
-      }'''
-    app_src=app_src[:match.start()]+inject+app_src[match.end():]
+        raise SystemExit("Expected ReactHost application shape not found")
+    react_replacement='''class MainApplication : Application(), ReactApplication {
+  // QURANI_SELECTED_BUNDLE
+  private fun selectedBundleAsset(): String {
+    val selected = java.io.File(filesDir, "active-mushaf.txt")
+    val id = if (selected.isFile) selected.readText().trim() else ""
+    return if (id.matches(Regex("[a-z0-9]+"))) "mushaf-bundles/$id/index.android.bundle" else "index.android.bundle"
+  }
+
+  override val reactHost: ReactHost by lazy {
+    getDefaultReactHost(
+      context = applicationContext,
+      packageList = PackageList(this).packages.apply { add(PdfAssetPackage()) },
+      jsMainModulePath = "index",
+      jsBundleAssetPath = selectedBundleAsset(),
+    )
+  }'''
+    app_src=app_src.replace(react_anchor,react_replacement,1)
     main_app.write_text(app_src,encoding="utf-8")
 
 activity=pkg_dir/"MushafBundleActivity.java"
