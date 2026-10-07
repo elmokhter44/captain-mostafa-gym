@@ -176,12 +176,196 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
-                    # The unified launcher uses a deliberately registered legacy ReactPackage.\n          # Keep the host on the bridge architecture so NativeModules registration is deterministic.\n          gp=Path('qurani-app/android/gradle.properties')\n          if gp.exists():\n              gs=gp.read_text()\n              if re.search(r'^newArchEnabled\\s*=', gs, re.M): gs=re.sub(r'^newArchEnabled\\s*=.*, 'newArchEnabled=false', gs, flags=re.M)\n              else: gs += '\\nnewArchEnabled=false\\n'\n              gp.write_text(gs)\n          g=Path('qurani-app/android/app/build.gradle'); s=g.read_text()
-          s=re.sub(r'applicationId\s+"[^"]+"','applicationId "com.qurani.series"',s)
-          s=re.sub(r'versionCode\s+\d+','versionCode 3',s)
-          s=re.sub(r'versionName\s+"[^"]+"','versionName "1.0.3"',s); g.write_text(s)
-          strings=Path('qurani-app/android/app/src/main/res/values/strings.xml')
-          if strings.exists(): strings.write_text(re.sub(r'<string name="app_name">.*?</string>','<string name="app_name">سلسلة قرآني</string>',strings.read_text()))
+
+          # Keep the host on the legacy bridge because the unified native launcher
+          # is registered as a classic ReactPackage/NativeModule.
+          gp = Path('qurani-app/android/gradle.properties')
+          if gp.exists():
+              gs = gp.read_text()
+              if re.search(r'^newArchEnabled\s*=', gs, re.M):
+                  gs = re.sub(r'^newArchEnabled\s*=.*
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools' 'ndk;27.1.12297006' 'cmake;3.22.1'
+          keytool -genkeypair -v -keystore qurani-app/android/app/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Qurani Unified,O=QuranKarem,C=EG' >/dev/null 2>&1 || true
+          cd qurani-app/android
+          gradle wrapper --gradle-version 9.3.1
+          chmod +x gradlew
+          ./gradlew --version
+
+      - name: Build final unified 12-mushaf APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qurani-app/android
+          ./gradlew assembleRelease --no-daemon
+          cd ../..
+          mkdir -p final-unified
+          APK="$(find qurani-app/android/app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
+          test -n "$APK"; test -s "$APK"
+          cp "$APK" final-unified/qurani-series-v1.0.4-all-12-mushafs.apk
+          ls -lh final-unified
+          sha256sum final-unified/qurani-series-v1.0.4-all-12-mushafs.apk | tee final-unified/SHA256SUMS.txt
+          echo "=== FINAL APK CONTENT VERIFICATION ==="
+          rm -rf /tmp/final-apk-check && mkdir -p /tmp/final-apk-check
+          unzip -q final-unified/qurani-series-v1.0.4-all-12-mushafs.apk 'assets/mushaf-packs/*' -d /tmp/final-apk-check
+          test "$(find /tmp/final-apk-check/assets/mushaf-packs -maxdepth 1 -name '*.apk' | wc -l)" -eq 12
+          for p in /tmp/final-apk-check/assets/mushaf-packs/*.apk; do
+            unzip -tq "$p" >/dev/null
+            unzip -l "$p" | grep -q 'assets/pdf/'
+            unzip -l "$p" | grep -q 'assets/index.android.bundle' || true
+          done
+          echo "FINAL_APK_12_ISOLATED_ASSET_PACKS_OK=1"
+
+      - name: Verify all 12 mushafs on Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/verify-unified.sh <<'BASH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK="$PWD/final-unified/qurani-series-v1.0.4-all-12-mushafs.apk"
+          adb install -r "$APK" 2>&1 | tee /tmp/install.log
+          PKG="com.qurani.series"
+          adb shell pm path "$PKG" | grep -q "package:"
+          adb shell am force-stop "$PKG" || true
+          adb logcat -c
+          adb shell monkey -p "$PKG" 1 >/dev/null 2>&1
+          sleep 5
+          dump_ui(){ adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1; adb pull /sdcard/window.xml /tmp/window.xml >/dev/null 2>&1; }
+          tap_target(){
+            local target="$1"
+            for attempt in $(seq 1 15); do
+              dump_ui
+              if python3 - "$target" <<'PY'
+          import sys,xml.etree.ElementTree as ET,re,subprocess
+          target=sys.argv[1]
+          root=ET.parse('/tmp/window.xml').getroot()
+          for n in root.iter('node'):
+              vals=(n.attrib.get('text',''),n.attrib.get('resource-id',''),n.attrib.get('content-desc',''))
+              if any(target in v for v in vals):
+                  m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+                  if m:
+                      x=(int(m.group(1))+int(m.group(3)))//2
+                      y=(int(m.group(2))+int(m.group(4)))//2
+                      subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
+                      print('TAPPED',target,x,y)
+                      raise SystemExit(0)
+          raise SystemExit(1)
+          PY
+              then return 0; fi
+              adb shell input swipe 540 1850 540 650 500 >/dev/null 2>&1 || true
+              sleep 1
+            done
+            echo "TEXT_OR_ID_NOT_FOUND=$target"
+            cat /tmp/window.xml 2>/dev/null || true
+            return 1
+          }
+          for i in 1 2 3; do
+            dump_ui
+            if grep -q 'ابدأ الآن' /tmp/window.xml; then tap_target 'ابدأ الآن'; elif grep -q 'التالي' /tmp/window.xml; then tap_target 'التالي'; else break; fi
+            sleep 2
+          done
+          declare -a IDS=(abuamr ibnamir ibnkathir khalafhamza alkisai khalladhamza abujaafar yaqub khalaf10 asim warshazraq qalunqasr)
+          declare -a TITLES=('المصحف المعلم بقراءة الإمام أبي عمرو' 'المصحف المعلم بقراءة الإمام ابن عامر' 'المصحف المعلم بقراءة الإمام عبدالله بن كثير' 'المصحف المعلم برواية الإمام خلف عن حمزة' 'المصحف المعلم بقراءة الإمام الكسائي' 'المصحف المعلم برواية الإمام خلاد عن حمزة' 'المصحف المعلم بقراءة الإمام أبي جعفر' 'المصحف المعلم بقراءة الإمام يعقوب' 'المصحف المعلم بقراءة الإمام خلف العاشر' 'المصحف المعلم بقراءة الإمام عاصم' 'مصحف ورش عن نافع' 'مصحف قالون عن نافع')
+          for i in ${!IDS[@]}; do
+            id=${IDS[$i]}
+            adb shell am force-stop "$PKG" || true
+            adb logcat -c
+            adb shell monkey -p "$PKG" 1 >/dev/null 2>&1
+            sleep 3
+            tap_target "mushaf-card-$id"
+            sleep 5
+            dump_ui
+            # The selected standalone v1.0.4 UI must replace the series selector.
+            if grep -q 'اختر المصحف أو القراءة' /tmp/window.xml; then
+              echo "CARD_DID_NOT_OPEN_STANDALONE_UI=$id"
+              cat /tmp/window.xml
+              exit 1
+            fi
+            if ! tap_target "المصحف كامل"; then
+              echo "QURAN_SECTION_NOT_FOUND=$id"
+              cat /tmp/window.xml
+              exit 1
+            fi
+            sleep 10
+            dump_ui
+            if grep -Eq 'تعذر (عرض|تحميل)|Failed to fetch|تعذر' /tmp/window.xml; then
+              echo "READER_UI_ERROR=$id"
+              cat /tmp/window.xml
+              exit 1
+            fi
+            adb logcat -d > /tmp/current.log
+            grep -q "\[QURANI\] ASSET_PACK_OK=$id" /tmp/current.log
+            grep -q "\[QURANI\] ASSET_PDF_OK=$id" /tmp/current.log
+            if grep -Eq 'PDF_RENDER_ERROR|ENOENT|FileNotFoundException.*pdf/|Unable to open.*pdf/' /tmp/current.log; then
+              echo "PDF_RUNTIME_ERROR=$id"
+              cat /tmp/current.log
+              exit 1
+            fi
+            echo "MUSHAF_$((i+1))_$id=PASS"
+          done
+          echo 'UNIFIED_12_MUSHAF_ANDROID_RUNTIME=PASS'
+          BASH
+          chmod +x /tmp/verify-unified.sh
+          if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm; fi
+
+      - name: Run 12-mushaf runtime verification on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: default
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          disk-size: 8192M
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-metrics
+          script: bash /tmp/verify-unified.sh
+
+      - name: Upload final unified artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qurani-unified-series-all-12-mushafs
+          path: final-unified/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish unified release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$UNIFIED_TAG" --cleanup-tag --yes >/dev/null 2>&1 || true
+          gh release create "$UNIFIED_TAG" final-unified/qurani-series-v1.0.4-all-12-mushafs.apk final-unified/SHA256SUMS.txt --target "$GITHUB_SHA" --title 'سلسلة قرآني v1.0.4 – 12 مصحف مستقل داخل تطبيق واحد' --notes 'تطبيق سلسلة قرآني الموحد: كل بطاقة مرتبطة بملفات المصحف الأصلية الخاصة بها من إصدارات v1.0.4، مع شاشة اختيار المصحف، onboarding لأول تشغيل، البحث الدقيق بنص الآية، Zoom، RTL، الفهرس والأقسام.'
+
+# Native bundle launch fix merged; force a fresh CI validation.
+, 'newArchEnabled=false', gs, flags=re.M)
+              else:
+                  gs += '\\nnewArchEnabled=false\\n'
+              gp.write_text(gs)
+
+          g = Path('qurani-app/android/app/build.gradle')
+          s = g.read_text()
+          s = re.sub(r'applicationId\s+"[^"]+"', 'applicationId "com.qurani.series"', s)
+          s = re.sub(r'versionCode\s+\d+', 'versionCode 3', s)
+          s = re.sub(r'versionName\s+"[^"]+"', 'versionName "1.0.3"', s)
+          g.write_text(s)
+
+          strings = Path('qurani-app/android/app/src/main/res/values/strings.xml')
+          if strings.exists():
+              strings.write_text(
+                  re.sub(
+                      r'<string name="app_name">.*?</string>',
+                      '<string name="app_name">سلسلة قرآني</string>',
+                      strings.read_text()
+                  )
+              )
           PY
           cd qurani-app
           cat > tsconfig.unified.json <<'EOF'
