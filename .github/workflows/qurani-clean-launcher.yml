@@ -1,0 +1,128 @@
+name: Qurani Clean Launcher - 12 Original Apps
+on:
+  push:
+    branches: [qurani-clean-launcher-v1]
+    paths: ['qurani-clean-launcher/**', '.github/workflows/qurani-clean-launcher.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14'
+      - name: Download exact original 12 standalone APKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p output/apks
+          gh release download quran-series-v1.0.4-exact-ayah-search --pattern '*.apk' --dir output/apks
+          test "$(find output/apks -maxdepth 1 -name '*.apk' | wc -l)" -eq 12
+      - name: Generate exact package routing from APK manifests
+        run: |
+          set -euo pipefail
+          mkdir -p qurani-clean-launcher/app/src/main/assets
+          python3 - <<'PY'
+          from pathlib import Path
+          rows=[
+          ('01-AbuAmr-v1.0.4.apk','abuamr','المصحف المعلم بقراءة الإمام أبي عمرو البصري براوييه السوسي والدوري'),
+          ('02-IbnAmir-v1.0.4.apk','ibnamir','المصحف المعلم بقراءة الإمام ابن عامر الشامي'),
+          ('03-IbnKathir-v1.0.4.apk','ibnkathir','المصحف المعلم بقراءة الإمام عبدالله بن كثير'),
+          ('04-Khalaf-Hamza-Sakt-v1.0.4.apk','khalafhamza','المصحف المعلم برواية خلف عن حمزة'),
+          ('05-AlKisai-v1.0.4.apk','alkisai','المصحف المعلم بقراءة الإمام الكسائي'),
+          ('06-Khallad-Hamza-NoSakt-v1.0.4.apk','khalladhamza','المصحف المعلم برواية خلاد عن حمزة'),
+          ('07-AbuJaafar-v1.0.4.apk','abujaafar','المصحف المعلم بقراءة الإمام أبي جعفر'),
+          ('08-Yaqub-v1.0.4.apk','yaqub','المصحف المعلم بقراءة الإمام يعقوب'),
+          ('09-Khalaf10-v1.0.4.apk','khalaf10','المصحف المعلم بقراءة الإمام خلف العاشر'),
+          ('10-Asim-v1.0.4.apk','asim','المصحف المعلم بقراءة الإمام عاصم'),
+          ('11-Warsh-Azraq-v1.0.4.apk','warshazraq','مصحف ورش عن نافع من طريق الأزرق'),
+          ('12-Qalun-Qasr-v1.0.4.apk','qalunqasr','مصحف قالون عن نافع'),
+          ]
+          Path('/tmp/mushafs-list.tsv').write_text(''.join('\t'.join(x)+'\n' for x in rows), encoding='utf-8')
+          PY
+          : > qurani-clean-launcher/app/src/main/assets/mushafs.tsv
+          while IFS=$'\t' read -r apk slug title; do
+            test -s "output/apks/$apk"
+            pkg="$(aapt dump badging "output/apks/$apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -1)"
+            test -n "$pkg"
+            printf '%s\t%s\t%s\n' "$slug" "$pkg" "$title" >> qurani-clean-launcher/app/src/main/assets/mushafs.tsv
+          done < /tmp/mushafs-list.tsv
+          test "$(wc -l < qurani-clean-launcher/app/src/main/assets/mushafs.tsv)" -eq 12
+          cut -f2 qurani-clean-launcher/app/src/main/assets/mushafs.tsv | sort -u | tee /tmp/distinct-packages
+          test "$(wc -l < /tmp/distinct-packages)" -eq 12
+          cp qurani-clean-launcher/app/src/main/assets/mushafs.tsv output/mushafs.tsv
+          echo 'TWELVE_DISTINCT_ORIGINAL_PACKAGES=PASS'
+      - name: Build clean standalone native launcher
+        run: |
+          set -euo pipefail
+          gradle -p qurani-clean-launcher :app:assembleDebug --no-daemon
+          cp qurani-clean-launcher/app/build/outputs/apk/debug/app-debug.apk output/qurani-clean-launcher.apk
+          test -s output/qurani-clean-launcher.apk
+          sha256sum output/qurani-clean-launcher.apk > output/SHA256SUMS.txt
+      - name: Prepare emulator verification script
+        run: |
+          cat > /tmp/verify-clean.sh <<'BASH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          while IFS=$'\t' read -r slug pkg title; do
+            adb install -r "output/apks/$(awk -F '\t' -v wanted="$slug" '$2==wanted{print $1}' /tmp/mushafs-list.tsv)"
+            adb shell pm path "$pkg" | grep -q '^package:'
+          done < output/mushafs.tsv
+          adb install -r output/qurani-clean-launcher.apk
+          adb shell am start -n com.qurani.cleanlauncher/.MainActivity
+          sleep 3
+          for slug in $(cut -f1 output/mushafs.tsv); do
+            pkg=$(awk -F '\t' -v wanted="$slug" '$1==wanted{print $2}' output/mushafs.tsv)
+            adb shell am start -n com.qurani.cleanlauncher/.MainActivity >/dev/null
+            sleep 2
+            adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1
+            adb pull /sdcard/window.xml /tmp/window.xml >/dev/null 2>&1
+            python3 - "$slug" <<'PY'
+          import sys,xml.etree.ElementTree as ET,re,subprocess
+          slug=sys.argv[1]
+          root=ET.parse('/tmp/window.xml').getroot()
+          for n in root.iter('node'):
+              if n.attrib.get('content-desc','')!='mushaf-card-'+slug:continue
+              m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+              if not m:continue
+              x=(int(m[1])+int(m[3]))//2
+              y=(int(m[2])+int(m[4]))//2
+              subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
+              raise SystemExit(0)
+          raise SystemExit('CARD_NOT_FOUND='+slug)
+          PY
+            sleep 4
+            activity=$(adb shell dumpsys activity activities | grep -m 1 'mResumedActivity\|mFocusedApp' || true)
+            if [[ "$activity" != *"$pkg/"* ]]; then
+              echo "WRONG_PACKAGE=$slug EXPECTED=$pkg ACTIVITY=$activity"
+              exit 1
+            fi
+            echo "CARD_LAUNCH_$slug=PASS"
+          done
+          BASH
+          chmod +x /tmp/verify-clean.sh
+      - name: Verify all 12 original app launches on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: default
+          profile: pixel_6
+          disk-size: 8192M
+          disable-animations: true
+          script: bash /tmp/verify-clean.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qurani-clean-launcher-and-12-original-apks
+          path: output/
+          retention-days: 30
