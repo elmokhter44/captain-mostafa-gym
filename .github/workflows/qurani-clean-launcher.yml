@@ -49,10 +49,12 @@ jobs:
           ]
           Path('/tmp/mushafs-list.tsv').write_text(''.join('\t'.join(x)+'\n' for x in rows), encoding='utf-8')
           PY
+          AAPT_BIN="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name aapt | sort -V | tail -1)"
+          test -x "$AAPT_BIN"
           : > qurani-clean-launcher/app/src/main/assets/mushafs.tsv
           while IFS=$'\t' read -r apk slug title; do
             test -s "output/apks/$apk"
-            pkg="$(aapt dump badging "output/apks/$apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -1)"
+            pkg="$("$AAPT_BIN" dump badging "output/apks/$apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -1)"
             test -n "$pkg"
             printf '%s\t%s\t%s\n' "$slug" "$pkg" "$title" >> qurani-clean-launcher/app/src/main/assets/mushafs.tsv
           done < /tmp/mushafs-list.tsv
