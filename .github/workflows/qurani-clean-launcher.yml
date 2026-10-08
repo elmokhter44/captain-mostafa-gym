@@ -84,9 +84,11 @@ jobs:
             pkg=$(awk -F '\t' -v wanted="$slug" '$1==wanted{print $2}' output/mushafs.tsv)
             adb shell am start -n com.qurani.cleanlauncher/.MainActivity >/dev/null
             sleep 2
-            adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1
-            adb pull /sdcard/window.xml /tmp/window.xml >/dev/null 2>&1
-            python3 - "$slug" <<'PY'
+            found=0
+            for attempt in $(seq 1 15); do
+              adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1
+              adb pull /sdcard/window.xml /tmp/window.xml >/dev/null 2>&1
+              if python3 - "$slug" <<'PY'
           import sys,xml.etree.ElementTree as ET,re,subprocess
           slug=sys.argv[1]
           root=ET.parse('/tmp/window.xml').getroot()
@@ -98,8 +100,13 @@ jobs:
               y=(int(m[2])+int(m[4]))//2
               subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
               raise SystemExit(0)
-          raise SystemExit('CARD_NOT_FOUND='+slug)
+          raise SystemExit(1)
           PY
+              then found=1; break; fi
+              adb shell input swipe 540 1800 540 600 400
+              sleep 1
+            done
+            if [[ "$found" -ne 1 ]]; then echo "CARD_NOT_FOUND=$slug"; exit 1; fi
             sleep 4
             activity=$(adb shell dumpsys activity activities | grep -m 1 'mResumedActivity\|mFocusedApp' || true)
             if [[ "$activity" != *"$pkg/"* ]]; then
