@@ -1,0 +1,94 @@
+name: Qurani Native Single APK
+on:
+  push:
+    branches: [qurani-native-single-apk-v1]
+    paths: ['qurani-native/**','.github/workflows/qurani-native-single-apk.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14'
+      - name: Retrieve all twelve original standalone APKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/original-apks
+          gh release download quran-series-v1.0.4-exact-ayah-search --pattern '*.apk' --dir /tmp/original-apks
+          test "$(find /tmp/original-apks -maxdepth 1 -name '*.apk' | wc -l)" -eq 12
+      - name: Embed original PDFs without recompression or conversion
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          app=Path('qurani-native/app/src/main/assets')
+          maps=[
+          ('01-AbuAmr-v1.0.4.apk','abuamr','المصحف المعلم بقراءة الإمام أبي عمرو البصري براوييه السوسي والدوري'),
+          ('02-IbnAmir-v1.0.4.apk','ibnamir','المصحف المعلم بقراءة الإمام ابن عامر الشامي'),
+          ('03-IbnKathir-v1.0.4.apk','ibnkathir','المصحف المعلم بقراءة الإمام عبدالله بن كثير'),
+          ('04-Khalaf-Hamza-Sakt-v1.0.4.apk','khalafhamza','المصحف المعلم برواية خلف عن حمزة'),
+          ('05-AlKisai-v1.0.4.apk','alkisai','المصحف المعلم بقراءة الإمام الكسائي'),
+          ('06-Khallad-Hamza-NoSakt-v1.0.4.apk','khalladhamza','المصحف المعلم برواية خلاد عن حمزة'),
+          ('07-AbuJaafar-v1.0.4.apk','abujaafar','المصحف المعلم بقراءة الإمام أبي جعفر'),
+          ('08-Yaqub-v1.0.4.apk','yaqub','المصحف المعلم بقراءة الإمام يعقوب'),
+          ('09-Khalaf10-v1.0.4.apk','khalaf10','المصحف المعلم بقراءة الإمام خلف العاشر'),
+          ('10-Asim-v1.0.4.apk','asim','المصحف المعلم بقراءة الإمام عاصم'),
+          ('11-Warsh-Azraq-v1.0.4.apk','warshazraq','مصحف ورش عن نافع من طريق الأزرق'),
+          ('12-Qalun-Qasr-v1.0.4.apk','qalunqasr','مصحف قالون عن نافع')]
+          app.mkdir(parents=True,exist_ok=True)
+          with (app/'catalog.tsv').open('w',encoding='utf-8') as out:
+              for filename,slug,title in maps:
+                  original=Path('/tmp/original-apks')/filename
+                  assert original.is_file(),original
+                  out.write(slug+'\t'+title+'\n')
+                  with zipfile.ZipFile(original) as z:
+                      pdfs=[n for n in z.namelist() if n.startswith('assets/pdf/') and n.lower().endswith('.pdf')]
+                      assert 'assets/pdf/reading.pdf' in pdfs,(slug,pdfs)
+                      for name in pdfs:
+                          dest=app/'pdf'/slug/Path(name).relative_to('assets/pdf')
+                          dest.parent.mkdir(parents=True,exist_ok=True)
+                          dest.write_bytes(z.read(name))
+                          assert dest.read_bytes()[:5]==b'%PDF-',dest
+                      print('SOURCE_PDFS_OK',slug,len(pdfs))
+          assert len(list((app/'pdf').glob('*/reading.pdf')))==12
+          PY
+      - name: Build one native application APK
+        run: |
+          set -euo pipefail
+          gradle -p qurani-native :app:assembleDebug --no-daemon
+          mkdir -p deliverable
+          cp qurani-native/app/build/outputs/apk/debug/app-debug.apk deliverable/qurani-series-single.apk
+          unzip -tq deliverable/qurani-series-single.apk
+          unzip -l deliverable/qurani-series-single.apk | grep 'assets/pdf/abuamr/reading.pdf'
+          sha256sum deliverable/qurani-series-single.apk > deliverable/SHA256SUMS.txt
+      - name: Verify native PDF reader with emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            adb install -r deliverable/qurani-series-single.apk
+            adb shell am start -n com.qurani.nativeunified/.MainActivity
+            sleep 4
+            adb shell uiautomator dump /sdcard/hierarchy.xml
+            adb pull /sdcard/hierarchy.xml /tmp/hierarchy.xml
+            grep -q 'mushaf-card-abuamr' /tmp/hierarchy.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qurani-native-single-apk
+          path: deliverable/
+          retention-days: 30
