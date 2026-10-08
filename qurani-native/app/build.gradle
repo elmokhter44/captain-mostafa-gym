@@ -1,0 +1,7 @@
+plugins { id 'com.android.application' }
+android {
+ namespace 'com.qurani.nativeunified'
+ compileSdk 35
+ defaultConfig { applicationId 'com.qurani.nativeunified'; minSdk 24; targetSdk 28; versionCode 1; versionName '1.0.0' }
+ aaptOptions { noCompress 'pdf' }
+}
