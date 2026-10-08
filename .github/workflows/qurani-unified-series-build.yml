@@ -315,7 +315,7 @@ jobs:
               cat /tmp/window.xml
               exit 1
             fi
-            if ! tap_target "المصحف كامل"; then
+            if ! tap_target "فتح المصحف"; then
               echo "QURAN_SECTION_NOT_FOUND=$id"
               cat /tmp/window.xml
               exit 1
