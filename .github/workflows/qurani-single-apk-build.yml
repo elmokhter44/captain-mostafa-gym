@@ -347,6 +347,11 @@ jobs:
             adb logcat -d > /tmp/current.log
             grep -q "\[QURANI\] ASSET_PACK_OK=$id" /tmp/current.log
             grep -q "\[QURANI\] ASSET_PDF_OK=$id" /tmp/current.log
+            if ! grep -Fq "[QURANI] PDF_RENDER_OK=${id}__reading.pdf" /tmp/current.log; then
+              echo "PDF_RENDER_NOT_CONFIRMED=$id"
+              grep -E "PDF_RENDER|PDF_ASSET|ReactNativeJS" /tmp/current.log | tail -n 100 || true
+              exit 1
+            fi
             if grep -Eq 'PDF_RENDER_ERROR|ENOENT|FileNotFoundException.*pdf/|Unable to open.*pdf/' /tmp/current.log; then
               echo "PDF_RUNTIME_ERROR=$id"
               cat /tmp/current.log
