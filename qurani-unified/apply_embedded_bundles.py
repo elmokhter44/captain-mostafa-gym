@@ -91,6 +91,11 @@ for apk,slug in mapping:
         if pack.stat().st_size<=0:
             raise SystemExit(f"empty asset pack {pack}")
 
+for pdf_bridge in java_root.rglob("*Pdf*.kt"):
+    print("PDF_BRIDGE_SOURCE_BEGIN="+str(pdf_bridge))
+    print(pdf_bridge.read_text(encoding="utf-8")[:14000])
+    print("PDF_BRIDGE_SOURCE_END")
+
 java_files=list(java_root.rglob("MainActivity.java"))+list(java_root.rglob("MainActivity.kt"))
 if not java_files:
     raise SystemExit("MainActivity source not found")
