@@ -166,6 +166,18 @@ jobs:
           test "$(find qurani-app/android/app/src/main/assets/mushaf-bundles -mindepth 2 -name index.android.bundle | wc -l)" -eq 12
           test "$(find qurani-app/android/app/src/main/assets/mushaf-packs -maxdepth 1 -name '*.apk' | wc -l)" -eq 12
           for p in qurani-app/android/app/src/main/assets/mushaf-packs/*.apk; do unzip -tq "$p" >/dev/null; unzip -l "$p" | grep -q 'assets/pdf/'; done
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          packs=list(Path('qurani-app/android/app/src/main/assets/mushaf-packs').glob('*.apk'))
+          assert len(packs)==12, len(packs)
+          for pack in packs:
+              with zipfile.ZipFile(pack) as z:
+                  pdfs=[info for info in z.infolist() if info.filename.startswith('assets/pdf/') and info.filename.lower().endswith('.pdf')]
+                  assert pdfs, pack
+                  assert all(info.compress_type==zipfile.ZIP_STORED for info in pdfs), pack
+                  print('UNCOMPRESSED_PDF_ASSETS_OK=',pack.name,len(pdfs))
+          PY
           echo 'STANDALONE_UI_BUNDLES_12_OK=1'
           echo 'STANDALONE_ASSET_PACKS_12_OK=1'
 
