@@ -74,7 +74,7 @@ for apk,slug in mapping:
                 zp.writestr("resources.arsc",z.read("resources.arsc"),compress_type=zipfile.ZIP_STORED)
             for n in names:
                 if n.startswith("assets/") and not n.endswith("/") and n!="assets/index.android.bundle":
-                    zp.writestr(n,z.read(n),compress_type=zipfile.ZIP_DEFLATED)
+                    zp.writestr(n,z.read(n),compress_type=zipfile.ZIP_STORED if n.startswith("assets/pdf/") and n.endswith(".pdf") else zipfile.ZIP_DEFLATED)
         if pack.stat().st_size<=0:
             raise SystemExit(f"empty asset pack {pack}")
 
