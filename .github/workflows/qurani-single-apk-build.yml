@@ -163,6 +163,10 @@ jobs:
         run: |
           set -euo pipefail
           python3 qurani-unified/apply_embedded_bundles.py qurani-app /tmp/v104-apks
+          for id in abuamr ibnamir ibnkathir khalafhamza alkisai khalladhamza abujaafar yaqub khalaf10 asim warshazraq qalunqasr; do
+            test -s "qurani-app/android/app/src/main/assets/pdf/${id}__reading.pdf"
+          done
+          echo ALL_12_SCOPED_READER_PDFS=PASS
           test "$(find qurani-app/android/app/src/main/assets/mushaf-bundles -mindepth 2 -name index.android.bundle | wc -l)" -eq 12
           test "$(find qurani-app/android/app/src/main/assets/mushaf-packs -maxdepth 1 -name '*.apk' | wc -l)" -eq 12
           for p in qurani-app/android/app/src/main/assets/mushaf-packs/*.apk; do unzip -tq "$p" >/dev/null; unzip -l "$p" | grep -q 'assets/pdf/'; done
@@ -197,6 +201,7 @@ jobs:
           gp.write_text(gs)
           g = Path('qurani-app/android/app/build.gradle')
           gs = g.read_text()
+          gs += '\nandroid { aaptOptions { noCompress "pdf" } }\n'
           gs = re.sub(r'applicationId\s+"[^"]+"', 'applicationId "com.qurani.series"', gs)
           gs = re.sub(r'versionCode\s+\d+', 'versionCode 3', gs)
           gs = re.sub(r'versionName\s+"[^"]+"', 'versionName "1.0.3"', gs)
