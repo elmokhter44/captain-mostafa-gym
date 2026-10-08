@@ -53,6 +53,19 @@ for apk,slug in mapping:
     with zipfile.ZipFile(ap) as z:
         names=z.namelist()
         (out/"index.android.bundle").write_bytes(z.read("assets/index.android.bundle"))
+        # The React Native PDF page requests scoped names such as abuamr__reading.pdf.
+        # Put the original PDF bytes at that EXACT Android asset path, not inside a nested APK.
+        pdf_count = 0
+        for n in names:
+            if n.startswith("assets/pdf/") and n.lower().endswith(".pdf"):
+                relative = Path(n).relative_to("assets/pdf")
+                target = assets / "pdf" / (slug + "__" + relative.as_posix())
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(z.read(n))
+                pdf_count += 1
+        if pdf_count == 0:
+            raise SystemExit(f"NO_ORIGINAL_PDFS={slug}")
+        print(f"SCOPED_PDF_ASSETS_OK={slug} count={pdf_count}")
         for n in names:
             if n.startswith("assets/") and not n.endswith("/") and not n.startswith("assets/pdf/") and n!="assets/index.android.bundle":
                 dst=out/Path(n).relative_to("assets")
