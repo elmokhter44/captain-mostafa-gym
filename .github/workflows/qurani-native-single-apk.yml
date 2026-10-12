@@ -62,6 +62,9 @@ jobs:
                           assert dest.read_bytes()[:5]==b'%PDF-',dest
                       print('SOURCE_PDFS_OK',slug,len(pdfs))
           assert len(list((app/'pdf').glob('*/reading.pdf')))==12
+          for directory in sorted((app/'pdf').iterdir()):
+              assert len(list(directory.glob('*.pdf'))) >= 2, ('MISSING_SECTIONS',directory)
+              print('SECTIONS_READY',directory.name,len(list(directory.glob('*.pdf'))))
           PY
       - name: Build one native application APK
         run: |
