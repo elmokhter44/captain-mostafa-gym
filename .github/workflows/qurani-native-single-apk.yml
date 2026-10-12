@@ -33,6 +33,7 @@ jobs:
           from pathlib import Path
           import zipfile
           app=Path('qurani-native/app/src/main/assets')
+          pdf_root=Path('/tmp/qurani-native-pdfs')
           maps=[
           ('01-AbuAmr-v1.0.4.apk','abuamr','المصحف المعلم بقراءة الإمام أبي عمرو البصري براوييه السوسي والدوري'),
           ('02-IbnAmir-v1.0.4.apk','ibnamir','المصحف المعلم بقراءة الإمام ابن عامر الشامي'),
@@ -56,22 +57,46 @@ jobs:
                       pdfs=[n for n in z.namelist() if n.startswith('assets/pdf/') and n.lower().endswith('.pdf')]
                       assert 'assets/pdf/reading.pdf' in pdfs,(slug,pdfs)
                       for name in pdfs:
-                          dest=app/'pdf'/slug/Path(name).relative_to('assets/pdf')
+                          dest=pdf_root/slug/Path(name).relative_to('assets/pdf')
                           dest.parent.mkdir(parents=True,exist_ok=True)
                           dest.write_bytes(z.read(name))
                           assert dest.read_bytes()[:5]==b'%PDF-',dest
                       print('SOURCE_PDFS_OK',slug,len(pdfs))
-          assert len(list((app/'pdf').glob('*/reading.pdf')))==12
-          for directory in sorted((app/'pdf').iterdir()):
+          assert len(list(pdf_root.glob('*/reading.pdf')))==12
+          for directory in sorted(pdf_root.iterdir()):
               assert len(list(directory.glob('*.pdf'))) >= 2, ('MISSING_SECTIONS',directory)
               print('SECTIONS_READY',directory.name,len(list(directory.glob('*.pdf'))))
           PY
       - name: Build one native application APK
         run: |
           set -euo pipefail
-          GRADLE_OPTS='-Xmx6g -XX:MaxMetaspaceSize=768m' gradle -p qurani-native :app:assembleDebug --no-daemon -Dorg.gradle.jvmargs='-Xmx6g -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8' --max-workers=2
+          # Avoid AGP compressDebugAssets loading the twelve huge PDFs into JVM heap.
+          # Build the code/ordinary assets first; stream original PDF bytes into the APK
+          # as ZIP_STORED, then align and sign the completed single APK.
+          GRADLE_OPTS='-Xmx3g' gradle -p qurani-native :app:assembleDebug --no-daemon -Dorg.gradle.jvmargs='-Xmx3g -Dfile.encoding=UTF-8' --max-workers=2
           mkdir -p deliverable
-          cp qurani-native/app/build/outputs/apk/debug/app-debug.apk deliverable/qurani-series-single.apk
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_STORED
+          apk=Path('qurani-native/app/build/outputs/apk/debug/app-debug.apk')
+          pdf_root=Path('/tmp/qurani-native-pdfs')
+          files=sorted(pdf_root.rglob('*.pdf'))
+          assert len(files)>=24, len(files)
+          with ZipFile(apk,'a',allowZip64=True) as z:
+              for pdf in files:
+                  dest='assets/pdf/'+pdf.relative_to(pdf_root).as_posix()
+                  with pdf.open('rb') as src, z.open(dest,'w',force_zip64=True) as out:
+                      while True:
+                          block=src.read(1024*1024)
+                          if not block: break
+                          out.write(block)
+                  assert z.getinfo(dest).compress_type==ZIP_STORED
+              print('EMBEDDED_NATIVE_PDFS',len(files))
+          PY
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/zipalign" -f -p 4 qurani-native/app/build/outputs/apk/debug/app-debug.apk deliverable/qurani-series-single.apk
+          "$BUILD_TOOLS/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android deliverable/qurani-series-single.apk
+          "$BUILD_TOOLS/apksigner" verify deliverable/qurani-series-single.apk
           unzip -tq deliverable/qurani-series-single.apk
           unzip -l deliverable/qurani-series-single.apk | grep 'assets/pdf/abuamr/reading.pdf'
           sha256sum deliverable/qurani-series-single.apk > deliverable/SHA256SUMS.txt
